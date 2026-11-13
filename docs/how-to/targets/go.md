@@ -19,9 +19,11 @@ npx lawspec generate
 go test ./...
 ```
 
-In a directory without build files, `init` creates a `go.mod` for module
-`example.com/lawspec-example` with `go 1.25.0` and Rapid v1.3.0. In an existing
-module:
+In a directory without build files, `init` creates a `go.mod` with
+`go 1.25.0` and Rapid v1.3.0. The module is `example.com/<name>`, where the
+name is the [project's](../../reference/cli.md#project-name), by default the
+directory's. `--group github.com/acme` gives the module path its real start:
+`github.com/acme/<name>`. In an existing module:
 
 ```sh
 go get pgregory.net/rapid@v1.3.0

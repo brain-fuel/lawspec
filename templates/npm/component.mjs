@@ -95,6 +95,16 @@ export async function readManifest(file) {
   }
 }
 
+// The build files lawspec init writes for a target, named for the project by
+// the compiler (LawSpec.ProjectName). ref:DEC-scaffold-project-name
+export async function scaffoldProject(request) {
+  const result = await coreRequest({method: 'scaffold', ...request});
+  return {
+    files: Object.fromEntries(result.files.map(({path, content}) => [path, content])),
+    project: result.project,
+  };
+}
+
 export async function findManifest(start = process.cwd()) {
   let directory = path.resolve(start);
   for (;;) {

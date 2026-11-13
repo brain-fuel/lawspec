@@ -86,6 +86,7 @@ import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.ActorRuntime (ActorRemote(..), ActorRuntime(..), ActorSettings(ActorSettings))
 import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFilesForRelease)
 import LawSpec.TargetOptions (defaultJavaRelease)
+import LawSpec.ProjectName (ProjectNames, exampleProject)
 import LawSpec.Targets (programTargets)
 import LawSpec.BuiltinDefaults (adapterPath)
 import Toolchain
@@ -279,6 +280,13 @@ beamLock target = lookup target [("erlang","rebar.lock"),("elixir","mix.lock"),(
 javaRelease :: IO (Maybe Int)
 javaRelease = fmap read <$> lookupEnv "LAWSPEC_JAVA_RELEASE"
 
+-- | The suites' fixtures and toolchain steps spell the example project's
+-- names (lawspec_example::, example.com/lawspec-example, the BEAM
+-- application's build directories), so every run is scaffolded under them.
+-- ref:DEC-scaffold-project-name
+acceptanceProject :: ProjectNames
+acceptanceProject = exampleProject
+
 -- | A run's build files. LAWSPEC_JAVA_RELEASE selects the Java release, and
 -- LAWSPEC_JUNIT another JUnit Jupiter release in place of the scaffold's, to
 -- certify it before the supported range admits it. Both change the build
@@ -287,7 +295,7 @@ acceptanceScaffolds :: ActorSettings -> Bool -> Bool -> String -> IO [(FilePath,
 acceptanceScaffolds settings crypto minify target = do
   release <- javaRelease
   junit <- lookupEnv "LAWSPEC_JUNIT"
-  files <- either die pure (scaffoldFilesForRelease (if target == "java" then fromMaybe defaultJavaRelease release else defaultJavaRelease) settings crypto minify target)
+  files <- either die pure (scaffoldFilesForRelease acceptanceProject (if target == "java" then fromMaybe defaultJavaRelease release else defaultJavaRelease) settings crypto minify target)
   pure [ (path, if target == "java" && path == "pom.xml" then maybe content (\version -> T.unpack (T.replace "5.14.0" (T.pack version) (T.pack content))) junit else content)
        | (path, content) <- files ]
 

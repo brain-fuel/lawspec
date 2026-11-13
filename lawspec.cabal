@@ -868,6 +868,7 @@ library
       LawSpec.PortableTestHelpers
       LawSpec.Prelude
       LawSpec.PreludeNames
+      LawSpec.ProjectName
       LawSpec.Prolog.Emit
       LawSpec.ProofSettings
       LawSpec.Public
@@ -1192,6 +1193,7 @@ test-suite lawspec-test
       PayloadProofSpec
       PayloadSpec
       PreludeResolutionSpec
+      ProjectNameSpec
       PrologTargetSpec
       PythonBindingNamesSpec
       QuantifierDomainSpec

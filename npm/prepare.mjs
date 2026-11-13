@@ -76,11 +76,14 @@ async function applyEntries(language, root, file, entries, document)
 
 // Returns the files created from the scaffold and the settings added to
 // existing files, for init's summary.
-export async function applyRequirements(language, root, {minify = false} = {})
+export async function applyRequirements(
+  language,
+  root,
+  {minify = false, scaffold = templates(language, {minify})} = {},
+)
 {
   const created = [];
   const updated = [];
-  const scaffold = templates(language, {minify});
   for (const [file, entries] of Object.entries(requirements[language] ?? {}))
   {
     const target = await safePath(root, file);

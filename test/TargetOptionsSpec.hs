@@ -13,6 +13,7 @@ import qualified Data.Vector as V
 import LawSpec.ActorRuntime (defaultActorSettings)
 import LawSpec.Api (dispatch)
 import LawSpec.Manifest.Decode (admitEDNManifest)
+import LawSpec.ProjectName (exampleProject)
 import LawSpec.Scaffold (generatedRootsAdvice, scaffoldFilesForRelease)
 import Test.Hspec
 
@@ -223,7 +224,7 @@ test_javaReleaseRefusesWhatItCannotCompile = describe "Java release" $ do
     map fst (messages (call ["target" .= ("kotlin" :: String), "sources" .= [plain], "release" .= (21 :: Int)])) `shouldBe` ["release"]
 
   it "scaffolds a build at the chosen release and refuses another" $ do
-    let pom release = fmap (concatMap snd) (scaffoldFilesForRelease release defaultActorSettings False False "java")
+    let pom release = fmap (concatMap snd) (scaffoldFilesForRelease exampleProject release defaultActorSettings False False "java")
     pom 21 `shouldSatisfy` either (const False) (isInfixOf "<maven.compiler.release>21</maven.compiler.release>")
     pom 25 `shouldSatisfy` either (const False) (isInfixOf "<maven.compiler.release>25</maven.compiler.release>")
     pom 17 `shouldSatisfy` either (isInfixOf "17") (const False)

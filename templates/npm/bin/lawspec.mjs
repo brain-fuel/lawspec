@@ -10,12 +10,12 @@ import {
   findManifest,
   dependencyRanges,
   resolveComponent,
+  scaffoldProject,
 } from '../component.mjs';
 import {resolveDependencies, packComponent} from '../component-packages.mjs';
 import {
   targets,
   artifactTargets,
-  templates,
   commands,
   setup,
   prepareCommands,
@@ -129,6 +129,8 @@ for (let i = 0; i < args.length; i++)
       '--release',
       '--generated-source-dir',
       '--generated-test-dir',
+      '--name',
+      '--group',
     ].includes(arg)
   )
   {
@@ -428,6 +430,8 @@ async function init()
     'mix.exs',
     'gleam.toml',
   ];
+  // The files an existing project's name is read from.
+  const nameFiles = [...buildFiles, 'settings.gradle', 'Package.swift'];
   // A Java target's build options, from the command line or the target the
   // manifest already declares; the compiler checks them at generation.
   const given = {
@@ -445,10 +449,34 @@ async function init()
     t => t.language === language && path.resolve(configRoot, t.root) === root,
   );
   const build = {...declaredTarget, ...given};
-  const scaffold = templates(language, {
+  // The compiler names the project and renders its build files; the host
+  // passes what it read. ref:DEC-scaffold-project-name
+  const named = (await readdir(root))
+    .filter(f => nameFiles.includes(f) || /\.(cabal|slnx|sln)$/.test(f))
+    .sort();
+  const {files: scaffold, project} = await scaffoldProject({
+    target: language,
     minify: options.minify === true,
     release: build.release,
+    name: options.name,
+    group: options.group,
+    buildFiles: (
+      await Promise.all(
+        named.map(async file => ({
+          path: file,
+          content: await readFile(path.join(root, file), 'utf8').catch(
+            () => null,
+          ),
+        })),
+      )
+    ).filter(file => file.content !== null),
+    manifestName:
+      current === null
+        ? undefined
+        : (config.component?.name ?? config.package?.name),
+    directory: path.basename(configRoot),
   });
+  if (current === null) config.component.name = project.component;
   // A file init itself would write also marks the project as set up, so that
   // running init again never stops on its own earlier output.
   const scaffolded = (
@@ -459,7 +487,7 @@ async function init()
   const hasBuild =
     scaffolded ||
     (await readdir(root)).some(
-      f => buildFiles.includes(f) || f.endsWith('.cabal'),
+      f => buildFiles.includes(f) || /\.(cabal|slnx|sln)$/.test(f),
     );
   const additions = hasBuild ? {} : scaffold;
   for (const name of Object.keys(additions))
@@ -481,7 +509,10 @@ async function init()
   // A project that already has build files keeps them; only the settings a
   // JSON build file lacks are added. ref:DEC-init-prepares-project
   const adjusted = hasBuild
-    ? await applyRequirements(language, root, {minify: options.minify === true})
+    ? await applyRequirements(language, root, {
+        minify: options.minify === true,
+        scaffold,
+      })
     : {created: [], updated: []};
   if (current === null)
     await atomicWrite(
@@ -529,6 +560,10 @@ async function init()
     hasBuild
       ? `Existing build files preserved${changes.length ? `; ${changes.join('; ')}` : ''}.`
       : 'Created missing project build files.'
+  }${
+    project.summary && (!hasBuild || adjusted.created.length)
+      ? `\n${project.summary}`
+      : ''
   }${roots ? `\nRegister the generated directories in the build:\n${roots}` : ''}`;
   if (options['no-install'])
   {
@@ -1719,7 +1754,7 @@ async function main()
     output(
       'LawSpec ' +
         VERSION +
-        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify] [--no-install]\n       lawspec init --target java [--release 21|25] [--generated-source-dir <directory>] [--generated-test-dir <directory>]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --timings, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
+        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--name <name>] [--group <id>] [--minify] [--no-install]\n       lawspec init --target java [--release 21|25] [--generated-source-dir <directory>] [--generated-test-dir <directory>]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --timings, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
         targets.join(', '),
     );
     return;
@@ -1909,6 +1944,11 @@ async function main()
     throw new Error('--example is only supported by examples');
   if (options['no-install'] && verb !== 'init')
     throw new Error('--no-install applies to init');
+  if (
+    (options.name !== undefined || options.group !== undefined) &&
+    verb !== 'init'
+  )
+    throw new Error('--name and --group apply to init');
   if (
     ['release', 'generated-source-dir', 'generated-test-dir'].some(
       key => options[key] !== undefined,

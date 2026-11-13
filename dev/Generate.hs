@@ -39,6 +39,7 @@ import LawSpec.Scaffold (PresentationCheck(..), prepareCommands, presentationChe
 import LawSpec.Targets (targetLabel)
 import LawSpec.TargetOptions (defaultJavaRelease, javaReleases)
 import LawSpec.ActorRuntime (defaultActorSettings)
+import LawSpec.ProjectName (exampleProject)
 import qualified LawSpec.PreludeNames as PreludeNames
 import qualified LawSpec.Scalar as Scalar
 import qualified LawSpec.Collections as Collections
@@ -340,7 +341,7 @@ factFills version =
   , ("java-release-scaffolds", Inline (json (Object
       [ (show release, Object [(layout, Object [(path, String content) | (path, content) <- files])
           | (layout, minify) <- [("readable", False), ("compact", True)]
-          , Right files <- [scaffoldFilesForRelease release defaultActorSettings False minify "java"]])
+          , Right files <- [scaffoldFilesForRelease exampleProject release defaultActorSettings False minify "java"]])
       | release <- javaReleases, release /= defaultJavaRelease ])))
   -- The build registration of generated directories, for each combination a
   -- target can set. The host fills in the two directory names.

@@ -10,6 +10,7 @@ module LawSpec.Scaffold
 
 import Data.List (intercalate)
 import LawSpec.ActorRuntime (ActorRemote (..), ActorRuntime (..), ActorSettings (..))
+import LawSpec.ProjectName (ProjectNames (..), exampleProject)
 import LawSpec.TargetOptions (defaultJavaRelease, javaReleases)
 import qualified LawSpec.Targets as Targets
 
@@ -178,8 +179,11 @@ setupAdvice target = lookup target
 beamCryptoSetup :: String
 beamCryptoSetup = " Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application."
 
--- | Files in the order the project is written, for a program that uses no
--- crypto library (lawspec init's).
+-- | The example project's files in the order the project is written, for a
+-- program that uses no crypto library. This and the four functions after it
+-- name the project lawspec-example, for the examples corpus, Learn and the
+-- suites whose fixtures spell that name; lawspec init names the project it
+-- is run in (scaffoldFilesForRelease). ref:DEC-scaffold-project-name
 scaffoldFiles :: Bool -> String -> Either String [(FilePath, String)]
 scaffoldFiles = scaffoldFilesWith False
 
@@ -208,12 +212,13 @@ scaffoldFilesFor runtime = scaffoldFilesForActors (ActorSettings runtime LawSpec
 -- API joins the dependencies only with :remote :cluster.
 -- ref:DEC-pekko-cluster-remote
 scaffoldFilesForActors :: ActorSettings -> Bool -> Bool -> String -> Either String [(FilePath, String)]
-scaffoldFilesForActors = scaffoldFilesForRelease defaultJavaRelease
+scaffoldFilesForActors = scaffoldFilesForRelease exampleProject defaultJavaRelease
 
--- | The same at a Java release (lawspec.edn's :release). Only the Java
--- target's build file names a release; the others ignore it.
-scaffoldFilesForRelease :: Int -> ActorSettings -> Bool -> Bool -> String -> Either String [(FilePath, String)]
-scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify target = case target of
+-- | A named project's files at a Java release (lawspec.edn's :release). Only
+-- the Java target's build file names a release; the others ignore it. The
+-- names are written as given: LawSpec.ProjectName makes them valid.
+scaffoldFilesForRelease :: ProjectNames -> Int -> ActorSettings -> Bool -> Bool -> String -> Either String [(FilePath, String)]
+scaffoldFilesForRelease names release (ActorSettings runtime remote) crypto minify target = case target of
   "hcl" -> Right []
   "yaml" -> Right []
   "make" -> Right []
@@ -224,9 +229,9 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
         , "{eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}."
         , "{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}." ] ++
         [ "{pre_hooks, [{compile, \"escript lawspec_crypto_build.escript\"}]}." | crypto])
-    , ("src/lawspec_example.app.src", unlines
-        [ "{application, lawspec_example, ["
-        , "    {description, \"LawSpec example\"},"
+    , ("src/" ++ projectAtom names ++ ".app.src", unlines
+        [ "{application, " ++ projectAtom names ++ ", ["
+        , "    {description, \"" ++ projectDescription names ++ "\"},"
         , "    {vsn, \"0.1.0\"},"
         , "    {modules, []},"
         , "    {registered, []},"
@@ -242,10 +247,10 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
         , "    if status != 0, do: Mix.raise(\"LawSpec crypto bridge compilation failed\")"
         , "    {:ok, []}"
         , "  end", "end", "" ] else []) ++
-        [ "defmodule LawSpecExample.MixProject do"
+        [ "defmodule " ++ projectModule names ++ ".MixProject do"
         , "  use Mix.Project", ""
         , "  def project do"
-        , "    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\","
+        , "    [app: :" ++ projectAtom names ++ ", version: \"0.1.0\", elixir: \"~> 1.20\","
         , "     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths()," ] ++
         [ "     compilers: [:lawspec_crypto] ++ Mix.compilers()," | crypto] ++
         [
@@ -269,20 +274,20 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
         , "end" ]) ]
   "gleam" -> Right
     [ ("gleam.toml", unlines
-        [ "name = \"lawspec_example\"", "version = \"0.1.0\""
+        [ "name = \"" ++ projectAtom names ++ "\"", "version = \"0.1.0\""
         , "gleam = \">= 1.18.0\"", "target = \"erlang\"", ""
         , "[dependencies]", "gleam_stdlib = \"== 1.0.5\"", ""
         , "[dev-dependencies]", "gleeunit = \"== 1.11.0\"", "qcheck = \"== 1.0.5\""
         , "lawspec_test_support = { path = \"./test-support\" }" ])
     , ("test-support/gleam.toml", gleamTestPackage)
     , ("test-support/src/.gitkeep", "")
-    , ("test/lawspec_example_test.gleam", unlines
+    , ("test/" ++ projectAtom names ++ "_test.gleam", unlines
         [ "@external(erlang, \"lawspec_beam_test_run\", \"gleam_main\")"
         , "pub fn main() -> Nil" ]) ]
   "rust" -> Right
     [ ("src/lib.rs", "// Application library. LawSpec maintains the included module declarations.\ninclude!(\"lawspec_modules.rs\");\n")
     , ("Cargo.toml", unlines $
-        [ "[package]", "name = \"lawspec-example\"", "version = \"0.1.0\"", "edition = \"2024\""
+        [ "[package]", "name = \"" ++ projectPackage names ++ "\"", "version = \"0.1.0\"", "edition = \"2024\""
         , "rust-version = \"1.85\"", "publish = false", ""
         , "[dependencies]", "num-bigint = \"=0.4.8\"", "num-rational = \"=0.4.2\""
         , "num-complex = \"=0.4.6\"", "num-traits = \"=0.2.19\"" ] ++
@@ -308,7 +313,7 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
   language | language `elem` ["python","prolog"] -> Right
     [ ("pyproject.toml", unlines
         [ "[build-system]", "requires = [\"setuptools==80.9.0\"]", "build-backend = \"setuptools.build_meta\"", ""
-        , "[project]", "name = \"lawspec-example\"", "version = \"0.1.0\"", "requires-python = \">=3.13\""
+        , "[project]", "name = \"" ++ projectPackage names ++ "\"", "version = \"0.1.0\"", "requires-python = \">=3.13\""
         , "dependencies = [" ++ intercalate ", "
             (["\"cryptography==50.0.2\"" | crypto] ++ ["\"janus-swi==1.5.3\"" | language=="prolog"]) ++ "]", ""
         , "[project.optional-dependencies]", "test = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]", ""
@@ -316,9 +321,9 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
         , "[tool.pytest.ini_options]", "pythonpath = [\"src\"]", "testpaths = [\"tests\"]" ]) ]
   "java"
     | release `notElem` javaReleases -> Left ("Java release " ++ show release ++ " is not supported; choose " ++ intercalate " or " (map show javaReleases))
-    | otherwise -> Right [("pom.xml", renderXml minify 0 (mavenProject release crypto pekko cluster spring) ++ "\n")]
+    | otherwise -> Right [("pom.xml", renderXml minify 0 (mavenProject names release crypto pekko cluster spring) ++ "\n")]
   "go" -> Right [("go.mod", unlines $
-    [ "module example.com/lawspec-example", "", "go 1.25.0", ""
+    [ "module " ++ projectGoModule names, "", "go 1.25.0", ""
     ] ++ (if crypto then
     [ "require (", "\tgithub.com/cloudflare/circl v1.6.5", "\tpgregory.net/rapid v" ++ rapidDefault, ")", ""
     , "require (", "\tgolang.org/x/crypto v0.54.0 // indirect", "\tgolang.org/x/sys v0.47.0 // indirect", ")" ]
@@ -327,10 +332,10 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
     [ ("stack.yaml", "snapshot: lts-24.58\npackages: [.]\n" ++
         (if crypto then "# lawspec.crypto's default handlers and lawspec.network\nextra-deps: [crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0, mldsa-0.1.1.0]\n" else ""))
     , ("package.yaml", unlines
-        [ "name: lawspec-example", "version: 0.1.0", "dependencies: [base, text, bytestring, containers, network, directory, time" ++
+        [ "name: " ++ projectPackage names, "version: 0.1.0", "dependencies: [base, text, bytestring, containers, network, directory, time" ++
             (if crypto then ", crypton, mlkem, mldsa, ram]" else "]")
         , "library:", "  source-dirs: src", "tests:", "  laws:", "    main: Spec.hs", "    source-dirs: test"
-        , "    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]"
+        , "    dependencies: [" ++ projectPackage names ++ ", hspec, hedgehog, hspec-hedgehog, containers, mtl]"
         -- Deep Hedgehog bind plans make GHC specialization prohibitively
         -- expensive. Keep the test component and its support modules at O0;
         -- the adapter/definition library retains the project's optimization.
@@ -338,14 +343,15 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
         , "    build-tools: [hspec-discover]" ])
     , ("test/Spec.hs", "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n") ]
   "kotlin" -> Right
-    [ ("settings.gradle.kts", "rootProject.name = \"lawspec-example\"\n")
+    [ ("settings.gradle.kts", "rootProject.name = \"" ++ projectPackage names ++ "\"\n")
     -- Kotlin otherwise inherits Gradle's small default heap. Complete finite
     -- boundary suites need room for all generated registration helpers.
     -- https://kotlinlang.org/docs/gradle-compilation-and-caches.html
     , ("gradle.properties", "kotlin.daemon.jvmargs=-Xmx2g\n")
     , ("build.gradle.kts", intercalate (if minify then "\n" else "\n\n")
-        [ kotlinBlock "plugins" ["kotlin(\"jvm\") version \"2.3.21\""]
-        , kotlinBlock "repositories" ["mavenCentral()"]
+        ([ kotlinBlock "plugins" ["kotlin(\"jvm\") version \"2.3.21\""] ] ++
+        [ "group = \"" ++ group ++ "\"" | Just group <- [projectGradleGroup names] ] ++
+        [ kotlinBlock "repositories" ["mavenCentral()"]
         , kotlinBlock "kotlin" ["jvmToolchain(25)"]
         , kotlinBlock "dependencies"
             ([ "implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\")" ] ++
@@ -356,7 +362,7 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
              [ "testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-property:5.9.1\")" ])
-        , kotlinBlock "tasks.test" ["useJUnitPlatform()"] ] ++ "\n") ]
+        , kotlinBlock "tasks.test" ["useJUnitPlatform()"] ]) ++ "\n") ]
   -- Scala CLI reads the build from directives; the sources keep sbt's
   -- layout. ref:DEC-scala-on-the-jvm-runtime
   "scala" -> Right
@@ -372,10 +378,11 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
         , "//> using test.dep org.scalatest::scalatest-funsuite:3.2.20" ])) ]
   -- Groovy over the Java model: Gradle compiles both jointly (DEC-groovy-over-java).
   "groovy" -> Right
-    [ ("settings.gradle", "rootProject.name = 'lawspec-example'\n")
+    [ ("settings.gradle", "rootProject.name = '" ++ projectPackage names ++ "'\n")
     , ("build.gradle", intercalate (if minify then "\n" else "\n\n")
-        [ kotlinBlock "plugins" ["id 'groovy'"]
-        , kotlinBlock "repositories" ["mavenCentral()"]
+        ([ kotlinBlock "plugins" ["id 'groovy'"] ] ++
+        [ "group = '" ++ group ++ "'" | Just group <- [projectGradleGroup names] ] ++
+        [ kotlinBlock "repositories" ["mavenCentral()"]
         , kotlinBlock "java" ["toolchain { languageVersion = JavaLanguageVersion.of(25) }"]
         , kotlinBlock "sourceSets"
             [ "main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }"
@@ -393,7 +400,7 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
              , "testImplementation 'org.jetbrains:jetCheck:0.3.0'"
              , "testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'"
              , "testRuntimeOnly 'org.junit.platform:junit-platform-launcher'" ])
-        , kotlinBlock "test" ["useJUnitPlatform()"] ] ++ "\n") ]
+        , kotlinBlock "test" ["useJUnitPlatform()"] ]) ++ "\n") ]
   -- Clojure over the Java model: deps.edn, with the compiled model on the
   -- classpath (DEC-clojure-over-java).
   "clojure" -> Right
@@ -409,16 +416,16 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
         , "         :extra-deps {org.clojure/test.check {:mvn/version \"1.1.3\"}}"
         , "         :main-opts [\"-m\" \"lawspec.test-runner\"]}"
         , "  :build {:main-opts [\"-m\" \"lawspec.build\"]}}}" ]) ]
-  _ | target `elem` ["fsharp", "csharp"] -> Right (dotnetScaffold minify target)
-  "swift" -> Right (swiftScaffold minify)
+  _ | target `elem` ["fsharp", "csharp"] -> Right (dotnetScaffold (projectType names) minify target)
+  "swift" -> Right (swiftScaffold (projectType names) minify)
   _ -> Left ("Unknown target: " ++ target)
   where
     pekko = runtime /= LawSpecActors
     spring = runtime == SpringActors
     cluster = pekko && remote == ClusterRemote
     noble = [("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")]) | crypto]
-    commonPackage = [("name", Str "lawspec-example"), ("version", Str "0.1.0"), ("private", Bool True), ("type", Str "module")]
-    nodePackages names = [(name, Str version) | name <- names, Just version <- [lookup name nodeDevelopment]]
+    commonPackage = [("name", Str (projectPackage names)), ("version", Str "0.1.0"), ("private", Bool True), ("type", Str "module")]
+    nodePackages packages = [(name, Str version) | name <- packages, Just version <- [lookup name nodeDevelopment]]
     kotlinBlock name statements
       | minify = name ++ " { " ++ intercalate "; " statements ++ " }"
       | otherwise = name ++ " {\n" ++ intercalate "\n" (map ("    " ++) statements) ++ "\n}"
@@ -428,22 +435,22 @@ scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify tar
 -- runtime projects the compiler writes to lawspec/. F# lists its files in
 -- order, so its projects import the generated props. dotnet test runs the
 -- tests on Microsoft.Testing.Platform. ref:DEC-fsharp-runtime-from-scratch
-dotnetScaffold :: Bool -> String -> [(FilePath, String)]
-dotnetScaffold minify target =
+dotnetScaffold :: String -> Bool -> String -> [(FilePath, String)]
+dotnetScaffold name minify target =
   [ ("global.json", "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n")
-  , ("Example.slnx", lines' $
+  , (name ++ ".slnx", lines' $
       [ "<Solution>"
-      , "  <Project Path=\"src/Example." ++ ext ++ "\" />"
-      , "  <Project Path=\"tests/Example.Tests." ++ ext ++ "\" />"
+      , "  <Project Path=\"src/" ++ name ++ "." ++ ext ++ "\" />"
+      , "  <Project Path=\"tests/" ++ name ++ ".Tests." ++ ext ++ "\" />"
       , "  <Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />"
       , "  <Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />" ] ++
       [ "  <Project Path=\"lawspec/LawSpec.Model/LawSpec.Model.fsproj\" />" | target == "csharp" ] ++
       [ "</Solution>" ])
-  , ("src/Example." ++ ext, lines'
+  , ("src/" ++ name ++ "." ++ ext, lines'
       ([ "<Project Sdk=\"Microsoft.NET.Sdk\">"
        , "  <PropertyGroup>"
        , "    <TargetFramework>net10.0</TargetFramework>"
-       , "    <RootNamespace>Example</RootNamespace>" ] ++
+       , "    <RootNamespace>" ++ name ++ "</RootNamespace>" ] ++
        [ "    <Nullable>disable</Nullable>" | target == "csharp" ] ++
        [ "  </PropertyGroup>"
        , "  <Import Project=\"LawSpec.Sources.props\" />"
@@ -451,7 +458,7 @@ dotnetScaffold minify target =
        , "    <ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />"
        , "  </ItemGroup>"
        , "</Project>" ]))
-  , ("tests/Example.Tests." ++ ext, lines'
+  , ("tests/" ++ name ++ ".Tests." ++ ext, lines'
       ([ "<Project Sdk=\"Microsoft.NET.Sdk\">"
        , "  <PropertyGroup>"
        , "    <TargetFramework>net10.0</TargetFramework>"
@@ -462,7 +469,7 @@ dotnetScaffold minify target =
        [ "  </PropertyGroup>"
        , "  <Import Project=\"LawSpec.Tests.props\" />"
        , "  <ItemGroup>"
-       , "    <ProjectReference Include=\"../src/Example." ++ ext ++ "\" />"
+       , "    <ProjectReference Include=\"../src/" ++ name ++ "." ++ ext ++ "\" />"
        , "    <ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />"
        , "    <PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />"
        , "  </ItemGroup>"
@@ -476,14 +483,14 @@ dotnetScaffold minify target =
 -- tests. macOS 26 is the first with CryptoKit's ML-KEM and ML-DSA. It is
 -- laid out as swift-format writes it.
 -- ref:DEC-swift-runtime-from-scratch
-swiftScaffold :: Bool -> [(FilePath, String)]
-swiftScaffold minify =
+swiftScaffold :: String -> Bool -> [(FilePath, String)]
+swiftScaffold name minify =
   [ ("Package.swift", lines'
       [ "// swift-tools-version: 6.2"
       , "import PackageDescription"
       , ""
       , "let package = Package("
-      , "  name: \"Example\","
+      , "  name: \"" ++ name ++ "\","
       , "  platforms: [.macOS(.v26)],"
       , "  targets: ["
       , "    .target(name: \"LawSpecRuntime\", path: \"lawspec/LawSpecRuntime\"),"
@@ -573,12 +580,12 @@ generatedRootsAdvice source tests = intercalate "\n" $
       , Element "goals" [] (Right [text "goal" goal])
       , Element "configuration" [] (Right configuration) ])
 
-mavenProject :: Int -> Bool -> Bool -> Bool -> Bool -> Xml
-mavenProject release crypto pekko cluster spring = Element "project"
+mavenProject :: ProjectNames -> Int -> Bool -> Bool -> Bool -> Bool -> Xml
+mavenProject names release crypto pekko cluster spring = Element "project"
   [ ("xmlns", "http://maven.apache.org/POM/4.0.0")
   , ("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
   , ("xsi:schemaLocation", "http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd") ]
-  (Right (fields [("modelVersion", "4.0.0"), ("groupId", "example"), ("artifactId", "lawspec-example"), ("version", "0.1.0")] ++
+  (Right (fields [("modelVersion", "4.0.0"), ("groupId", projectGroup names), ("artifactId", projectPackage names), ("version", "0.1.0")] ++
     [ node "properties" (fields [("maven.compiler.release", show release), ("project.build.sourceEncoding", "UTF-8")])
     , node "dependencies"
         ([ compileDependency "org.bouncycastle" "bcprov-jdk18on" "1.86" | crypto ] ++

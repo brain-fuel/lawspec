@@ -4611,36 +4611,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:236: `check`",
+      "id": "reference:docs/reference/cli.md:240: Project name",
       "kind": "reference",
-      "name": "docs/reference/cli.md:236: `check`",
+      "name": "docs/reference/cli.md:240: Project name",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:246: `prove`",
+      "id": "reference:docs/reference/cli.md:309: `check`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:246: `prove`",
+      "name": "docs/reference/cli.md:309: `check`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:265: `evidence`",
+      "id": "reference:docs/reference/cli.md:319: `prove`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:265: `evidence`",
+      "name": "docs/reference/cli.md:319: `prove`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:307: `explain`",
+      "id": "reference:docs/reference/cli.md:338: `evidence`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:307: `explain`",
+      "name": "docs/reference/cli.md:338: `evidence`",
+      "source": "docs/reference/cli.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/cli.md:380: `explain`",
+      "kind": "reference",
+      "name": "docs/reference/cli.md:380: `explain`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4656,27 +4665,27 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:404: `doctor`",
+      "id": "reference:docs/reference/cli.md:477: `doctor`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:404: `doctor`",
+      "name": "docs/reference/cli.md:477: `doctor`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:420: `generate`",
+      "id": "reference:docs/reference/cli.md:493: `generate`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:420: `generate`",
+      "name": "docs/reference/cli.md:493: `generate`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:434: `test`",
+      "id": "reference:docs/reference/cli.md:507: `test`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:434: `test`",
+      "name": "docs/reference/cli.md:507: `test`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4692,63 +4701,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:557: The failure database",
+      "id": "reference:docs/reference/cli.md:630: The failure database",
       "kind": "reference",
-      "name": "docs/reference/cli.md:557: The failure database",
+      "name": "docs/reference/cli.md:630: The failure database",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:626: `package`",
+      "id": "reference:docs/reference/cli.md:699: `package`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:626: `package`",
+      "name": "docs/reference/cli.md:699: `package`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:637: `examples`",
+      "id": "reference:docs/reference/cli.md:710: `examples`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:637: `examples`",
+      "name": "docs/reference/cli.md:710: `examples`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:655: Exit status",
+      "id": "reference:docs/reference/cli.md:728: Exit status",
       "kind": "reference",
-      "name": "docs/reference/cli.md:655: Exit status",
+      "name": "docs/reference/cli.md:728: Exit status",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:664: Project workflow and Learn",
+      "id": "reference:docs/reference/cli.md:737: Project workflow and Learn",
       "kind": "reference",
-      "name": "docs/reference/cli.md:664: Project workflow and Learn",
+      "name": "docs/reference/cli.md:737: Project workflow and Learn",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:678: Authoring discovery",
+      "id": "reference:docs/reference/cli.md:751: Authoring discovery",
       "kind": "reference",
-      "name": "docs/reference/cli.md:678: Authoring discovery",
+      "name": "docs/reference/cli.md:751: Authoring discovery",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:683: Mutation testing",
+      "id": "reference:docs/reference/cli.md:756: Mutation testing",
       "kind": "reference",
-      "name": "docs/reference/cli.md:683: Mutation testing",
+      "name": "docs/reference/cli.md:756: Mutation testing",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

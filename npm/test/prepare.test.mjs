@@ -286,7 +286,7 @@ test('the Java build options are refused elsewhere', async t =>
   assert.equal(unsupported.status, 1);
   assert.match(
     unsupported.stdout + unsupported.stderr,
-    /release 17 is not supported for java; choose 21 or 25/,
+    /Java release 17 is not supported; choose 21 or 25/,
   );
   await assert.rejects(readFile(path.join(root, 'lawspec.edn')));
 });

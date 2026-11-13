@@ -8,6 +8,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `lawspec init --name <name>` names the project in the build files `init`
+  creates, and `--group <id>` gives the Maven `groupId`, the Gradle `group`
+  or the start of the Go module path (Java, Kotlin, Groovy and Go targets).
+  The compiler writes the one name the way each target does (`billing-service`
+  in `package.json`, `Cargo.toml`, `pyproject.toml` and `pom.xml`,
+  `billing_service` for the Erlang, Mix and Gleam applications,
+  `BillingService` for .NET and Swift), moves it off a leading digit or a
+  reserved word, and refuses a name it cannot write. See
+  [project name](docs/reference/cli.md#project-name).
 - Guarded laws report their reach. For a law `for all x => guard implies
   claim`, the generated tests of the Java, JavaScript, TypeScript, Python and Scala
   targets count the generated cases that satisfied each guard, and `lawspec test`
@@ -122,6 +131,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `lawspec init` names a new project after itself. The build files it
+  creates used to be named `lawspec-example` (Maven `example:lawspec-example`,
+  module `example.com/lawspec-example`, `Example.slnx`, application
+  `lawspec_example`). The name now comes from `--name`, a build file already
+  in the target's root, the component or package in `lawspec.edn`, or the
+  directory, in that order, and `init` prints it. A new `lawspec.edn` whose
+  directory name the configuration does not admit (a space, for example)
+  gets the kebab-case name where it used to get one `check` refused.
+  `lawspec examples` and the examples corpus keep `lawspec-example`.
+- A second `lawspec init` in a .NET project whose solution has another name
+  than the one `init` would write (any `.slnx` or `.sln` file) preserves it.
+  `init --target java --release <n>` reports an unsupported release as
+  `Java release 17 is not supported; choose 21 or 25`.
 - Generated parameters take their names from the signature. `add :: (a ::
   Int32) -> (b :: Int32) -> Int32` gives `add(int a, int b)` in Java,
   `def add(a: int, b: int)` in Python and `add(_A, _B)` in Erlang: the name
