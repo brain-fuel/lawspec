@@ -23,6 +23,7 @@ export function parseMutant(content)
 {
   const lines = content.split(/\r?\n/);
   const expectations = [],
+    forbidden = [],
     edits = [];
   let at = 0,
     rejection = null,
@@ -36,6 +37,7 @@ export function parseMutant(content)
     else if (line.startsWith('expect: ')) expectations.push([line.slice(8)]);
     else if (line.startsWith('expect-any: '))
       expectations.push(line.slice(12).split(' | '));
+    else if (line.startsWith('forbid: ')) forbidden.push(line.slice(8));
     else throw new Error(`unexpected header line: ${line}`);
   }
   while (at < lines.length)
@@ -64,7 +66,7 @@ export function parseMutant(content)
     });
   }
   if (!edits.length) throw new Error('mutation has no edits');
-  return {expectations, edits, rejection};
+  return {expectations, forbidden, edits, rejection};
 }
 
 export async function applyMutant(root, mutant)
@@ -213,7 +215,8 @@ export function classifyMutation(run, mutant)
   if (
     !mutant.expectations.every(alternatives =>
       alternatives.some(text => run.output.includes(text)),
-    )
+    ) ||
+    mutant.forbidden.some(text => run.output.includes(text))
   )
     return {
       status: 'errored',

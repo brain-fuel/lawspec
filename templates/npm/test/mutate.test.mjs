@@ -26,6 +26,10 @@ test('acceptance mutation format, strict edits and failure classifications', asy
   t.after(() => rm(root, {recursive: true, force: true}));
   const mutant = parseMutant(source);
   assert.deepEqual(mutant.expectations, [['broken'], ['law one', 'law two']]);
+  assert.deepEqual(mutant.forbidden, []);
+  assert.deepEqual(parseMutant('forbid: secret\n' + source).forbidden, [
+    'secret',
+  ]);
   await writeFile(path.join(root, 'app.txt'), 'good\n');
   await applyMutant(root, mutant);
   assert.equal(await readFile(path.join(root, 'app.txt'), 'utf8'), 'bad\n');
@@ -59,6 +63,18 @@ test('acceptance mutation format, strict edits and failure classifications', asy
   ];
   for (const [run, status] of cases)
     assert.equal(classifyMutation(run, mutant).status, status);
+  // A forbidden text in the output keeps an otherwise killed mutant open.
+  assert.equal(
+    classifyMutation(
+      {
+        code: 1,
+        report: [{failedLaws: ['unit::one']}],
+        output: 'broken law two',
+      },
+      {...mutant, forbidden: ['law two']},
+    ).status,
+    'errored',
+  );
 });
 
 test('passing baseline, kill matrix and workspace preservation use independent copies', async t =>
