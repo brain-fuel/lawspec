@@ -3,6 +3,7 @@
 -- target checks the same predicate.
 module LawSpec.Refinement where
 
+import LawSpec.SourceNames (operationValueNames)
 import LawSpec.Model
 import LawSpec.Scalar
 import Control.Monad (unless, when, foldM)
@@ -249,7 +250,12 @@ contractFor (n,t) = do
   let (args,result) = functionType t
       binder fallback t@(Refined name _ _) = (if internalBinder name then fallback else name,t)
       binder fallback a = (fallback,a)
-      as = [binder ("_argument" ++ show i) a | (i,a) <- zip [0::Int ..] args]
+      -- An argument the signature leaves unnamed is named after its type
+      -- (_int32_1), as text about the spec names it.
+      unrefined a = case a of
+        Refined _ inner _ -> unrefined inner
+        _ -> a
+      as = [binder ('_' : fallback) a | (fallback,a) <- zip (operationValueNames [] (map unrefined args)) args]
       r = binder "_result" result
   unless (length (map fst as ++ [fst r]) == length (nub (map fst as ++ [fst r]))) (Left (n ++ ": duplicate dependent binder"))
   pure (Contract n as r (concat [typePredicates (Var name) a | (name,a) <- as]) (typePredicates (Var (fst r)) (snd r)))

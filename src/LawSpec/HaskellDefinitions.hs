@@ -20,7 +20,7 @@ import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
 import LawSpec.Code.Haskell (Stmt(Bind, Run), call, var, string, integer, lambda, operator)
-import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, NameKind(..), readableDefinitionName, sourceDefinitionName)
+import LawSpec.Naming (Casing(..), declarationParameterNames, operationParameterNames, helperNames, claimAll, scopeWith, nativeIdentifier, NameKind(..), readableDefinitionName, sourceDefinitionName)
 import LawSpec.SourceLink (labelled, sourceLink, generatedHeader, unitSourceFile)
 import LawSpec.TargetNames (targetKeywords)
 import Data.Char (isAlphaNum, toUpper)
@@ -114,7 +114,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
     bridge typed d function = do
       let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
           identity = declarationId (definitionDeclaration d)
-          arguments = take (length argTypes) (argumentNames d ++ ["value" ++ show i | i <- [length (definitionArguments d) ..]])
+          arguments = take (length argTypes) (argumentNames d ++ drop (length (definitionArguments d)) (declarationParameterNames "haskell" (argumentNames d) "value" (definitionDeclaration d)))
           name = functionName d
           typedCall = call ("Typed." ++ function) ([symbolsArg | isContextual (hsTypedPlan typed) identity] ++
             [call ("Typed." ++ hsTypedFrom typed t) [var a] | (t, a) <- zip argTypes arguments])
@@ -151,8 +151,8 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
               clause <- maybe (Left (handlerName h ++ ": no clause for " ++ op)) Right (lookup op (handlerClauses h))
               function <- maybe (Left ("untyped clause " ++ idText clause)) Right (hsTypedFunction typed clause)
               let (args, result) = functionType ty
-                  values = H.uniqueValues (length args)
-                  arguments' = H.uniqueArguments (length args)
+                  values = take (length args) (operationParameterNames "haskell" handlerLocals "value" ability op)
+                  arguments' = helperNames Camel (handlerLocals ++ values) "typed" values
                   inputs = [H.Let ("!" ++ a) (call ("Typed." ++ hsTypedFromNative typed t) [var v]) | (a, (t, v)) <- zip arguments' (zip args values)]
                   arguments = ["symbols" | isContextual plan clause] ++ ["current" | stateful] ++
                     (if null args && not stateful then ["()"] else arguments')
@@ -289,8 +289,8 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
               clause <- maybe (Left (handlerName h ++ ": no clause for " ++ op)) Right (lookup op (handlerClauses h))
               evaluate <- maybe (Left ("unresolved clause " ++ idText clause)) Right (lookup clause names)
               let (args, result) = functionType ty
-                  values = H.uniqueValues (length args)
-                  arguments' = H.uniqueArguments (length args)
+                  values = take (length args) (operationParameterNames "haskell" handlerLocals "value" ability op)
+                  arguments' = helperNames Camel (handlerLocals ++ values) "encoded" values
               codecs <- mapM codecOf args
               resultCodec <- codecOf result
               let inputs = [Bind a (call "Codec.encode" [c, var v]) | (a, (c, v)) <- zip arguments' (zip codecs values)]
@@ -517,7 +517,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
           name = declarationName declaration
-          values = take (length args) (argumentNames d ++ ["value" ++ show i | i <- [length (definitionArguments d) ..]])
+          values = take (length args) (argumentNames d ++ drop (length (definitionArguments d)) (declarationParameterNames "haskell" (argumentNames d) "value" (definitionDeclaration d)))
       types <- mapM (Native.haskellDataType declarations) args
       resultType <- Native.haskellDataType declarations result
       codecs <- mapM codecOf args
@@ -526,7 +526,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       let handlers = [ (ability, lowerFirst (interfaceName a), "LawSpecAbilities." ++ moduleOf (unitId u) ++ "." ++ interfaceName a)
                      | ability <- declarationUses declaration, not (isFail ability)
                      , Just (u, a) <- [findAbility units ability] ]
-          arguments' = H.uniqueArguments (length args)
+          arguments' = helperNames Camel (handlerLocals ++ values ++ [n | (_, n, _) <- handlers]) "encoded" values
           -- Native code passes a definition's handlers explicitly; they are
           -- installed with the symbol context, where its operations find them.
           installs = [Bind "()" (call "P.Right" [call "LS.performIO" [call "LS.installHandlers" [symbolsArg,
@@ -557,3 +557,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
     modulePart = concatMap capitalize . split '_'
     capitalize [] = []
     capitalize (c:cs) = toUpper c:cs
+
+-- | The names a generated handler record or native entry binds for itself.
+handlerLocals :: [String]
+handlerLocals = words "symbols current state start result pair r n failure outcome value inner handler native typed encoded"

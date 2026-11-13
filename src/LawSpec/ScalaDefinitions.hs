@@ -4,9 +4,9 @@ module LawSpec.ScalaDefinitions (emitScalaDefinitions, adapterResult) where
 
 import Control.Monad (forM)
 import Data.Char (toUpper)
-import Data.List (intercalate)
+import Data.List (intercalate, zipWith4)
 import LawSpec.Common
-import LawSpec.Naming (declarationParameterNames, operationParameterNames)
+import LawSpec.Naming (declarationParameterNames, operationParameterNames, Casing(..), helperNames)
 import LawSpec.Core
 import qualified LawSpec.ScalaData as Native
 import qualified LawSpec.ScalaExpr as E
@@ -168,10 +168,14 @@ emitScalaDefinitions layout bits declarations units = do
           installs = [call "LawSpecRuntime.installHandlers" [D.text "symbols",
             call "java.util.Map.of[String, Object]" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name) <- handlers])] | not (null handlers)]
           signature = L.parameters (D.text ("def " ++ Native.escaped (declarationName declaration))) parameters <> D.text ": " <> resultType <> D.text " = "
-          input i codec = [assign ("codec" ++ show i) (L.receiverDoc codec),
-            D.text ("val argument" ++ show i ++ " = codec" ++ show i ++ ".encode(" ++ (apiParameters (map snd handlers) declaration !! i) ++ ")")]
-          body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
-            [assign "result" (call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])),
+          named = apiParameters (map snd handlers) declaration
+          inUse = apiReserved ++ map snd handlers
+          codecNames = helperNames Camel inUse "codec" named
+          valueNames = helperNames Camel (inUse ++ codecNames) "value" named
+          input parameter codecName valueName codec = [assign codecName (L.receiverDoc codec),
+            D.text ("val " ++ valueName ++ " = " ++ codecName ++ ".encode(" ++ parameter ++ ")")]
+          body = installs ++ concat (zipWith4 input named codecNames valueNames codecs) ++
+            [assign "result" (call evaluator (D.text "symbols" : map D.text (take (length args) valueNames))),
              assign "resultCodec" (L.receiverDoc resultCodec),D.text "resultCodec.decode(result)"]
           context = E.quoted (idText (declarationId declaration) ++ ": ")
           -- A Fail ability's failure passes through, to the attempt that awaits it.
@@ -217,6 +221,8 @@ emitScalaDefinitions layout bits declarations units = do
 -- and of the names its body binds.
 apiParameters :: [String] -> Declaration -> [String]
 apiParameters handlers declaration = declarationParameterNames "scala"
-  (handlers ++ words "symbols result resultCodec context failure error" ++
-    concat [["codec" ++ show i, "argument" ++ show i] | i <- [0 .. length (fst (functionType (declarationType declaration)))]])
-  "value" declaration
+  (handlers ++ apiReserved) "value" declaration
+
+-- | The names a native wrapper's body binds for itself.
+apiReserved :: [String]
+apiReserved = words "symbols result resultCodec context failure error"

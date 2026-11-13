@@ -26,6 +26,7 @@ import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials, keyedRequi
 import LawSpec.Collections (collectionContainer)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
+import LawSpec.Naming (Casing(..), helperNames, nameWords)
 
 nativeDocumentTable :: Table (Either String [D.Doc])
 nativeDocumentTable = unsafePerformIO (newPersistentTableByShow "public-haskell-data" (4 * 1024 * 1024))
@@ -540,8 +541,9 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
         (Left "Haskell native layout selector count does not match its checked leaves")
       let fields=map fst (resolvedFields bound)
           paths=maybe [] id (resolvedFieldPaths bound)
-          values=[H.var ("value"++show index) | index<-[0::Int ..length fields-1]]
-          converted=[H.var ("field"++show index) | index<-[0::Int ..length fields-1]]
+          values=map H.var (fieldLocals "in" "value" fields)
+          converted=map H.var convertedNames
+          convertedNames=fieldLocals "out" "field" fields
           tag=C.idText (C.constructorId variant)
           construct entries=H.Record native (zip selectors entries)
           rawRecord _ constructor children=Right (sdata (C.idText (C.constructorId constructor)) children)
@@ -550,7 +552,7 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
         names codecs . C.binderType) fields
       patterns<-foldNativeLayoutM (Right . (values !!)) rawRecord tree
       packed<-foldNativeLayoutM (Right . (converted !!)) rawRecord tree
-      let bindings method=[H.Bind ("field"++show index) (contextual (tag++"."++intercalate "." path) method bridge value) |
+      let bindings method=[H.Bind (convertedNames !! index) (contextual (tag++"."++intercalate "." path) method bridge value) |
               (index,((bridge,value),path))<-zip [0::Int ..] (zip (zip bridges values) paths)]
       -- codecWith validates recursively before decode and after encode, as it
       -- does for the ordinary flat codecs. Packing introduces no unchecked exit.
@@ -617,8 +619,10 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
                 declaredCount = length (C.constructorFields variant)
                 -- @KEYS@: the value's witness keys, from its data or native fields.
                 keysOf method = H.List (if method == "encode"
-                  then [H.call "T.unpack" [H.var ("value" ++ show (declaredCount + k))] | k <- [0 .. length witnesses - 1]]
-                  else [H.call "Schema.witnessText" [H.var ("value" ++ show (declaredCount + k))] | k <- [0 .. length witnesses - 1]])
+                  then [H.call "T.unpack" [H.var (values !! (declaredCount + k))] | k <- [0 .. length witnesses - 1]]
+                  else [H.call "Schema.witnessText" [H.var (values !! (declaredCount + k))] | k <- [0 .. length witnesses - 1]])
+                values = fieldLocals "in" "value" (refinedFields ++ witnesses)
+                converted = fieldLocals "out" "field" (refinedFields ++ witnesses)
             fields <- mapM (\(position, field) -> if existentialField field
               -- An existential field's type comes from the value's own type, or
               -- from its witnesses.
@@ -630,8 +634,6 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
               (if owner /= "LawSpecDataCodecs" && lookup (C.dataId declaration) representations == Nothing then "Canonical." else "") names codecs (C.binderType field))
               (zip [0 :: Int ..] (refinedFields ++ witnesses))
             let tag = C.idText (C.constructorId variant)
-                values = ["value" ++ show n | n <- [0::Int .. length fields - 1]]
-                converted = ["field" ++ show n | n <- [0::Int .. length fields - 1]]
                 -- Existential values cross as Any; the schema checked their types.
                 coerced binder v = if existentialField binder then H.call "unsafeCoerce" [H.var v] else H.var v
                 bindings method =
@@ -690,3 +692,12 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
             D.joinWith (D.text " ->" <> D.softline) (map D.text ("P.Maybe LS.SymbolContext" : types))))
         , H.declaration header expression <> D.nest 2 (D.hardline <> D.text "where" <>
             D.nest 2 (D.hardline <> D.joinWith D.hardline implementations)) ])
+
+-- | The locals a codec clause binds for a constructor's fields, each named
+-- after its field and a word (amountIn, amountOut), or by position on the
+-- stem where a field has no usable name.
+-- ref:DEC-generated-parameter-names
+fieldLocals :: String -> String -> [C.Binder] -> [String]
+fieldLocals word stem binders
+  | any (null . nameWords . C.binderName) binders = [stem ++ show index | index <- [0 .. length binders - 1]]
+  | otherwise = helperNames Camel (words "symbols schema bits typeReference value") word (map (H.localName . C.binderName) binders)

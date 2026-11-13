@@ -14,7 +14,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
-import LawSpec.Naming (operationParameterNames)
+import LawSpec.Naming (Casing(..), operationParameterNames, helperNames)
 import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoDefinitions as Definitions
 import qualified LawSpec.GoExpr as E
@@ -75,7 +75,7 @@ emit minify bits datas units = case clashes of
     -- What a method's codecs read, each made only when something reads it.
     context owner = [(n, v, True) | (n, v) <- [("symbols", line (owner ++ ".symbols")) | not (null owner)] ++
       [("schema", line schema), ("bits", line (show bits))]]
-    codecLines cs = [("codec" ++ show i, line c, True) | (i, c) <- cs]
+    codecLines cs = [(n, line c, True) | (n, c) <- cs]
     specHandler h = do
       -- A handler of several abilities answers all their operations.
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
@@ -104,7 +104,7 @@ emit minify bits datas units = case clashes of
             named = operationNames ability op
             arguments = line "symbols" : [line "handler.state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "lsAbsent(\"Unit\")"]
-               else [E.call ("codec" ++ show i ++ ".fromNative") [line v] | (i, v) <- zip [0 :: Int ..] (take (length args) named)])
+               else [E.call (c ++ ".fromNative") [line v] | (c, v) <- zip (codecNames named) (take (length args) named)])
             invocation = E.call evaluate arguments
             outcome = case C.handlerState h of
               Nothing -> [line "result := " <> invocation]
@@ -113,7 +113,7 @@ emit minify bits datas units = case clashes of
               | result == C.scalarType "Unit" = [line "_ = resultCodec.toNative(result)"]
               | otherwise = [line "return resultCodec.toNative(result)"]
         pure (line ("func (handler *" ++ name ++ ") " ++ methodName op ++ s ++ " ") <> D.block 8 (D.joinWith D.hardline
-          (E.declare (context "handler" ++ codecLines (zip [0 :: Int ..] argumentCodecs) ++
+          (E.declare (context "handler" ++ codecLines (zip (codecNames named) argumentCodecs) ++
              [("resultCodec", line resultCodec, True)]) (outcome ++ returned))))) (C.abilityOperations ability)
       pure (line ("// " ++ name ++ " is the spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
         line ("type " ++ name ++ " struct ") <> D.block 8 (D.joinWith D.hardline
@@ -152,7 +152,7 @@ emit minify bits datas units = case clashes of
         let direct = goTypedNative typed
             argument i v ty f = case direct ty of
               Just (fromNative, _) -> fromNative ++ "(" ++ v ++ ")"
-              Nothing -> f ++ "(codec" ++ show (i :: Int) ++ ".fromNative(" ++ v ++ "))"
+              Nothing -> f ++ "(" ++ codecNames named !! (i :: Int) ++ ".fromNative(" ++ v ++ "))"
             arguments = ["handler.symbols" | isContextual (goTypedPlan typed) clause] ++ ["handler.state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then ["lsfUnit{}"]
                else [argument i v ty f | (i, (v, (ty, f))) <- zip [0 ..] (zip named (zip args froms))])
@@ -167,7 +167,7 @@ emit minify bits datas units = case clashes of
               -- The state stays locked for the whole operation, so
               -- concurrent operations apply one after another.
               Just _ -> [line "handler.lock.Lock()", line "defer handler.lock.Unlock()", line ("pair := " ++ invocation), line "handler.state = pair.fSecond"] ++ finish "pair.fFirst"
-            codecsNeeded = [(i, c) | (i, (ty, c)) <- zip [0 :: Int ..] (zip args argumentCodecs), direct ty == Nothing]
+            codecsNeeded = [(codecNames named !! i, c) | (i, (ty, c)) <- zip [0 :: Int ..] (zip args argumentCodecs), direct ty == Nothing]
         pure (line ("func (handler *" ++ name ++ ") " ++ methodName op ++ s ++ " ") <> D.block 8 (D.joinWith D.hardline
           (E.declare (context "handler" ++ codecLines codecsNeeded ++
              [("resultCodec", line resultCodec, True) | direct result == Nothing]) outcome)))) (C.abilityOperations ability)
@@ -232,10 +232,10 @@ emit minify bits datas units = case clashes of
         let (args, result) = C.functionType ty
             named = take (length args) (operationNames a op)
             values = intercalate ", " named
-            logged = "[]LawSpecValue{" ++ intercalate ", " ["codec" ++ show i ++ ".fromNative(" ++ v ++ ")" | (i, v) <- zip [0 :: Int ..] named] ++ "}"
+            logged = "[]LawSpecValue{" ++ intercalate ", " [c ++ ".fromNative(" ++ v ++ ")" | (c, v) <- zip (codecNames named) named] ++ "}"
             forward = "recording.Inner." ++ methodName op ++ "(" ++ values ++ ")"
         pure (line ("func (recording *" ++ name ++ ") " ++ methodName op ++ s ++ " ") <> D.block 8 (D.joinWith D.hardline
-          (E.declare (context "recording" ++ codecLines (zip [0 :: Int ..] argumentCodecs))
+          (E.declare (context "recording" ++ codecLines (zip (codecNames named) argumentCodecs))
            [line ("recording.Calls = append(recording.Calls, LawSpecCall{Operation: " ++ show op ++ ", Arguments: " ++ logged ++ "})"),
             line (if result == C.scalarType "Unit" then forward else "return " ++ forward)])))) (C.abilityOperations a)
       pure (line ("// " ++ name ++ " records each call to a " ++ C.abilityName a ++ " handler, then passes it on.") <> D.hardline <>
@@ -273,6 +273,13 @@ productionStub datas a = do
 -- They stay clear of the names a generated handler's body uses.
 -- ref:DEC-generated-parameter-names
 operationNames :: C.Ability -> String -> [String]
-operationNames = operationParameterNames "go"
-  (words "handler recording symbols schema bits result next pair codec resultCodec err problem failure ok" ++
-   ["codec" ++ show i | i <- [0 :: Int .. 31]]) "value"
+operationNames = operationParameterNames "go" handlerLocals "value"
+
+-- | The names a generated handler's body uses for itself.
+handlerLocals :: [String]
+handlerLocals = words "handler recording symbols schema bits result next pair codec resultCodec err problem failure ok"
+
+-- | The codec each of an operation's values crosses with, named after the
+-- value (pathCodec).
+codecNames :: [String] -> [String]
+codecNames = helperNames Camel handlerLocals "codec"

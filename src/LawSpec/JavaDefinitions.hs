@@ -7,7 +7,7 @@ import LawSpec.JvmLets (flattenStrictLets)
 import LawSpec.Core.Policy
 import Control.Monad (forM)
 import Data.Char (isAlphaNum, isDigit, toUpper)
-import Data.List (intercalate, stripPrefix)
+import Data.List (intercalate, stripPrefix, zipWith4)
 import LawSpec.Common
 import LawSpec.Core
 import LawSpec.Typed.Plan (TypedPlan(..), sharedDefinitions, isContextual)
@@ -22,7 +22,7 @@ import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped, jvmPerformName)
 import qualified Data.Set as S
 import LawSpec.JvmNames (googleCase, jvmClaimAll, jvmLocal, jvmLocalTable, jvmReserved, jvmMethod)
-import LawSpec.Naming (readableDefinitionName, declarationParameterNames)
+import LawSpec.Naming (readableDefinitionName, declarationParameterNames, operationParameterNames, Casing(..), helperNames, paddedNames)
 
 -- | The adapters orchestrations call, with their units.
 orchestratedAdapters :: [Unit] -> [(Id, (Id, Declaration))]
@@ -112,8 +112,8 @@ emitDefinitions style layout bits declarations units = do
   let shared = sharedDefinitions units
       everyName = M.fromList [(declarationId (definitionDeclaration d), i) | (i, d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
       delegate i d target = pure (E.call ("public static Value " ++ methodName i)
-        (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show k) | k <- [0 .. length (definitionArguments d) - 1]]) <> D.hardline <>
-        D.block 2 (statement (E.call ("return " ++ methodName target) (D.text "symbols" : [D.text ("input" ++ show k) | k <- [0 .. length (definitionArguments d) - 1]]))))
+        (D.text "Map<String, Object> symbols" : [D.text ("Value " ++ name) | name <- entryNames d]) <> D.hardline <>
+        D.block 2 (statement (E.call ("return " ++ methodName target) (D.text "symbols" : map D.text (entryNames d)))))
   methods <- mapM (\(i, d) -> case M.lookup (declarationId (definitionDeclaration d)) shared >>= (`M.lookup` everyName) of
       Just target -> delegate i d target
       Nothing -> maybe (implementation contracts (i, d)) (bridge typed i d)
@@ -143,10 +143,11 @@ emitDefinitions style layout bits declarations units = do
       codecs <- mapM (jvmTypedCodec typed) argTypes
       resultCodec <- jvmTypedCodec typed resultType
       let signature = E.call ("public static Value " ++ methodName index)
-            (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0 .. length argTypes - 1]]) <> D.hardline
+            (D.text "Map<String, Object> symbols" : [D.text ("Value " ++ name) | name <- names]) <> D.hardline
+          names = paddedNames (length argTypes) "input" (entryNames d)
           call = E.call function
             ([D.text "symbols" | isContextual (jvmTypedPlan typed) (declarationId (definitionDeclaration d))] ++
-             [E.call (codec ++ ".decode") [D.text ("input" ++ show i)] | (i, codec) <- zip [0 :: Int ..] codecs])
+             [E.call (codec ++ ".decode") [D.text name] | (name, codec) <- zip names codecs])
       pure (signature <> D.block 2 (D.text "return " <> E.call (resultCodec ++ ".encode") [call] <> D.text ";"))
     assign name value = D.group (D.text ("var " ++ name ++ " =") <>
       D.nest 4 (D.softline <> value) <> D.text ";")
@@ -220,10 +221,14 @@ emitDefinitions style layout bits declarations units = do
             E.call "java.util.Map.<String, Object>of" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name, _) <- handlers])] <> D.text ";"
             | not (null handlers)]
           signature = J.signature "public static " nativeResult (apiName declaration) parameters
-          input i codec = [assign ("codec" ++ show i) codec,
-            D.text ("var argument" ++ show i ++ " = codec" ++ show i ++ ".encode(" ++ (apiParameters [name | (_, name, _) <- handlers] declaration !! i) ++ ");")]
-          invocation = E.call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])
-          body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
+          named = apiParameters [name | (_, name, _) <- handlers] declaration
+          inUse = apiReserved ++ [name | (_, name, _) <- handlers]
+          codecNames = helperNames Camel inUse "codec" named
+          valueNames = helperNames Camel (inUse ++ codecNames) "value" named
+          input parameter codecName valueName codec = [assign codecName codec,
+            D.text ("var " ++ valueName ++ " = " ++ codecName ++ ".encode(" ++ parameter ++ ");")]
+          invocation = E.call evaluator (D.text "symbols" : map D.text (take (length args) valueNames))
+          body = installs ++ concat (zipWith4 input named codecNames valueNames codecs) ++
             [assign "result" invocation,
              assign "resultCodec" resultCodec,
              D.text "return resultCodec.decode(result);"]
@@ -233,7 +238,7 @@ emitDefinitions style layout bits declarations units = do
           args = definitionArguments d
           binders = args ++ nestedBinders (definitionBody d)
           -- Binders keep their source names.
-          names = jvmLocalTable "java" (jvmReserved "java" ++ ["result", "checkedResult", "failure", "kind"]) binders
+          names = jvmLocalTable "java" (jvmReserved "java" ++ ["result", "checkedResult", "failure", "kind", "symbols"]) binders
           local identity = maybe (error "unbound Java definition binder") id (M.lookup identity names)
           external expression values = case expressionNode expression of
             ExternalCall identity _ | Just name <- lookup identity callees ->
@@ -291,10 +296,11 @@ emitDefinitions style layout bits declarations units = do
                       else D.group (resultCodec <> D.nest 4 (D.softbreak <> E.call ".encode" [call])))
             _ -> Left "unknown Java definition"
           signature = E.call ("public static Value " ++ methodName index)
-            (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.hardline
+            (D.text "Map<String, Object> symbols" : [D.text ("Value " ++ local (binderId b)) | b <- args]) <> D.hardline
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
-      let checks = [assign (local (binderId b)) (D.text ("input" ++ show i)) | (i,b) <- zip [0::Int ..] args]
+      -- A parameter is the binder itself, under its source name.
+      let checks = [] :: [D.Doc]
       rendered <- E.renderExpression declarations bits local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
@@ -362,7 +368,9 @@ emitDefinitions style layout bits declarations units = do
                                            , Perform op _ <- [expressionNode e] ])
       forM operations $ \e -> case expressionNode e of
         Perform op args -> do
-          let values = [D.text ("input" ++ show k) | k <- [0 .. length args - 1]]
+          let values = map D.text (paddedNames (length args) "input"
+                (maybe [] (\(_, ability) -> operationParameterNames "java" ["symbols"] "input" ability (operationName op))
+                  (findAbility units (operationAbility op))))
           body <- performDoc e values
           pure (E.call ("public static Value " ++ jvmPerformName op) (D.text "Map<String, Object> symbols" : [D.text "Value " <> v | v <- values]) <> D.hardline <>
             D.block 2 (D.text "return " <> body <> D.text ";"))
@@ -505,7 +513,16 @@ freshenShadowed = go S.empty
 -- made from their types (LawSpec.Naming), clear of the handlers it takes
 -- and of the names its body binds.
 apiParameters :: [String] -> Declaration -> [String]
-apiParameters handlers declaration = declarationParameterNames "java"
-  (handlers ++ words "symbols result resultCodec context failure error" ++
-    concat [["codec" ++ show i, "argument" ++ show i] | i <- [0 .. length (fst (functionType (declarationType declaration)))]])
-  "value" declaration
+apiParameters handlers declaration = declarationParameterNames "java" (handlers ++ apiReserved) "value" declaration
+
+-- | The names a native wrapper's body binds for itself.
+apiReserved :: [String]
+apiReserved = words "symbols result resultCodec context failure error"
+
+-- | The parameters of a definition's dynamic entry: its binders, under
+-- their source names, as its body reads them.
+entryNames :: Definition -> [String]
+entryNames d = [maybe ("input" ++ show i) id (M.lookup (binderId b) names) | (i, b) <- zip [0 :: Int ..] args]
+  where
+    args = definitionArguments d
+    names = jvmLocalTable "java" (jvmReserved "java" ++ ["result", "checkedResult", "failure", "kind", "symbols"]) args

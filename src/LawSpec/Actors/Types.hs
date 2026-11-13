@@ -2,6 +2,7 @@
 module LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..), actorsOf, supervisionsOf) where
 
 import qualified LawSpec.Core as C
+import LawSpec.Naming (sourceParameterNames)
 import Data.Char (toUpper)
 import LawSpec.Core.Machine
 
@@ -79,7 +80,7 @@ actorsOf u =
       [] -> Nothing
     named d = case [c | c <- C.unitContracts u, C.contractDeclaration c == C.declarationId d] of
       c : _ -> [(C.binderName b, C.binderType b) | b <- C.contractArguments c]
-      [] -> [("value" ++ show i, t) | (i, t) <- zip [0 :: Int ..] (fst (arrows (C.declarationType d)))]
+      [] -> let types = fst (arrows (C.declarationType d)) in zip (sourceParameterNames (C.declarationParameters d) types) types
     -- A handler returns Pair reply state, or the state alone.
     reply own d = case snd (arrows (C.declarationType d)) of
       result | result == own -> Nothing

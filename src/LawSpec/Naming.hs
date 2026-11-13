@@ -8,7 +8,7 @@ module LawSpec.Naming
   , nativeIdentifier, Scope, emptyScope, scopeWith, claim, claimAll, uniqueNames
   , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, sourceDefinitionName, typeWords
   , ParameterName(..), parameterWords, typeHeadWords, parameterIdentifier, parameterNames, parameterNamesWith
-  , declarationParameterNames, operationParameterNames, handlerParameterNames, sourceParameterNames, positionalParameters, positionalNames
+  , declarationParameterNames, operationParameterNames, handlerParameterNames, sourceParameterNames, positionalParameters, positionalNames, suffixedNames, paddedNames, helperNames, fieldCodecNames, fieldHelperNames
   ) where
 
 import Data.Binary (Binary)
@@ -362,3 +362,67 @@ lastTypeSegment = lastSegment
         go acc (':' : ':' : rest) = (reverse acc, Just rest)
         go acc (c : rest) = go (c : acc) rest
         go acc [] = (reverse acc, Nothing)
+
+-- | The names of the helper locals generated code makes one of for each
+-- parameter (pathCodec, path_value): the parameter's name, without its
+-- keyword escape, and a suffix. Where one of them would collide with a name
+-- already in use or with another, all of them fall back to the positional
+-- stem (codec0, codec1), which no parameter is ever called.
+-- ref:DEC-generated-parameter-names
+suffixedNames :: [String] -> String -> String -> [String] -> [String]
+suffixedNames taken suffix = derivedNames taken (++ suffix)
+
+-- | suffixedNames with any way of making a helper's name from a parameter's.
+derivedNames :: [String] -> (String -> String) -> String -> [String] -> [String]
+derivedNames taken make positional names
+  | distinct && all (`notElem` (taken ++ names)) made = made
+  | otherwise = take (length names) (positionalNames positional)
+  where
+    made = map (make . plain) names
+    distinct = S.size (S.fromList made) == length made
+    plain name = case filter (/= '`') (maybe name id (stripPrefix "r#" name)) of
+      stripped -> case dropWhileEnd (== '_') stripped of
+        "" -> stripped
+        bare -> bare
+
+-- | Exactly n names: those given, then positional ones on the stem for any
+-- the declaration did not supply.
+paddedNames :: Int -> String -> [String] -> [String]
+paddedNames n positional names = take n (names ++ drop (length names) (positionalNames positional))
+
+-- | The helper locals named after parameters with a word, cased as the
+-- target cases a value: path and "codec" give pathCodec in Java, path_codec
+-- in Python. In camelCase a name whose first word is one letter takes the
+-- word in front (codecN, never nCodec): Google's Java guide, 5.3, and the
+-- checkers that follow it allow no one-letter first word before a capital.
+helperNames :: Casing -> [String] -> String -> [String] -> [String]
+helperNames casing taken word = derivedNames taken make word
+  where
+    capital text = case text of
+      c : rest -> toUpper c : rest
+      [] -> []
+    make name = case casing of
+      Snake -> name ++ "_" ++ word
+      ScreamingSnake -> name ++ "_" ++ map toUpper word
+      Kebab -> name ++ "-" ++ word
+      _ | oneLetterStart name -> word ++ capital name
+        | otherwise -> name ++ capital word
+    oneLetterStart name = case name of
+      [_] -> True
+      _ : second : _ -> not (isLower second || isDigit second)
+      [] -> True
+
+-- | The locals that hold one codec for each field of a constructor: the
+-- field's name and the word codec (amountCodec), or field0, field1 where a
+-- field has no usable name.
+fieldCodecNames :: String -> [String] -> [String] -> [String]
+fieldCodecNames = fieldHelperNames "codec"
+
+-- | The locals generated code makes one of for each field of a constructor:
+-- the field's name and a word (amountCodec, amount_field), or field0,
+-- field1 where a field has no usable name.
+fieldHelperNames :: String -> String -> [String] -> [String] -> [String]
+fieldHelperNames word target taken fields
+  | any null identifiers = take (length fields) (positionalNames "field")
+  | otherwise = helperNames (casingFor target ValueName) taken word identifiers
+  where identifiers = [if null (nameWords field) then "" else localIdentifier target field | field <- fields]

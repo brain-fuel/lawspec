@@ -5,7 +5,9 @@ import Control.Monad (forM_)
 import Data.Aeson (Value(..), object, (.=), decode, encode)
 import qualified Data.Aeson.KeyMap as K
 import Data.Foldable (toList)
-import Data.List (isInfixOf, isPrefixOf)
+import Data.Char (isAlphaNum, toLower)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort)
+import LawSpec.Targets (programTargets)
 import Data.Maybe (isJust)
 import qualified Data.Text as T
 import Test.Hspec
@@ -19,6 +21,8 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Naming
 import LawSpec.Testing (planTesting)
+import LawSpec.Search (lawDescriptors)
+import qualified LawSpec.Core.Smt as Smt
 
 int32, text, order, orderLine :: C.Type
 int32 = C.scalarType "Int32"
@@ -76,6 +80,75 @@ builtinOutput :: String -> String
 builtinOutput target = case planTesting builtins >>= emitPlanWithOptions False target Nothing Nothing of
   Left problems -> error (target ++ ": " ++ show problems)
   Right files -> concatMap artifactContent files
+
+-- | The positional identifiers generated code may still write, each with
+-- its reason (DEC-generated-parameter-names). Anything else fails the guard.
+allowedPositional :: String -> String -> String -> Bool
+allowedPositional target path found = or
+  -- Rust binds a call's arguments, and a constructor's fields where the
+  -- constructor is not a declared one, to temporaries in evaluation order
+  -- before the call borrows the context. The expression renderer knows the
+  -- callee only by its native name.
+  [ target == "rust" && any (`isPrefixOf` name) ["argument_", "field_"]
+  -- A generated Haskell test evaluates a native call's arguments in a let
+  -- before the call. Haskell's let is recursive, so a declared name there
+  -- could capture the law's own variable of that name.
+  , target == "haskell" && "Spec.hs" `isSuffixOf` path && "argument" `isPrefixOf` name ]
+  where name = takeWhile (/= ' ') found
+
+-- | The specs the positional-name guard emits on every target.
+guardCorpus :: [String]
+guardCorpus = words "abilities contracts builtins actors models records data_types workflows sessions currying collections crypto failures resources"
+
+-- | Identifiers that number a stem by position (value0, input_1, Argument2,
+-- codec3, field0) in a text, in order of appearance.
+positionalIdentifiers :: String -> [String]
+positionalIdentifiers = filter positional . identifiers
+  where
+    identifiers text = case dropWhile (not . word) text of
+      [] -> []
+      rest -> let (token, more) = span word rest in token : identifiers more
+    word c = isAlphaNum c || c == '_'
+    positional token = any (numbered (map toLower token)) ["value", "input", "argument", "field", "codec", "arg"]
+    numbered token stem = case splitAt (length stem) token of
+      -- A positional series starts at 0 or 1; a clash is numbered from 2
+      -- (value_2, state2) and is no position.
+      (start, digits) | start == stem -> dropWhile (== '_') digits `elem` ["0", "1"]
+      _ -> False
+
+-- | What a target generates for a spec of the corpus, without the runtime's
+-- hand-written sources: each file's path and its positional identifiers.
+positionalIn :: String -> String -> IO [(String, [String])]
+positionalIn target spec = do
+  source <- readFile ("examples/specs/" ++ spec ++ ".lawspec")
+  pure $ case compileCore 64 defaultGeneration [Source (spec ++ ".lawspec") source] >>= planTesting >>= emitPlanWithOptions False target Nothing Nothing of
+    Left _ -> []
+    Right files -> [ (artifactPath f, [name ++ " in `" ++ take 110 (dropWhile (== ' ') line) ++ "`" | (name, line) <- found])
+                   | f <- files
+                   , let found = firsts [(name, line) | line <- lines (artifactContent f), name <- positionalIdentifiers line]
+                   , not (null found) ]
+  where firsts pairs = [(name, line) | name <- sort (nub (map fst pairs)), line <- take 1 [l | (n, l) <- pairs, n == name]]
+
+-- | An ability whose operation takes and gives refined values, so every
+-- handler owes a generated law about it; the law's quantifier takes the
+-- parameter's name.
+refinedOperation :: String -> C.Program
+refinedOperation parameter = either (error . show) id (compileCore 64 defaultGeneration [Source "meter.lawspec" (unlines
+  [ "unit example.meter"
+  , ""
+  , "ability Meter is scale :: (" ++ parameter ++ " :: Int32 where " ++ parameter ++ " >= 0) -> (r :: Int32 where r >= 0) end ability"
+  , "handler fixedMeter for Meter is operation scale k is 7 end operation end handler"
+  , "end unit" ])])
+
+-- | The generated laws of refinedOperation: the names of their inputs, and
+-- everything a receipt, a cache or the failure database knows them by.
+refinedLawIdentities :: C.Program -> ([String], [(String, String, [String])], [(String, String, String, String)])
+refinedLawIdentities p =
+  ( [C.binderName (C.quantifiedBinder q) | l <- laws, q <- C.propertyInputs l]
+  , [(C.idText (C.propertyId l), C.propertyName l, maybe [] id (lawDescriptors 64 (C.programDataDeclarations p) l)) | l <- laws]
+  , [ (C.idText (Smt.taskLaw t), Smt.taskProgram t, Smt.taskFingerprint t, either id id (Smt.taskQuery t))
+    | t <- either (error . show) id (Smt.proofTasks p), C.idText (Smt.taskLaw t) `elem` map (C.idText . C.propertyId) laws ] )
+  where laws = [l | u <- C.programUnits p, l <- C.unitProperties u, "gives what its type says" `isInfixOf` C.propertyName l]
 
 -- | The user-owned stubs of a target, and their canonical references.
 stubs :: Bool -> String -> (String, String)
@@ -202,6 +275,22 @@ test_generatedParametersTakeTheirSignaturesNames = describe "generated parameter
         let output = builtinOutput target
         forM_ signatures $ \signature -> output `shouldSatisfy` isInfixOf signature
         output `shouldNotSatisfy` isInfixOf "value0"
+  describe "positional names in generated code" $
+    forM_ programTargets $ \target -> it (target ++ " writes none outside the allowlist") $ do
+      found <- concat <$> mapM (\spec -> map ((,) spec) <$> positionalIn target spec) guardCorpus
+      let offending = [ spec ++ " " ++ path ++ ": " ++ name | (spec, (path, names)) <- found, name <- names
+                      , not (allowedPositional target path name) ]
+      offending `shouldBe` []
+  describe "a generated law's quantifier names" $
+    it "change no law identity, proof task or receipt binding" $ do
+      let (namesN, lawsN, tasksN) = refinedLawIdentities (refinedOperation "n")
+          (namesM, lawsM, tasksM) = refinedLawIdentities (refinedOperation "amount")
+      namesN `shouldSatisfy` elem "n"
+      namesM `shouldSatisfy` elem "amount"
+      lawsN `shouldNotBe` []
+      tasksN `shouldNotBe` []
+      lawsM `shouldBe` lawsN
+      tasksM `shouldBe` tasksN
   describe "a signature's names in Core" $ do
     it "are kept on the adapter's declaration, without its result's" $ do
       let named = [(C.declarationName d, C.declarationParameters d) | u <- C.programUnits (program True), d <- C.unitDeclarations u]

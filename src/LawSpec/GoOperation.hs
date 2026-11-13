@@ -11,10 +11,12 @@ import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.AbilityNames (interfaceName)
+import LawSpec.Naming (Casing(..), operationParameterNames, helperNames, paddedNames)
 
 data GoOperationPlan = GoOperationPlan
   { handlerCall :: String
   , argumentCodecs :: [String]
+  , argumentCodecNames :: [String]
   , resultCodec :: String
   , unitResult :: Bool
   , machineBits :: Int
@@ -37,7 +39,9 @@ planGoOperation bits declarations units schema term = case expressionNode term o
       _ -> pure Nothing
     let handler = "lsHandler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ").(" ++
           maybe "any" (interfaceName . snd) (findAbility units (operationAbility op)) ++ ")." ++ capitalize (operationName op)
-    pure (GoOperationPlan handler codecs result (expressionType term == Constructor "Unit" []) bits schema failure)
+    let named = paddedNames (length arguments) "value" (maybe [] (\(_, ability) ->
+          operationParameterNames "go" operationLocals "value" ability (operationName op)) (findAbility units (operationAbility op)))
+    pure (GoOperationPlan handler codecs (helperNames Camel operationLocals "codec" named) result (expressionType term == Constructor "Unit" []) bits schema failure)
   _ -> Left "not an operation"
   where
     capitalize (c:cs) = toUpper c:cs
@@ -54,12 +58,16 @@ operationDoc plan values = case failureCodec plan of
   where
     line = D.text
     call = E.call (handlerCall plan)
-      [E.call ("codec" ++ show index ++ ".toNative") [value] | (index,value) <- zip [0::Int ..] values]
+      [E.call (name ++ ".toNative") [value] | (name,value) <- zip (argumentCodecNames plan) values]
     result
       | unitResult plan = line "func() LawSpecValue " <> D.block 8
           (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
       | otherwise = E.call "resultCodec.fromNative" [call]
     performed = line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
       (E.declare ([("schema",line (schemaName plan),True),("bits",line (show (machineBits plan)),True)] ++
-        [("codec" ++ show index,line codec,True) | (index,codec) <- zip [0::Int ..] (argumentCodecs plan)] ++
+        [(name,line codec,True) | (name,codec) <- zip (argumentCodecNames plan) (argumentCodecs plan)] ++
         [("resultCodec",line (resultCodec plan),True)]) [line "return " <> result])) <> line "()"
+
+-- | The names a performed operation's closure uses for itself.
+operationLocals :: [String]
+operationLocals = words "schema bits symbols resultCodec native result"

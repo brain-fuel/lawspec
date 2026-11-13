@@ -919,6 +919,7 @@ library
       LawSpec.Sha3
       LawSpec.SourceContext
       LawSpec.SourceLink
+      LawSpec.SourceNames
       LawSpec.SourceOrigins
       LawSpec.SourceRecords
       LawSpec.SourceSyntax
