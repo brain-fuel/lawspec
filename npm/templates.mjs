@@ -280,7 +280,7 @@ export const commands = {
 };
 
 export const setup = {
-  java: 'Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run mvn test-compile.',
+  java: 'Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x or 6.0.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25; a target with :release 21 in lawspec.edn uses JDK 21+ and maven.compiler.release=21 instead. A program that imports lawspec.crypto or lawspec.network needs the default release 25 (its JDK APIs arrived in Java 24) and Bouncy Castle bcprov-jdk18on 1.86. Run mvn test-compile.',
   python:
     'Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and, for a program that imports lawspec.crypto or lawspec.network, cryptography 50: python -m pip install -e ".[test]". Configure pytest pythonpath=["src"] and testpaths=["tests"]. Set the target python field to the interpreter path if needed.',
   javascript:
@@ -772,9 +772,59 @@ const scaffolds = {
   },
 };
 
-export function templates(target, {minify = false} = {})
+// The Java releases generated code compiles at (lawspec.edn's :release), and
+// the Java build file at each release other than the default.
+export const javaReleases = [21, 25];
+export const defaultJavaRelease = 25;
+const javaReleaseScaffolds = {
+  21: {
+    readable: {
+      'pom.xml':
+        '<project\n  xmlns="http://maven.apache.org/POM/4.0.0"\n  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">\n  <modelVersion>4.0.0</modelVersion>\n  <groupId>example</groupId>\n  <artifactId>lawspec-example</artifactId>\n  <version>0.1.0</version>\n  <properties>\n    <maven.compiler.release>21</maven.compiler.release>\n    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n  </properties>\n  <dependencies>\n    <dependency>\n      <groupId>org.jetbrains</groupId>\n      <artifactId>jetCheck</artifactId>\n      <version>0.3.0</version>\n      <scope>test</scope>\n    </dependency>\n    <dependency>\n      <groupId>org.junit.jupiter</groupId>\n      <artifactId>junit-jupiter</artifactId>\n      <version>5.14.0</version>\n      <scope>test</scope>\n    </dependency>\n  </dependencies>\n  <build>\n    <plugins>\n      <plugin>\n        <groupId>org.apache.maven.plugins</groupId>\n        <artifactId>maven-compiler-plugin</artifactId>\n        <version>3.14.1</version>\n      </plugin>\n      <plugin>\n        <groupId>org.apache.maven.plugins</groupId>\n        <artifactId>maven-surefire-plugin</artifactId>\n        <version>3.5.4</version>\n      </plugin>\n    </plugins>\n  </build>\n</project>\n',
+    },
+    compact: {
+      'pom.xml':
+        '<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"><modelVersion>4.0.0</modelVersion><groupId>example</groupId><artifactId>lawspec-example</artifactId><version>0.1.0</version><properties><maven.compiler.release>21</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties><dependencies><dependency><groupId>org.jetbrains</groupId><artifactId>jetCheck</artifactId><version>0.3.0</version><scope>test</scope></dependency><dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.14.0</version><scope>test</scope></dependency></dependencies><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version></plugin><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version></plugin></plugins></build></project>\n',
+    },
+  },
+};
+
+export function templates(target, {minify = false, release} = {})
 {
   if (typeof minify !== 'boolean') throw new Error('minify must be a boolean');
   if (!targets.includes(target)) throw new Error(`Unknown target: ${target}`);
-  return {...scaffolds[target][minify ? 'compact' : 'readable']};
+  const layout = minify ? 'compact' : 'readable';
+  if (
+    release === undefined ||
+    (target === 'java' && release === defaultJavaRelease)
+  )
+    return {...scaffolds[target][layout]};
+  if (target !== 'java')
+    throw new Error('release is supported by the java target only');
+  if (!javaReleases.includes(release))
+    throw new Error(
+      `release ${release} is not supported for java; choose ${javaReleases.join(' or ')}`,
+    );
+  return {...javaReleaseScaffolds[release][layout]};
+}
+
+// What a Java build needs so that it compiles a target's generated
+// directories. The text is LawSpec.Scaffold's; only the names are filled in.
+const generatedRoots = {
+  both: 'Maven (pom.xml, in build/plugins):\n<plugin>\n  <groupId>org.codehaus.mojo</groupId>\n  <artifactId>build-helper-maven-plugin</artifactId>\n  <version>3.6.2</version>\n  <executions>\n    <execution>\n      <id>lawspec-generated-sources</id>\n      <phase>generate-sources</phase>\n      <goals>\n        <goal>add-source</goal>\n      </goals>\n      <configuration>\n        <sources>\n          <source>${project.basedir}/@@generated-source-dir@@</source>\n        </sources>\n      </configuration>\n    </execution>\n    <execution>\n      <id>lawspec-generated-tests</id>\n      <phase>generate-test-sources</phase>\n      <goals>\n        <goal>add-test-source</goal>\n      </goals>\n      <configuration>\n        <sources>\n          <source>${project.basedir}/@@generated-test-dir@@</source>\n        </sources>\n      </configuration>\n    </execution>\n    <execution>\n      <id>lawspec-generated-test-resources</id>\n      <phase>generate-test-resources</phase>\n      <goals>\n        <goal>add-test-resource</goal>\n      </goals>\n      <configuration>\n        <resources>\n          <resource>\n            <directory>${project.basedir}/@@generated-test-dir@@</directory>\n            <excludes>\n              <exclude>**/*.java</exclude>\n            </excludes>\n          </resource>\n        </resources>\n      </configuration>\n    </execution>\n  </executions>\n</plugin>\n\nGradle (build.gradle.kts):\nsourceSets {\n    main { java.srcDir("@@generated-source-dir@@") }\n    test {\n        java.srcDir("@@generated-test-dir@@")\n        resources { srcDir("@@generated-test-dir@@"); exclude("**/*.java") }\n    }\n}\n\nRun lawspec generate before the build compiles: the generated directories are empty in a clean checkout.',
+  source:
+    'Maven (pom.xml, in build/plugins):\n<plugin>\n  <groupId>org.codehaus.mojo</groupId>\n  <artifactId>build-helper-maven-plugin</artifactId>\n  <version>3.6.2</version>\n  <executions>\n    <execution>\n      <id>lawspec-generated-sources</id>\n      <phase>generate-sources</phase>\n      <goals>\n        <goal>add-source</goal>\n      </goals>\n      <configuration>\n        <sources>\n          <source>${project.basedir}/@@generated-source-dir@@</source>\n        </sources>\n      </configuration>\n    </execution>\n  </executions>\n</plugin>\n\nGradle (build.gradle.kts):\nsourceSets {\n    main { java.srcDir("@@generated-source-dir@@") }\n}\n\nRun lawspec generate before the build compiles: the generated directories are empty in a clean checkout.',
+  test: 'Maven (pom.xml, in build/plugins):\n<plugin>\n  <groupId>org.codehaus.mojo</groupId>\n  <artifactId>build-helper-maven-plugin</artifactId>\n  <version>3.6.2</version>\n  <executions>\n    <execution>\n      <id>lawspec-generated-tests</id>\n      <phase>generate-test-sources</phase>\n      <goals>\n        <goal>add-test-source</goal>\n      </goals>\n      <configuration>\n        <sources>\n          <source>${project.basedir}/@@generated-test-dir@@</source>\n        </sources>\n      </configuration>\n    </execution>\n    <execution>\n      <id>lawspec-generated-test-resources</id>\n      <phase>generate-test-resources</phase>\n      <goals>\n        <goal>add-test-resource</goal>\n      </goals>\n      <configuration>\n        <resources>\n          <resource>\n            <directory>${project.basedir}/@@generated-test-dir@@</directory>\n            <excludes>\n              <exclude>**/*.java</exclude>\n            </excludes>\n          </resource>\n        </resources>\n      </configuration>\n    </execution>\n  </executions>\n</plugin>\n\nGradle (build.gradle.kts):\nsourceSets {\n    test {\n        java.srcDir("@@generated-test-dir@@")\n        resources { srcDir("@@generated-test-dir@@"); exclude("**/*.java") }\n    }\n}\n\nRun lawspec generate before the build compiles: the generated directories are empty in a clean checkout.',
+};
+
+export function generatedRootsAdvice(target)
+{
+  const source = target.generatedSourceDir,
+    test = target.generatedTestDir;
+  if (source === undefined && test === undefined) return '';
+  return generatedRoots[
+    source === undefined ? 'test' : test === undefined ? 'source' : 'both'
+  ]
+    .replaceAll('@@generated-source-dir@@', source)
+    .replaceAll('@@generated-test-dir@@', test);
 }

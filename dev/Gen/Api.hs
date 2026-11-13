@@ -634,7 +634,7 @@ declarations =
       interface "ExplanationSection" (fields [("kind", "ExplanationSectionKind"), ("lines", "string[]"), ("cases?", "ExplanationCase[]")]),
       interface "Explanation" (fields [("view", "ExplainView"), ("law", "string"), ("name", "string"), ("sections", "ExplanationSection[]")]),
       interface "ExplainResult" (fields [("schemaVersion?", "5"), ("diagnostics", "Diagnostic[]"), ("explanations?", "Explanation[]"), ("text?", "string")]),
-      interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean"), ("actors?", "{runtime?: 'lawspec' | 'pekko' | 'spring'; remote?: 'cluster'}")]),
+      interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("generatedSourceDir?", "string"), ("generatedTestDir?", "string"), ("release?", "21 | 25"), ("minify?", "boolean"), ("actors?", "{runtime?: 'lawspec' | 'pekko' | 'spring'; remote?: 'cluster'}")]),
       alias
         "ProofTask"
         [ record

@@ -487,6 +487,16 @@ test("runs each unit's laws separately where names repeat across units", () =>
   );
 });
 
+test('Java tests in a generated test directory are selected by class', () =>
+{
+  const generatedTestDir = 'target/generated-test-sources/lawspec';
+  const [run] = invocations(
+    {language: 'java', testDir: 'checks', generatedTestDir},
+    [law(0, `${generatedTestDir}/a/ALawSpecTest.java`, undefined, 'java')],
+  );
+  assert.equal(run.args.at(-1), '-Dtest=a.ALawSpecTest#lawLaw0_*');
+});
+
 test('law and benchmark invocations clear inherited JVM finite-case selection', () =>
 {
   for (const [language, file] of [

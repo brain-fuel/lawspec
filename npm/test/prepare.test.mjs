@@ -211,6 +211,86 @@ test('init reports a missing build tool and exits 1, keeping the configuration',
   await readFile(path.join(root, 'Cargo.toml'), 'utf8');
 });
 
+test('init --target java takes a release and generated directories', async t =>
+{
+  const root = await project(t, {});
+  const result = run(root, [
+    'init',
+    '--no-install',
+    '--target',
+    'java',
+    '--project',
+    'service-laws',
+    '--release',
+    '21',
+    '--generated-source-dir',
+    'target/generated-sources/lawspec',
+    '--generated-test-dir',
+    'target/generated-test-sources/lawspec',
+  ]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(
+    await readFile(path.join(root, 'service-laws/pom.xml'), 'utf8'),
+    /<maven\.compiler\.release>21<\/maven\.compiler\.release>/,
+  );
+  const manifest = await readFile(path.join(root, 'lawspec.edn'), 'utf8');
+  assert.match(manifest, /:release 21\n/);
+  assert.match(
+    manifest,
+    /:generated-source-dir "target\/generated-sources\/lawspec"/,
+  );
+  assert.match(
+    manifest,
+    /:generated-test-dir "target\/generated-test-sources\/lawspec"/,
+  );
+  // init prints what registers the directories; it edits no build file.
+  assert.match(result.stdout, /Register the generated directories/);
+  assert.match(
+    result.stdout,
+    /<artifactId>build-helper-maven-plugin<\/artifactId>/,
+  );
+  assert.match(
+    result.stdout,
+    /<source>\$\{project\.basedir\}\/target\/generated-sources\/lawspec<\/source>/,
+  );
+  assert.match(
+    result.stdout,
+    /java\.srcDir\("target\/generated-test-sources\/lawspec"\)/,
+  );
+  assert.doesNotMatch(
+    await readFile(path.join(root, 'service-laws/pom.xml'), 'utf8'),
+    /build-helper/,
+  );
+});
+
+test('the Java build options are refused elsewhere', async t =>
+{
+  const root = await project(t, {});
+  for (const args of [
+    ['init', '--no-install', '--target', 'python', '--release', '21'],
+    ['generate', '--generated-source-dir', 'generated'],
+  ])
+  {
+    const result = run(root, args);
+    assert.equal(result.status, 1);
+    assert.match(result.stdout + result.stderr, /apply to init --target java/);
+  }
+  const unsupported = run(root, [
+    'init',
+    '--no-install',
+    '--target',
+    'java',
+    '--release',
+    '17',
+  ]);
+  assert.equal(unsupported.status, 1);
+  assert.match(
+    unsupported.stdout + unsupported.stderr,
+    /release 17 is not supported for java; choose 21 or 25/,
+  );
+  await assert.rejects(readFile(path.join(root, 'lawspec.edn')));
+});
+
 test('--no-install applies to init only', async t =>
 {
   const root = await project(t, {});

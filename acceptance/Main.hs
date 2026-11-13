@@ -82,7 +82,8 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Memo (buildIdentity)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.ActorRuntime (ActorRemote(..), ActorRuntime(..), ActorSettings(ActorSettings))
-import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFilesForActors)
+import LawSpec.Scaffold (PresentationCheck(..), presentationChecks, scaffoldFilesForRelease)
+import LawSpec.TargetOptions (defaultJavaRelease)
 import LawSpec.Targets (programTargets)
 import LawSpec.BuiltinDefaults (adapterPath)
 import Toolchain
@@ -147,7 +148,9 @@ main = do
     -- A target's native bindings, sent as the CLI sends lawspec.edn's.
     hasBindings <- doesFileExist bindingsFile
     bound <- if hasBindings then decode <$> BL.readFile bindingsFile else pure Nothing
-    let native = maybe [] (\b -> [("nativeBindings", b)]) bound
+    release <- javaRelease
+    let native = maybe [] (\b -> [("nativeBindings", b)]) bound ++
+          [("release", toJSON r) | target == "java", Just r <- [release]]
     generated <- plan (extra ++ native) (sources ++ vectors) target bits minify
     if check then checkDisk project generated else if formattedOnly then do
       writeProject suite target project (bits == 64 && not minify) minify generated
@@ -158,7 +161,7 @@ main = do
       if mismatch then write >> expectMismatch target bits project
       else do
         mode <- cacheMode
-        scaffolds <- either die pure (scaffoldFilesForActors settings (usesCrypto target generated) minify target)
+        scaffolds <- acceptanceScaffolds settings (usesCrypto target generated) minify target
         formatInputs <- maybe [] formatterInputs <$> formatter target
         -- The ownership of each generated file is part of the key with its
         -- bytes: writing the project checks adapters against it.
@@ -188,7 +191,7 @@ main = do
             -- LAWSPEC_UPDATE_STUBS=1 lets writing the project rewrite a
             -- recorded stub, which is one of the key's inputs.
             (key, inputs) <- suiteKey
-            semanticScaffolds <- either die pure (scaffoldFilesForActors settings (usesCrypto target generated) False target)
+            semanticScaffolds <- acceptanceScaffolds settings (usesCrypto target generated) False target
             meaning <- forM (semanticIdentities bits sources) $ \hashes ->
               meaningKey target [suite,target,show bits,show mutate] buildIdentity (hashes ++ map snd vectors ++ [show (extra ++ native)]) semanticScaffolds inputs
             -- Semantic execution reuse cannot certify changed presentation.
@@ -269,6 +272,23 @@ beamLock :: String -> Maybe FilePath
 beamLock target = lookup target [("erlang","rebar.lock"),("elixir","mix.lock"),("gleam","manifest.toml")]
 
 -- | Generation goes through the same JSON boundary that core.wasm exports.
+-- | LAWSPEC_JAVA_RELEASE compiles the Java target at another supported
+-- release (21), to certify it.
+javaRelease :: IO (Maybe Int)
+javaRelease = fmap read <$> lookupEnv "LAWSPEC_JAVA_RELEASE"
+
+-- | A run's build files. LAWSPEC_JAVA_RELEASE selects the Java release, and
+-- LAWSPEC_JUNIT another JUnit Jupiter release in place of the scaffold's, to
+-- certify it before the supported range admits it. Both change the build
+-- files, which are part of every cache key.
+acceptanceScaffolds :: ActorSettings -> Bool -> Bool -> String -> IO [(FilePath, String)]
+acceptanceScaffolds settings crypto minify target = do
+  release <- javaRelease
+  junit <- lookupEnv "LAWSPEC_JUNIT"
+  files <- either die pure (scaffoldFilesForRelease (if target == "java" then fromMaybe defaultJavaRelease release else defaultJavaRelease) settings crypto minify target)
+  pure [ (path, if target == "java" && path == "pom.xml" then maybe content (\version -> T.unpack (T.replace "5.14.0" (T.pack version) (T.pack content))) junit else content)
+       | (path, content) <- files ]
+
 plan :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Int -> Bool -> IO [Generated]
 plan extra sources target bits minify =
   either (\message -> die (target ++ ": generation failed: " ++ message)) pure (planEither extra sources target bits minify)
@@ -382,7 +402,7 @@ writeProject suite target project defaultProfile minify generated = do
   -- Deleting those fingerprints forces Hex resolution despite a valid lock.
   when (target == "gleam") $ forM_ ["dev", "prod", "lsp", "erlang-shipment"] $ \mode ->
     removePathForcibly (project </> "build" </> mode)
-  scaffolds <- either die pure (scaffoldFilesForActors (ActorSettings runtime remote) (usesCrypto target generated) minify target)
+  scaffolds <- acceptanceScaffolds (ActorSettings runtime remote) (usesCrypto target generated) minify target
   forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
   forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
   adapters <- suiteFiles suite target

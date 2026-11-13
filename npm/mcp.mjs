@@ -115,6 +115,9 @@ export async function serveLawSpec(configFile)
               target,
               sourceDir: selected.sourceDir,
               testDir: selected.testDir,
+              generatedSourceDir: selected.generatedSourceDir,
+              generatedTestDir: selected.generatedTestDir,
+              release: selected.release,
               nativeBindings: selected.nativeBindings,
               actors: selected.actors,
               ...(method === 'advise'

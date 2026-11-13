@@ -10,7 +10,13 @@ import {createRequire} from 'node:module';
 import path from 'node:path';
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {setup, artifactTargets} from './templates.mjs';
+import {
+  setup,
+  artifactTargets,
+  javaReleases,
+  defaultJavaRelease,
+  generatedRootsAdvice,
+} from './templates.mjs';
 import {beamDoctor} from './beam-doctor.mjs';
 import {gradleFor} from './prepare.mjs';
 import {execTool} from './spawn.mjs';
@@ -364,7 +370,16 @@ export async function doctor(target, root, plannedArtifacts = [])
       const cmd = target.maven || 'mvn';
       const version = await run(cmd, ['-version'], root);
       versions.java = version.match(/Java version:\s*([\d.]+)/)?.[1];
-      requireThat(major(versions.java) >= 25, 'Maven must run on Java 25+');
+      // The release generated code compiles at: lawspec.edn's :release.
+      const release = target.release ?? defaultJavaRelease;
+      requireThat(
+        javaReleases.includes(release),
+        `release ${release} is not supported for java; choose ${javaReleases.join(' or ')}`,
+      );
+      requireThat(
+        major(versions.java) >= release,
+        `Maven must run on Java ${release}+`,
+      );
       const pom = await run(cmd, ['help:effective-pom'], root);
       const plugins = [...pom.matchAll(/<plugin>([\s\S]*?)<\/plugin>/g)].map(
         m => m[1],
@@ -383,13 +398,21 @@ export async function doctor(target, root, plannedArtifacts = [])
         !/<(?:jdkToolchain|executable|jvm)>/.test(pom),
         'Custom JVM/toolchain overrides cannot be verified by the v0.1 Maven profile',
       );
+      const releaseAdvice =
+        release === defaultJavaRelease
+          ? `set :release ${javaReleases.filter(r => r !== release).join(' or ')} on the target in lawspec.edn if the build compiles at another supported release`
+          : `it is the target's :release in lawspec.edn`;
       requireThat(
-        !/<(?:release|testRelease)>((?!25<)[^<]+)<\//.test(compiler),
-        'All effective compiler releases must be 25',
+        !new RegExp(`<(?:release|testRelease)>((?!${release}<)[^<]+)<\\/`).test(
+          compiler,
+        ),
+        `All effective compiler releases must be ${release}; ${releaseAdvice}`,
       );
       requireThat(
-        /<(?:maven\.compiler\.release|release)>25<\//.test(pom),
-        'The effective Maven compiler release must be 25',
+        new RegExp(
+          `<(?:maven\\.compiler\\.release|release)>${release}<\\/`,
+        ).test(pom),
+        `The effective Maven compiler release must be ${release}; ${releaseAdvice}`,
       );
       requireThat(
         pom.includes(
@@ -400,20 +423,66 @@ export async function doctor(target, root, plannedArtifacts = [])
           ),
         'Maven source directories must match the configured LawSpec layout',
       );
+      // Generated directories are further roots, which the effective POM
+      // shows only as the build-helper executions that add them.
+      const helper =
+        plugins
+          .filter(p =>
+            p.includes('<artifactId>build-helper-maven-plugin</artifactId>'),
+          )
+          .at(-1) || '';
+      const registers = (goal, element, directory) =>
+        helper.includes(`<goal>${goal}</goal>`) &&
+        [directory, path.join(root, directory)].some(d =>
+          helper.includes(`<${element}>${d}</${element}>`),
+        );
+      const resources = plannedArtifacts.some(
+        a =>
+          target.generatedTestDir !== undefined &&
+          a.path.startsWith(target.generatedTestDir + '/') &&
+          !a.path.endsWith('.java'),
+      );
+      requireThat(
+        (target.generatedSourceDir === undefined ||
+          registers('add-source', 'source', target.generatedSourceDir)) &&
+          (target.generatedTestDir === undefined ||
+            (registers('add-test-source', 'source', target.generatedTestDir) &&
+              (!resources ||
+                registers(
+                  'add-test-resource',
+                  'directory',
+                  target.generatedTestDir,
+                )))),
+        `Maven must compile the target's generated directories. Add:\n${generatedRootsAdvice(target)}`,
+      );
       const tree = await run(
         cmd,
         ['dependency:tree', '-Dscope=test', '-DoutputType=text'],
         root,
       );
-      for (const [key, pattern] of Object.entries({
-        jetCheck: /org\.jetbrains:jetCheck:jar:(0\.3\.0):test/,
-        'junit-jupiter':
-          /org\.junit\.jupiter:junit-jupiter(?:-api)?:jar:(5\.14\.\d+):test/,
-      }))
-      {
-        versions[key] = tree.match(pattern)?.[1];
-        requireThat(versions[key], `Missing compatible resolved ${key}`);
-      }
+      // The versions Maven resolved, which a BOM may have moved from the
+      // ones the dependencies declare.
+      const resolved = artifact =>
+        tree.match(
+          new RegExp(`${artifact.replaceAll('.', '\\.')}:jar:([^:\\s]+):\\w+`),
+        )?.[1];
+      versions.jetCheck = resolved('org.jetbrains:jetCheck');
+      requireThat(
+        versions.jetCheck,
+        'JetCheck (org.jetbrains:jetCheck) must be a test dependency',
+      );
+      const api = resolved('org.junit.jupiter:junit-jupiter-api');
+      const engine = resolved('org.junit.jupiter:junit-jupiter-engine');
+      requireThat(
+        api,
+        'JUnit Jupiter (org.junit.jupiter:junit-jupiter) must be a test dependency',
+      );
+      versions['junit-jupiter'] = api;
+      const junitBom = `Dependency management decides this version, whatever the dependency declares: a BOM such as Spring Boot's manages JUnit. Import org.junit:junit-bom ${profiles.java['junit-jupiter'][0]} in dependencyManagement before that BOM.`;
+      requireThat(
+        supported('java', 'junit-jupiter', api),
+        `The build resolves junit-jupiter-api ${api}, outside the verified java profile [${profiles.java['junit-jupiter'].join(', ')}). ${junitBom}`,
+      );
       requireThat(
         /<artifactId>maven-surefire-plugin<\/artifactId>\s*<version>3\.5\./.test(
           pom,
@@ -439,10 +508,12 @@ export async function doctor(target, root, plannedArtifacts = [])
         'Custom Surefire filtering or ignored failures cannot be verified',
       );
       requireThat(
-        /org\.junit\.jupiter:junit-jupiter-engine:jar:5\.14\.\d+:test/.test(
-          tree,
-        ),
+        engine,
         'The JUnit Jupiter test engine must be on the test classpath',
+      );
+      requireThat(
+        engine === api,
+        `The build resolves junit-jupiter-engine ${engine} beside junit-jupiter-api ${api}; they must be one release. ${junitBom}`,
       );
     }
     else if (name === 'rust')

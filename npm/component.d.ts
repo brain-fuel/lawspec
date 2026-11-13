@@ -29,6 +29,12 @@ export interface ComponentTarget
   root: string;
   sourceDir?: string;
   testDir?: string;
+  /** Java: where generated source goes; adapters stay in sourceDir. */
+  generatedSourceDir?: string;
+  /** Java: where generated tests go; generator factories stay in testDir. */
+  generatedTestDir?: string;
+  /** Java: the release generated code compiles at (25 when absent). */
+  release?: 21 | 25;
   python?: string;
   maven?: string;
   gradle?: string;

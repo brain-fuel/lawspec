@@ -348,7 +348,8 @@ export function benchmarkInvocations(target, entries, {offline = false} = {})
         ],
       },
     ];
-  const testDir = target.testDir;
+  // Generated tests are in the generated test directory when one is set.
+  const testDir = target.generatedTestDir ?? target.testDir;
   const relativeTo = (file, defaultDir) =>
   {
     const directory = testDir || defaultDir;
@@ -669,7 +670,8 @@ function nativeInvocations(
       },
     ];
   }
-  const testDir = target.testDir;
+  // Generated tests are in the generated test directory when one is set.
+  const testDir = target.generatedTestDir ?? target.testDir;
   const relativeTo = (file, defaultDir) =>
   {
     const directory = testDir || defaultDir;

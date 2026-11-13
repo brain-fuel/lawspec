@@ -19,6 +19,7 @@ import {
   commands,
   setup,
   prepareCommands,
+  generatedRootsAdvice,
 } from '../templates.mjs';
 import {generateExamples} from '../examples-command.mjs';
 import {proveWithZ3} from '../proof.mjs';
@@ -114,6 +115,9 @@ for (let i = 0; i < args.length; i++)
       '--proof-memory',
       '--proof-rlimit',
       '--proof-seed',
+      '--release',
+      '--generated-source-dir',
+      '--generated-test-dir',
     ].includes(arg)
   )
   {
@@ -413,7 +417,27 @@ async function init()
     'mix.exs',
     'gleam.toml',
   ];
-  const scaffold = templates(language, {minify: options.minify === true});
+  // A Java target's build options, from the command line or the target the
+  // manifest already declares; the compiler checks them at generation.
+  const given = {
+    ...(options.release !== undefined
+      ? {release: Number(options.release)}
+      : {}),
+    ...(options['generated-source-dir'] !== undefined
+      ? {generatedSourceDir: options['generated-source-dir']}
+      : {}),
+    ...(options['generated-test-dir'] !== undefined
+      ? {generatedTestDir: options['generated-test-dir']}
+      : {}),
+  };
+  const declaredTarget = config.targets.find(
+    t => t.language === language && path.resolve(configRoot, t.root) === root,
+  );
+  const build = {...declaredTarget, ...given};
+  const scaffold = templates(language, {
+    minify: options.minify === true,
+    release: build.release,
+  });
   // A file init itself would write also marks the project as set up, so that
   // running init again never stops on its own earlier output.
   const scaffolded = (
@@ -467,8 +491,15 @@ async function init()
     config.targets.push({
       language,
       root: path.relative(configRoot, root) || '.',
+      ...given,
     });
-  if (current === null || !configured || options.machineBits !== undefined)
+  else Object.assign(declaredTarget, given);
+  if (
+    current === null ||
+    !configured ||
+    options.machineBits !== undefined ||
+    Object.keys(given).length
+  )
   {
     await atomicWrite(
       configFile,
@@ -480,11 +511,14 @@ async function init()
     ...adjusted.created.map(file => `created ${file}`),
     ...adjusted.updated.map(entry => `updated ${entry}`),
   ];
+  // init never edits an existing build file, so it prints what the build
+  // needs to compile the generated directories.
+  const roots = generatedRootsAdvice(build);
   const summary = `Configured ${language}. ${
     hasBuild
       ? `Existing build files preserved${changes.length ? `; ${changes.join('; ')}` : ''}.`
       : 'Created missing project build files.'
-  }`;
+  }${roots ? `\nRegister the generated directories in the build:\n${roots}` : ''}`;
   if (options['no-install'])
   {
     output(
@@ -870,6 +904,9 @@ async function runTests(compiler, input, selected, roots, config)
         target: target.language,
         sourceDir: target.sourceDir,
         testDir: target.testDir,
+        generatedSourceDir: target.generatedSourceDir,
+        generatedTestDir: target.generatedTestDir,
+        release: target.release,
         nativeBindings: target.nativeBindings,
         actors: target.actors,
         minify: options.minify === true,
@@ -1627,7 +1664,7 @@ async function main()
     output(
       'LawSpec ' +
         VERSION +
-        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify] [--no-install]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --timings, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
+        '\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--minify] [--no-install]\n       lawspec init --target java [--release 21|25] [--generated-source-dir <directory>] [--generated-test-dir <directory>]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --timings, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: ' +
         targets.join(', '),
     );
     return;
@@ -1817,6 +1854,15 @@ async function main()
     throw new Error('--example is only supported by examples');
   if (options['no-install'] && verb !== 'init')
     throw new Error('--no-install applies to init');
+  if (
+    ['release', 'generated-source-dir', 'generated-test-dir'].some(
+      key => options[key] !== undefined,
+    ) &&
+    (verb !== 'init' || options.target !== 'java')
+  )
+    throw new Error(
+      '--release, --generated-source-dir and --generated-test-dir apply to init --target java; other commands read them from the target in lawspec.edn',
+    );
   if (
     options.minify &&
     !['init', 'generate', 'examples', 'test'].includes(verb)
@@ -2040,6 +2086,9 @@ async function main()
         target: target.language,
         sourceDir: target.sourceDir,
         testDir: target.testDir,
+        generatedSourceDir: target.generatedSourceDir,
+        generatedTestDir: target.generatedTestDir,
+        release: target.release,
         nativeBindings: target.nativeBindings,
         actors: target.actors,
         nativeSources,
@@ -2104,6 +2153,9 @@ async function main()
         target: target.language,
         sourceDir: target.sourceDir,
         testDir: target.testDir,
+        generatedSourceDir: target.generatedSourceDir,
+        generatedTestDir: target.generatedTestDir,
+        release: target.release,
         nativeBindings: target.nativeBindings,
         actors: target.actors,
       }),
@@ -2577,6 +2629,9 @@ async function main()
           target: target.language,
           sourceDir: target.sourceDir,
           testDir: target.testDir,
+          generatedSourceDir: target.generatedSourceDir,
+          generatedTestDir: target.generatedTestDir,
+          release: target.release,
           nativeBindings: target.nativeBindings,
           actors: target.actors,
           minify: options.minify === true,

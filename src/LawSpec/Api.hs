@@ -8,7 +8,7 @@ import Control.Monad (unless)
 import Data.Aeson
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Data.Aeson.Types (parseEither)
+import Data.Aeson.Types (parseEither, parseMaybe)
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Lazy.Char8 as BC
 import Data.Foldable (toList)
@@ -45,6 +45,7 @@ import LawSpec.Service.Compilation (Stages, stages, stagesWithInput)
 import LawSpec.Service.Formatting (formatCompiled, formatSyntax)
 import LawSpec.SourceSyntax (SourceSyntax (..))
 import LawSpec.SourceText (formatSourcesUsing)
+import LawSpec.TargetOptions (TargetOptions, generatedTestDirectory, noTargetOptions, placeByOwnership, releaseProblems, targetOptions)
 import LawSpec.Targets (artifactTargets)
 import LawSpec.TestManifest (BenchmarkEntry (..), TestEntry (..), benchmarkManifest, executableEntries, testManifestWithBindings)
 import LawSpec.ActorRuntime (actorSettings, defaultActorSettings)
@@ -116,6 +117,12 @@ dispatch bytes
               -- and each request resolves its own bindings against it.
               Right ((us, es, core, _, (lawEvidence, analysisRows), described, checkedPlan), syntax) ->
                 let plan = checkedPlan >>= withActorSettings target bytes
+                    -- Generated directories and the release are the target's
+                    -- build options: they move or refuse emitted files and
+                    -- never change the checked program.
+                    options = requestTargetOptions target sourceDir testDir bytes
+                    generatedTests = generatedTestDirectory testDir (either (const noTargetOptions) id options)
+                    placed = placedArtifacts target sourceDir testDir options
                  in
                 either failure id $ (either (\message -> Left [Diagnostic "native-binding" message Nothing]) Right (resolveNativeRequest core native) >>=) $ \bindings ->
                   fmap
@@ -198,7 +205,7 @@ dispatch bytes
                                           failure [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing]
                                     "inspect" -> case plan of
                                       Left ds -> failure ds
-                                      Right selectedPlan -> case staged "emit" target (emitPlanWithNativeOptions False target sourceDir testDir bindings selectedPlan) of
+                                      Right selectedPlan -> case placed plan (staged "emit" target (emitPlanWithNativeOptions False target sourceDir testDir bindings selectedPlan)) of
                                         Left ds -> failure ds
                                         -- The compact layout only supplies digests, by which a host
                                         -- recognizes a generated file written with --minify. They are
@@ -207,10 +214,9 @@ dispatch bytes
                                         Right files -> case memoized
                                           compactDigestTable
                                           (digestHex (digestString (emissionRequest bytes)))
-                                          ( staged "emit-compact" target $
-                                              fmap
-                                                (\compact -> [(artifactPath file, digestHex (digestString (artifactContent file))) | file <- compact ++ networkArtifacts native])
-                                                (emitPlanWithNativeOptions True target sourceDir testDir bindings selectedPlan)
+                                          ( fmap
+                                              (\compact -> [(artifactPath file, digestHex (digestString (artifactContent file))) | file <- compact ++ networkArtifacts native])
+                                              (placed plan (staged "emit-compact" target (emitPlanWithNativeOptions True target sourceDir testDir bindings selectedPlan)))
                                           ) of
                                           Left ds -> failure ds
                                           Right compact -> case NativeInterface.interfaceView target bindings selectedPlan (files ++ networkArtifacts native) compact of
@@ -225,7 +231,7 @@ dispatch bytes
                                     "planGeneration" ->
                                       either
                                         failure
-                                        ( withBenchmarks (benchmarkManifest target testDir core)
+                                        ( withBenchmarks (benchmarkManifest target generatedTests core)
                                             . withTests
                                               core
                                               verification
@@ -244,7 +250,7 @@ dispatch bytes
                                                               (maybe True (`V.selected` V.Model) verification)
                                                               bindings
                                                               target
-                                                              testDir
+                                                              generatedTests
                                                               (plannedCore core plan)
                                                           )
                                                       )
@@ -252,7 +258,7 @@ dispatch bytes
                                               )
                                             . result
                                         )
-                                        ((++ networkArtifacts native) <$> (plan >>= staged "emit" target . emitPlanWithNativeOptions minify target sourceDir testDir bindings))
+                                        ((++ networkArtifacts native) <$> placed plan (plan >>= staged "emit" target . emitPlanWithNativeOptions minify target sourceDir testDir bindings))
                                     _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
                     )
                     ( analysisEvidence
@@ -543,6 +549,41 @@ nativeBudgetKeys target (Right plan) entries
       [entry {entryKey = digestHex (digestString (show (entryKey entry, "native-node-budget", budget)))} | entry <- entries]
 nativeBudgetKeys _ _ entries = entries
 
+-- | A target's generated directories and release, read from the request as
+-- its actor settings are. A null field is an absent one.
+requestTargetOptions :: String -> Maybe String -> Maybe String -> B.ByteString -> Either [Diagnostic] TargetOptions
+requestTargetOptions target sourceDir testDir bytes =
+  either
+    (\problems -> Left [Diagnostic code problem Nothing | (code, problem) <- problems])
+    Right
+    (targetOptions target sourceDir testDir (text <$> field "generatedSourceDir") (text <$> field "generatedTestDir") (whole <$> field "release"))
+  where
+    field name = case decode bytes of
+      Just (Object o) | Just value <- KM.lookup name o, value /= Null -> Just value
+      _ -> Nothing
+    text (String value) = Just (T.unpack value)
+    text _ = Nothing
+    whole = parseMaybe parseJSON
+
+-- | Emitted files at the paths their ownership gives them, unless the
+-- program needs a newer release than the target compiles at.
+placedArtifacts ::
+  String ->
+  Maybe String ->
+  Maybe String ->
+  Either [Diagnostic] TargetOptions ->
+  Either [Diagnostic] Plan ->
+  Either [Diagnostic] [Artifact] ->
+  Either [Diagnostic] [Artifact]
+placedArtifacts target sourceDir testDir given plan emitted = do
+  options <- given
+  units <- map (C.idText . C.unitId . plannedUnit) . plannedUnits <$> plan
+  case releaseProblems target options units of
+    [] -> pure ()
+    problems -> Left [Diagnostic "release" problem Nothing | problem <- problems]
+  files <- emitted
+  either (\problem -> Left [Diagnostic "collision" problem Nothing]) Right (placeByOwnership target sourceDir testDir options files)
+
 -- | A target's actor runtime (lawspec.edn's :actors) is a generation choice:
 -- it changes the generated actors and scaffolds, never the checked program.
 -- ref:DEC-pekko-runtime
@@ -767,7 +808,7 @@ sharedRequest bytes = case decode bytes of
               ( foldr
                   (KM.delete . K.fromString)
                   o
-                  ["method", "target", "sourceDir", "testDir", "minify", "nativeBindings", "cacheDirectory", "cacheAdvisory", "progress", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
+                  ["method", "target", "sourceDir", "testDir", "generatedSourceDir", "generatedTestDir", "release", "minify", "nativeBindings", "cacheDirectory", "cacheAdvisory", "progress", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
               )
           )
       )

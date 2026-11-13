@@ -63,6 +63,7 @@ import qualified DomainModelSpec
 import qualified StatefulModelSpec
 import qualified ScenarioSpec
 import qualified TargetNamesSpec
+import qualified TargetOptionsSpec
 import qualified TimeSpec
 import qualified ImportSpec
 import qualified DischargeSpec
@@ -190,6 +191,8 @@ main = hspec $ do
   StatefulModelSpec.test_actorRuntimeSettings
   ScenarioSpec.test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree
   TargetNamesSpec.test_targetNamesNeverCollideWithKeywords
+  TargetOptionsSpec.test_generatedDirectoriesPlaceFilesByOwnership
+  TargetOptionsSpec.test_javaReleaseRefusesWhatItCannotCompile
   TimeSpec.test_durationsAreExactAndPortable
   ImportSpec.test_importsResolveAcrossUnitsWithoutLeakingAdapters
   DischargeSpec.test_lawsAreDischargedWithHonestEvidence

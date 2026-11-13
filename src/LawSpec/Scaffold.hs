@@ -2,13 +2,15 @@
 -- structure only; they never reformat user source. The readable layout is the
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
-  ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith, scaffoldFilesFor, scaffoldFilesForActors, pekkoVersion, springStarterVersion
+  ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith, scaffoldFilesFor, scaffoldFilesForActors, scaffoldFilesForRelease, pekkoVersion, springStarterVersion
+  , generatedRootsAdvice, buildHelperVersion
   , prepareCommands, scaffoldRequirements
   , PresentationCheck(..), presentationChecks, gleamTestPackage, rapidMinimum, rapidMaximum, rapidDefault
   ) where
 
 import Data.List (intercalate)
 import LawSpec.ActorRuntime (ActorRemote (..), ActorRuntime (..), ActorSettings (..))
+import LawSpec.TargetOptions (defaultJavaRelease, javaReleases)
 import qualified LawSpec.Targets as Targets
 
 -- | Supported stable Rapid releases and the scaffold baseline.
@@ -156,7 +158,7 @@ setupAdvice "antlr4" = Just "Compile LawSpecData.g4 with ANTLR 4. The grammar ch
 setupAdvice "prolog" = Just "Use SWI-Prolog 10.0+ and Python 3.13+ with janus-swi 1.5.3, pytest 8.4.x and Hypothesis 6.x. Install the generated project with python -m pip install -e \".[test]\". Run python lawspec_test.py (PLUnit with the checked Python model), or lawspec test. Set the target python field to the selected interpreter."
 setupAdvice target = lookup target
   [ ("rust", "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6 and num-traits 0.2.19; a program that imports lawspec.crypto, lawspec.network or lawspec.randomness also needs sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.")
-  , ("java", "Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run mvn test-compile.")
+  , ("java", "Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x or 6.0.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25; a target with :release 21 in lawspec.edn uses JDK 21+ and maven.compiler.release=21 instead. A program that imports lawspec.crypto or lawspec.network needs the default release 25 (its JDK APIs arrived in Java 24) and Bouncy Castle bcprov-jdk18on 1.86. Run mvn test-compile.")
   , ("python", "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and, for a program that imports lawspec.crypto or lawspec.network, cryptography 50: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.")
   , ("javascript", "Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2, and for a program that imports lawspec.crypto or lawspec.network npm install @noble/post-quantum@0.7.1.")
   , ("typescript", "Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4 (and npm install @noble/post-quantum@0.7.1 for a program that imports lawspec.crypto or lawspec.network). Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].")
@@ -206,7 +208,12 @@ scaffoldFilesFor runtime = scaffoldFilesForActors (ActorSettings runtime LawSpec
 -- API joins the dependencies only with :remote :cluster.
 -- ref:DEC-pekko-cluster-remote
 scaffoldFilesForActors :: ActorSettings -> Bool -> Bool -> String -> Either String [(FilePath, String)]
-scaffoldFilesForActors (ActorSettings runtime remote) crypto minify target = case target of
+scaffoldFilesForActors = scaffoldFilesForRelease defaultJavaRelease
+
+-- | The same at a Java release (lawspec.edn's :release). Only the Java
+-- target's build file names a release; the others ignore it.
+scaffoldFilesForRelease :: Int -> ActorSettings -> Bool -> Bool -> String -> Either String [(FilePath, String)]
+scaffoldFilesForRelease release (ActorSettings runtime remote) crypto minify target = case target of
   "hcl" -> Right []
   "yaml" -> Right []
   "make" -> Right []
@@ -307,7 +314,9 @@ scaffoldFilesForActors (ActorSettings runtime remote) crypto minify target = cas
         , "[project.optional-dependencies]", "test = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]", ""
         , "[tool.setuptools.packages.find]", "where = [\"src\"]", ""
         , "[tool.pytest.ini_options]", "pythonpath = [\"src\"]", "testpaths = [\"tests\"]" ]) ]
-  "java" -> Right [("pom.xml", renderXml minify 0 (mavenProject crypto pekko cluster spring) ++ "\n")]
+  "java"
+    | release `notElem` javaReleases -> Left ("Java release " ++ show release ++ " is not supported; choose " ++ intercalate " or " (map show javaReleases))
+    | otherwise -> Right [("pom.xml", renderXml minify 0 (mavenProject release crypto pekko cluster spring) ++ "\n")]
   "go" -> Right [("go.mod", unlines $
     [ "module example.com/lawspec-example", "", "go 1.25.0", ""
     ] ++ (if crypto then
@@ -512,13 +521,65 @@ renderJson minify depth value = case value of
 
 data Xml = Element String [(String, String)] (Either String [Xml])
 
-mavenProject :: Bool -> Bool -> Bool -> Bool -> Xml
-mavenProject crypto pekko cluster spring = Element "project"
+-- | The build-helper-maven-plugin release the generated-roots advice names.
+buildHelperVersion :: String
+buildHelperVersion = "3.6.2"
+
+-- | What a Java build needs so that it compiles the generated directories
+-- (lawspec.edn's :generated-source-dir and :generated-test-dir): Maven's
+-- build-helper executions and the Gradle sourceSets equivalent. Maven and
+-- Gradle each compile one source root unless told of more; this is the
+-- registration both document for generated sources. A harness's JUnit
+-- configuration is generated beside the tests, so the generated test
+-- directory is also a test resource root, without its Java files.
+-- lawspec init prints this and never edits a build file.
+-- ref:DEC-adapter-ownership
+generatedRootsAdvice :: Maybe FilePath -> Maybe FilePath -> String
+generatedRootsAdvice Nothing Nothing = ""
+generatedRootsAdvice source tests = intercalate "\n" $
+  [ "Maven (pom.xml, in build/plugins):"
+  , renderXml False 0 (Element "plugin" [] (Right
+      [ text "groupId" "org.codehaus.mojo"
+      , text "artifactId" "build-helper-maven-plugin"
+      , text "version" buildHelperVersion
+      , Element "executions" [] (Right (
+          [ execution "lawspec-generated-sources" "generate-sources" "add-source"
+              [Element "sources" [] (Right [text "source" ("${project.basedir}/" ++ d)])] | Just d <- [source] ] ++
+          concat
+            [ [ execution "lawspec-generated-tests" "generate-test-sources" "add-test-source"
+                  [Element "sources" [] (Right [text "source" ("${project.basedir}/" ++ d)])]
+              , execution "lawspec-generated-test-resources" "generate-test-resources" "add-test-resource"
+                  [Element "resources" [] (Right [Element "resource" [] (Right
+                    [ text "directory" ("${project.basedir}/" ++ d)
+                    , Element "excludes" [] (Right [text "exclude" "**/*.java"]) ])])] ]
+            | Just d <- [tests] ])) ]))
+  , ""
+  , "Gradle (build.gradle.kts):"
+  , "sourceSets {" ] ++
+  [ "    main { java.srcDir(" ++ show d ++ ") }" | Just d <- [source] ] ++
+  concat
+    [ [ "    test {"
+      , "        java.srcDir(" ++ show d ++ ")"
+      , "        resources { srcDir(" ++ show d ++ "); exclude(\"**/*.java\") }"
+      , "    }" ]
+    | Just d <- [tests] ] ++
+  [ "}"
+  , ""
+  , "Run lawspec generate before the build compiles: the generated directories are empty in a clean checkout." ]
+  where
+    text name value = Element name [] (Left value)
+    execution name phase goal configuration = Element "execution" [] (Right
+      [ text "id" name, text "phase" phase
+      , Element "goals" [] (Right [text "goal" goal])
+      , Element "configuration" [] (Right configuration) ])
+
+mavenProject :: Int -> Bool -> Bool -> Bool -> Bool -> Xml
+mavenProject release crypto pekko cluster spring = Element "project"
   [ ("xmlns", "http://maven.apache.org/POM/4.0.0")
   , ("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
   , ("xsi:schemaLocation", "http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd") ]
   (Right (fields [("modelVersion", "4.0.0"), ("groupId", "example"), ("artifactId", "lawspec-example"), ("version", "0.1.0")] ++
-    [ node "properties" (fields [("maven.compiler.release", "25"), ("project.build.sourceEncoding", "UTF-8")])
+    [ node "properties" (fields [("maven.compiler.release", show release), ("project.build.sourceEncoding", "UTF-8")])
     , node "dependencies"
         ([ compileDependency "org.bouncycastle" "bcprov-jdk18on" "1.86" | crypto ] ++
         [ compileDependency "org.apache.pekko" "pekko-actor-typed_3" pekkoVersion | pekko ] ++
