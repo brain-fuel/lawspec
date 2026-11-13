@@ -142,10 +142,63 @@ end example
 - Bind every input of the expanded law exactly once, using the names in the
   expansion. For a reusable law these are the reusable law's input names, such
   as `x` for `equivalent`. `lawspec explain` shows them.
-- Values must be literals of the input's type. Out-of-range values and
-  ambiguous names are errors.
-- An example needs at least one `expect`. Its expected value is a literal of
-  the expression's type.
+- A value is a literal of the input's type, or an expression that builds one
+  from checked definitions and record updates (see below). Out-of-range values
+  and ambiguous names are errors.
+- An example needs at least one `expect`. Its expected value is always a
+  literal of the expression's type: an example pins the law's answer by hand.
+
+### Inputs built by checked definitions
+
+An input with many fields need not be written out in every example. Give a
+checked definition that builds the usual value, and state what differs with
+`with`:
+
+```lawspec
+unit guide.exampleInputs
+
+type Consumer is a record{
+  name of type Text
+  offerCode of type Maybe Text
+  retries of type Integer
+}
+end type
+
+function usualConsumer (ignored :: Unit) -> Consumer is
+  Consumer record{name = "ada", offerCode = Absent, retries = 3}
+end function
+
+function hasOffer (consumer :: Consumer) -> Bool is
+  first matching case of consumer.offerCode :
+    when Absent then false
+    when Present code then prelude.length code > 0
+  end case
+end function
+
+law "|an empty offer code is no offer| is
+  definition :
+    for all (consumer :: Consumer) =>
+      consumer.offerCode = Present "" implies hasOffer consumer = false
+    end for all
+  end definition
+  example "|empty code| :
+    consumer = usualConsumer () with offerCode = Present ""
+    expect hasOffer consumer = false
+  end example
+end law
+end unit
+```
+
+- The compiler evaluates the expression when it compiles the law and stores
+  the value it gives, so every target's test starts from the same closed
+  value, as with a literal. `lawspec explain --view dev` shows that value.
+- The expression calls checked definitions only. A call to an adapter, a use
+  of another input, or an expression the compiler cannot evaluate is an error
+  that names the example.
+- A computed input ends at the next line that starts with a name and `=`, at
+  `expect`, or at the example's end. Put an expression that continues on such
+  a line in parentheses.
+- Expected results stay literals, and so do table cells.
 
 An example passes only when all its expectations and the law itself hold for
 its inputs. See [expected results](../prelude-algebra.md#expected-results) for

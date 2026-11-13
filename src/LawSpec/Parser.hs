@@ -2099,9 +2099,69 @@ resourceP = blockP "resource" $ do
 exampleP :: P Example
 exampleP = sourceNode "example" (Just . exampleName) $ blockP "example" $ do
   keyword "example"; en <- lawNameP; sectionStartP
-  bs <- some ((,) <$> ident <* symbol "=" <*> literalP)
+  bs <- some ((,) <$> ident <* symbol "=" <*> exampleInputP)
   checks <- many expectationP
   closeP "example"; pure (Example en bs checks)
+
+-- An example input: a literal, or an expression that checked definitions and
+-- record updates compute, such as defaults () with code = Present "". The
+-- literal reading is tried first and must reach the next binding, an expect
+-- or the example's end. An expected result stays a literal: an example pins
+-- a law's answers by hand. ref:DEC-examples-pin-laws
+exampleInputP :: P Literal
+exampleInputP = do
+  literal <- observing (try (local (M.delete "diagnostics:recover") (literalP <* lookAhead inputEnd)))
+  case literal of
+    Right value -> pure value
+    -- A constructor no type declares is refused as a literal refuses it,
+    -- with the same advice (Maybe's Nothing is now Absent) and recovery.
+    Left (FancyError _ causes) | not (null [() | ErrorCustom (LocatedFailure _ _) <- S.toList causes]) -> literalP
+    Left _ -> try computedInputP <|> literalP
+  where
+    inputEnd = void (try (ident *> symbol "=" *> notFollowedBy (char '='))) <|> void (keyword "expect") <|> void (keyword "end") <|> eof
+
+-- The expression of a computed example input, read from its own text alone:
+-- application is juxtaposition, so without the cut the next line's binding
+-- would be read as one more argument.
+computedInputP :: P Literal
+computedInputP = sourceNode "computed-input" (const Nothing) $ do
+  input <- getInput
+  let size = computedInputExtent input
+  when (size == 0) (fail "expected an example input: a literal, or an expression of checked definitions")
+  setInput (take size input)
+  value <- updatedExpr <* (eof <?> "the end of this example input; put an input that continues on a line starting with a name and = in parentheses")
+  setInput (drop size input)
+  pure (ComputedLiteral value)
+
+-- How much of the input one computed example input takes: up to the next
+-- line that starts another binding (name =), or the example's expect or end,
+-- outside any brackets.
+computedInputExtent :: String -> Int
+computedInputExtent input = go (0 :: Int) False False (Tokens.sourceTokens input)
+  where
+    -- started: the input has a first token; fresh: a line began since the
+    -- last token that was not white space or a comment.
+    go _ _ _ [] = length input
+    go depth started fresh (token : rest)
+      | kind `elem` [Tokens.TriviaToken, Tokens.CommentToken] = go depth started (fresh || '\n' `elem` text) rest
+      | depth == 0 && started && text == "expect" && kind == Tokens.WordToken = at
+      | depth == 0 && started && text == "end" && nextCode rest == Just "example" = at
+      | depth == 0 && started && kind == Tokens.WordToken && fresh && binds rest = at
+      | text `elem` ["(", "[", "{"] && kind == Tokens.SymbolToken = go (depth + 1) True False rest
+      | text `elem` [")", "]", "}"] && kind == Tokens.SymbolToken = go (max 0 (depth - 1)) True False rest
+      | otherwise = go depth True False rest
+      where
+        kind = Tokens.tokenKind token
+        text = Tokens.tokenText token
+        at = Tokens.tokenOffset token
+    code = filter ((`notElem` [Tokens.TriviaToken, Tokens.CommentToken]) . Tokens.tokenKind)
+    nextCode rest = case code rest of
+      token : _ -> Just (Tokens.tokenText token)
+      [] -> Nothing
+    binds rest = case map Tokens.tokenText (take 2 (code rest)) of
+      ["=", "="] -> False
+      "=" : _ -> True
+      _ -> False
 
 -- table (a, b, expected) is (row ...)+ (expect ...)* end: each row is an
 -- example. A column on the right of an expect's = holds expected values;

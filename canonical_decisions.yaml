@@ -241,6 +241,7 @@ DEC-examples-pin-laws:
   question: Why do laws carry hand-written examples as well as generated cases?
   answer: |
     A law says what holds for every input but not what the answer is for a particular input, and two implementations can agree and both be wrong. Examples with expected results, written by the author and never inferred from code, fix the known answers; boundaries and examples always run, and custom generators or narrow refinements cannot remove them. Recorded in docs/explanation/why-executable-laws.md and generation-and-shrinking.md.
+    Amended in 0.34 (adopter feedback F8.6): an example's inputs may be computed by checked definitions and record updates (consumer = usualConsumer () with offerCode = Present ""), so a record of many fields is not repeated in every example. The compiler evaluates such an input when it compiles the law and stores the closed value, so targets receive a constant exactly as for a literal; it may call no adapter, since an adapter is the code under test, and it may not read another input. Expectations remain literals: what is pinned by hand is the answer, and an answer computed by the code it checks would pin nothing. An input the compiler cannot evaluate is rejected with the example's name.
   opened: 0.9.0
   decided: 0.9.0
 

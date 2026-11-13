@@ -78,7 +78,11 @@ railwayUnit u = u
   where
     typ = mapType id railwayExpr
     law l = l { parameters = [(n, typ t) | (n, t) <- parameters l], definition = definition' (definition l)
-              , examples = [x { expectations = [c { actual = railwayExpr (actual c) } | c <- expectations x] } | x <- examples l] }
+              , examples = [x { expectations = [c { actual = railwayExpr (actual c) } | c <- expectations x]
+                             , bindings = [(n, computed v) | (n, v) <- bindings x] } | x <- examples l] }
+    -- An example input computed by checked definitions is an expression too.
+    computed (ComputedLiteral e) = ComputedLiteral (railwayExpr e)
+    computed literal = literal
     definition' d = case d of
       Forall bs body -> Forall [(n, typ t) | (n, t) <- bs] (definition' body)
       Exists bs body -> Exists [(n, typ t) | (n, t) <- bs] (definition' body)

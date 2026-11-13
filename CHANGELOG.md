@@ -38,6 +38,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   U+0020 at its ends, which is Java's `String.trim()`), on every target. They
   are named for what they do; the sequences reference says how each relates
   to Java's `trim()` and `isBlank()`.
+- An example's inputs may be built by checked definitions and record updates:
+  `consumer = usualConsumer () with offerCode = Present ""`. The compiler
+  evaluates the input and stores its value; it may call no adapter. Expected
+  results remain literals (`DEC-examples-pin-laws`, amended).
 - A constructor may be given where a prelude combinator takes a function:
   `prelude.map Present m`, `m >>= Right`, `value |> Present`.
 

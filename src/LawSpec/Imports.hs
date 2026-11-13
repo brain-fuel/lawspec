@@ -678,6 +678,8 @@ walkLiteral names v = case v of
   ListLiteral xs -> ListLiteral <$> mapM (walkLiteral names) xs
   SetLiteral builder xs -> SetLiteral <$> onValue names builder <*> mapM (walkLiteral names) xs
   RecordLiteral fields -> RecordLiteral <$> mapM (\(label,value) -> (,) label <$> walkLiteral names value) fields
+  -- A computed example input is closed: it sees no input or binder.
+  ComputedLiteral expression -> ComputedLiteral <$> walkExpr names [] expression
   other -> pure other
 
 walkType :: Monad m => Names m -> [String] -> Type -> m Type

@@ -67,7 +67,7 @@ canonicalNames program = program{C.programDataDeclarations=map name (C.programDa
 -- Final validation still checks every materialized example and its domain.
 materializeExampleBindingsWithScopes :: CapabilityScopes -> C.Program -> Either [Diagnostic] C.Program
 materializeExampleBindingsWithScopes scopes program
-  | not (any hasCalls [value | unit <- C.programUnits program, property <- C.unitProperties unit,
+  | not (any computed [value | unit <- C.programUnits program, property <- C.unitProperties unit,
       example <- C.propertyExamples property, (_,value) <- C.exampleBindings example]) = Right program
   | otherwise = do
       let definitions = program{C.programUnits = [unit{C.unitProperties =
@@ -81,7 +81,7 @@ materializeExampleBindingsWithScopes scopes program
         properties <- forM (C.unitProperties unit) $ \property -> do
           examples <- forM (C.propertyExamples property) $ \example -> do
             bindings <- forM (C.exampleBindings example) $ \(identity,expression) ->
-              if not (hasCalls expression) then pure (identity,expression) else do
+              if not (computed expression) then pure (identity,expression) else do
                 let checked = either (\message -> Left [Diagnostic "example-constant"
                       (C.propertyName property ++ ": " ++ C.exampleName example ++ ": " ++ message)
                       (Just (C.propertyLocation property))]) Right
@@ -93,6 +93,9 @@ materializeExampleBindingsWithScopes scopes program
         pure unit{C.unitProperties=properties}
       pure program{C.programUnits=units}
   where
+    -- An input that is not closed data already: a collection builder, or an
+    -- expression of checked definitions and record updates (S.ComputedLiteral).
+    computed expression = hasCalls expression || not (C.isConcrete expression)
     hasCalls expression = case C.expressionNode expression of
       C.ExternalCall _ _ -> True
       _ -> any hasCalls (C.children expression)
