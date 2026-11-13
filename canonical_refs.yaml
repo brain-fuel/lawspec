@@ -1051,6 +1051,14 @@ mail-rfc822-address:
   kind: article
   title: "Paul Warren: Mail::RFC822::Address 0.3 (the regex and valid())"
   locator: https://metacpan.org/pod/Mail::RFC822::Address
+email-valid:
+  kind: article
+  title: "Email::Valid 1.204 (address(), with fqdn on and the network checks off)"
+  locator: https://metacpan.org/pod/Email::Valid
+rfc5321:
+  kind: article
+  title: "RFC 5321: Simple Mail Transfer Protocol (section 4.5.3.1, size limits)"
+  locator: https://www.rfc-editor.org/rfc/rfc5321
 rfc9562:
   kind: article
   title: "RFC 9562: Universally Unique IDentifiers (section 4, UUID format)"
