@@ -239,6 +239,153 @@ export function maskEmail(value)
   return (name[0] ?? '') + '***@' + text.slice(text.lastIndexOf('@') + 1);
 }
 
+const BLAKE3_IV = [
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c,
+  0x1f83d9ab, 0x5be0cd19,
+];
+const BLAKE3_SCHEDULE = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8];
+const BLAKE3_CHUNK_START = 1;
+const BLAKE3_CHUNK_END = 2;
+const BLAKE3_PARENT = 4;
+const BLAKE3_ROOT = 8;
+const BLAKE3_KEYED_HASH = 16;
+
+/** Sixteen little-endian words of a block, zero padded past its length. */
+function blake3Words(bytes, offset, length)
+{
+  const words = new Uint32Array(16);
+  for (let i = 0; i < length; i++)
+    words[i >>> 2] |= bytes[offset + i] << (8 * (i & 3));
+  return words;
+}
+
+/** The first eight words of BLAKE3's compression: a chaining value. */
+function blake3Compress(node, extra)
+{
+  const state = new Uint32Array(16);
+  state.set(node.cv);
+  state.set(BLAKE3_IV.slice(0, 4), 8);
+  state[12] = node.counter;
+  state[13] = Math.floor(node.counter / 4294967296);
+  state[14] = node.length;
+  state[15] = node.flags | extra;
+  let m = node.words;
+  const g = (a, b, c, d, x, y) =>
+  {
+    state[a] = state[a] + state[b] + x;
+    state[d] = ((state[d] ^ state[a]) >>> 16) | ((state[d] ^ state[a]) << 16);
+    state[c] = state[c] + state[d];
+    state[b] = ((state[b] ^ state[c]) >>> 12) | ((state[b] ^ state[c]) << 20);
+    state[a] = state[a] + state[b] + y;
+    state[d] = ((state[d] ^ state[a]) >>> 8) | ((state[d] ^ state[a]) << 24);
+    state[c] = state[c] + state[d];
+    state[b] = ((state[b] ^ state[c]) >>> 7) | ((state[b] ^ state[c]) << 25);
+  };
+  for (let round = 0; round < 7; round++)
+  {
+    g(0, 4, 8, 12, m[0], m[1]);
+    g(1, 5, 9, 13, m[2], m[3]);
+    g(2, 6, 10, 14, m[4], m[5]);
+    g(3, 7, 11, 15, m[6], m[7]);
+    g(0, 5, 10, 15, m[8], m[9]);
+    g(1, 6, 11, 12, m[10], m[11]);
+    g(2, 7, 8, 13, m[12], m[13]);
+    g(3, 4, 9, 14, m[14], m[15]);
+    m = Uint32Array.from(BLAKE3_SCHEDULE, from => m[from]);
+  }
+  return Uint32Array.from({length: 8}, (_, i) => state[i] ^ state[i + 8]);
+}
+
+/**
+ * Keyed BLAKE3-256 (the BLAKE3 specification, section 2.1) of some bytes
+ * under a key of eight words, in lower-case hexadecimal. The chunks are
+ * merged as the reference implementation merges them: a stack of subtree
+ * chaining values, one subtree closed per trailing zero of the chunk count.
+ */
+function blake3KeyedHex(key, bytes)
+{
+  const parent = (left, right) =>
+  {
+    const words = new Uint32Array(16);
+    words.set(left);
+    words.set(right, 8);
+    const flags = BLAKE3_KEYED_HASH | BLAKE3_PARENT;
+    return {cv: key, words, counter: 0, length: 64, flags};
+  };
+  const chunk = index =>
+  {
+    const end = Math.min(bytes.length, index * 1024 + 1024);
+    let offset = index * 1024;
+    let cv = key;
+    let flags = BLAKE3_KEYED_HASH | BLAKE3_CHUNK_START;
+    while (end - offset > 64)
+    {
+      const words = blake3Words(bytes, offset, 64);
+      cv = blake3Compress({cv, words, counter: index, length: 64, flags}, 0);
+      flags = BLAKE3_KEYED_HASH;
+      offset += 64;
+    }
+    return {
+      cv,
+      words: blake3Words(bytes, offset, end - offset),
+      counter: index,
+      length: end - offset,
+      flags: flags | BLAKE3_CHUNK_END,
+    };
+  };
+  const chunks = Math.max(1, Math.ceil(bytes.length / 1024));
+  const stack = [];
+  let node = chunk(chunks - 1);
+  for (let index = 0; index < chunks - 1; index++)
+  {
+    let cv = blake3Compress(chunk(index), 0);
+    for (let total = index + 1; total % 2 === 0; total /= 2)
+      cv = blake3Compress(parent(stack.pop(), cv), 0);
+    stack.push(cv);
+  }
+  while (stack.length > 0) node = parent(stack.pop(), blake3Compress(node, 0));
+  let hex = '';
+  for (const word of blake3Compress(node, BLAKE3_ROOT))
+  {
+    for (let shift = 0; shift < 32; shift += 8)
+      hex += ((word >>> shift) & 255).toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+/** The key of the hash mask: set by the application, never generated. */
+let MASK_KEY = null;
+
+/**
+ * Sets the key of the `hash` mask: 32 secret bytes the application loads
+ * when it starts. LawSpec never writes a key into generated code, and has
+ * no default.
+ */
+export function setMaskKey(key)
+{
+  if (!(key instanceof Uint8Array) || key.length !== 32)
+    throw new TypeError(
+      'LawSpec masking: the hash key is a Uint8Array of 32 bytes',
+    );
+  MASK_KEY = blake3Words(key, 0, 32).slice(0, 8);
+}
+
+/**
+ * `hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes: equal
+ * values show alike, and the value cannot be read back without the key.
+ * Without a key it throws; it never falls back to showing or hiding.
+ */
+export function maskHash(value)
+{
+  if (MASK_KEY === null)
+    throw new Error(
+      'LawSpec masking: a field is shown as hash and no key is set; call' +
+        ' setMaskKey with 32 secret bytes when the application starts',
+    );
+  const bytes = new TextEncoder().encode(String(value));
+  return 'hash:' + blake3KeyedHex(MASK_KEY, bytes);
+}
+
 /** A value with every masked field replaced by a marker that prints as ***. */
 export function concealed(v)
 {

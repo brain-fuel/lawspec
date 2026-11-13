@@ -36,6 +36,24 @@ law "|a violation shows the masked value| is
   end definition
 end law
 
+-- `hash` shows a keyed BLAKE3 digest in a target's native rendering, where
+-- the application has set a key. maskedSession is a pure definition and has
+-- no key, so it hides the field.
+type Session is a record{
+  user :: Text,
+  token :: (v :: Text where prelude.length v >= 8)}
+end type
+
+masking Session is
+  token shown as hash
+end masking
+
+law "|a hashed field is hidden where there is no key| is
+  definition :
+    maskedSessionDraft (SessionDraft record{user = "ann", token = "tok-12345678"}) = "Session{user=ann, token=***}"
+  end definition
+end law
+
 law "|a valid card is shown as its draft is| is
   definition :
     for all (card :: Card) => maskedCard card = maskedCardDraft (draftOfCard card) end for all

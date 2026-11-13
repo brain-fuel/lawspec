@@ -428,12 +428,13 @@ dispatch bytes
                       "at" .= Null,
                       "message" .= (emitted ++ ": the masking block of " ++ name ++ " is applied by masked" ++ name ++
                         " and in violation messages only. This target's native rendering of the record and the output of a failed generated test show every field. Targets that mask those too: " ++
-                        intercalate ", " Backend.maskedRenderingTargets)
+                        intercalate ", " Backend.maskedRenderingTargets ++
+                        (if hashed then ". A field shown as hash is hidden on this target: only those targets have the keyed digest" else ""))
                     ]
-                | name <- masked ]
+                | (name, hashed) <- masked ]
               existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
            in Object (KM.insert "warnings" (toJSON (existing ++ rows)) response)
-      where masked = [C.dataName declaration | declaration <- C.programDataDeclarations program
+      where masked = [(C.dataName declaration, C.MaskHash `elem` map snd (C.dataMasking declaration)) | declaration <- C.programDataDeclarations program
                                              , not (null (C.dataMasking declaration))
                                              , not ("Draft" `isSuffixOf` C.dataName declaration) ]
     withMaskingWarnings _ _ _ response = response

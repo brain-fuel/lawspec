@@ -3,7 +3,8 @@ package lawspec.runtime;
 /**
  * A logging argument that is rendered masked, and only when the logger asks for it.
  *
- * <p>{@code log.info("placed {}", LawSpecMasked.of(order))} prints the order as its masking block
+ * <p>
+ * {@code log.info("placed {}", LawSpecMasked.of(order))} prints the order as its masking block
  * shows it. A generated record with a masking block already renders itself masked, so the wrapper
  * matters for what holds such records: an array or a nested array is rendered element by element
  * instead of as a type and an address, and null is the text {@code null}. The wrapper holds the

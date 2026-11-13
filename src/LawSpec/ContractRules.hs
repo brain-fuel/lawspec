@@ -413,7 +413,6 @@ generate unit definitions declaration rules masks = do
   forM_ masks $ \(label, mask) -> do
     ty <- maybe (Left ("masking " ++ record ++ ": the record has no field " ++ label)) Right (lookup label drafted)
     case mask of
-      MaskHash -> Left ("masking " ++ record ++ ": `hash` is not generated on any target yet: it is a keyed BLAKE3 digest whose key the host application supplies, and no runtime has it. Show " ++ label ++ " as hidden or last <n> until one does")
       MaskLast count | count < 1 -> Left ("masking " ++ record ++ ": last " ++ show count ++ " shows nothing; write hidden")
       _ | mask /= MaskHidden && ty /= Named "Text" -> Left ("masking " ++ record ++ ": " ++ label ++ " is not a Text, so it can only be shown as hidden")
       _ -> Right ()
@@ -446,7 +445,10 @@ generate unit definitions declaration rules masks = do
       Just MaskHidden -> Just (StringLit "***")
       Just MaskEmail -> Just (call "prelude.maskEmail" [Var label])
       Just (MaskLast count) -> Just (call "prelude.maskLast" [Number count, Var label])
-      Just MaskHash -> Nothing
+      -- A checked definition is pure and has no key, so maskedR hides a
+      -- hashed field; a target's native rendering shows the keyed digest
+      -- (Backend.maskedRenderingTargets). ref:DEC-masking
+      Just MaskHash -> Just (StringLit "***")
       Nothing -> case ty of
         Named "Text" -> Just (Var label)
         Named "Bool" -> Just (select (Var label) (StringLit "true") (StringLit "false"))

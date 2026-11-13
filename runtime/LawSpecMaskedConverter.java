@@ -8,7 +8,8 @@ import org.slf4j.helpers.MessageFormatter;
 /**
  * A Logback message converter that renders every argument through {@link LawSpecMasked}.
  *
- * <p>Use it in place of {@code %msg}, so that the pattern cannot print an argument any other way:
+ * <p>
+ * Use it in place of {@code %msg}, so that the pattern cannot print an argument any other way:
  *
  * <pre>{@code
  * <conversionRule conversionWord="maskedMsg"
@@ -16,8 +17,9 @@ import org.slf4j.helpers.MessageFormatter;
  * <pattern>%d %-5level %logger - %maskedMsg%n</pattern>
  * }</pre>
  *
- * <p>This file is generated outside the compiled sources, because it needs Logback and SLF4J on
- * the class path. Add its directory to the build of a project that has them.
+ * <p>
+ * This file is generated outside the compiled sources, because it needs Logback and SLF4J on the
+ * class path. Add its directory to the build of a project that has them.
  */
 public final class LawSpecMaskedConverter extends ClassicConverter
 {

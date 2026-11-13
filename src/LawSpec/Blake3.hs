@@ -1,12 +1,14 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE UnboxedTuples #-}
--- | Portable unkeyed BLAKE3-256. The native and WASM builds share this pure
+-- | Portable BLAKE3-256, unkeyed and keyed. The native and WASM builds share this pure
 -- implementation, so their hashes agree. It follows goforge's blake3sum:
 -- unboxed 32-bit state through an unrolled compression function, message
 -- words read straight from the input, one compression for an input of one
--- block, and hashMany for the many small nodes of content identity.
+-- block, and hashMany for the many small nodes of content identity. The
+-- keyed mode (blake3Keyed) is the reference the runtimes' `hash` mask is
+-- tested against; the compiler itself hashes nothing with a key.
 -- ref:DEC-blake3-port
-module LawSpec.Blake3 (blake3, blake3Hex, blake3Text, hashMany, hexOf) where
+module LawSpec.Blake3 (blake3, blake3Keyed, blake3Hex, blake3Text, hashMany, hexOf) where
 
 import Data.Bits (rotateR, shiftL, shiftR, xor, (.&.), (.|.), countTrailingZeros)
 import qualified Data.ByteString as B
@@ -31,11 +33,12 @@ data Node = Node !CV !W16 {-# UNPACK #-} !Word64 {-# UNPACK #-} !Word32 {-# UNPA
 iv :: CV
 iv = CV 0x6a09e667 0xbb67ae85 0x3c6ef372 0xa54ff53a 0x510e527f 0x9b05688c 0x1f83d9ab 0x5be0cd19
 
-chunkStart, chunkEnd, parent, root :: Word32
+chunkStart, chunkEnd, parent, root, keyedHash :: Word32
 chunkStart = 1
 chunkEnd = 2
 parent = 4
 root = 8
+keyedHash = 16
 
 -- | The BLAKE3 quarter-round, on four state words and two message words.
 g :: Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> (# Word32, Word32, Word32, Word32 #)
@@ -108,40 +111,52 @@ block bytes offset
 
 -- | A chunk's last node, still to be compressed. A chunk is at most 1024
 -- bytes; an empty input is one empty block.
-chunkNode :: B.ByteString -> Int -> Int -> Word64 -> Node
-chunkNode bytes start size counter = go iv start chunkStart
+chunkNode :: CV -> Word32 -> B.ByteString -> Int -> Int -> Word64 -> Node
+chunkNode key mode bytes start size counter = go key start (mode .|. chunkStart)
   where
     end = start + size
     go !cv !offset !flags
       | offset + 64 >= end =
           Node cv (block (B.take end bytes) offset) counter (fromIntegral (end - offset)) (flags .|. chunkEnd)
-      | otherwise = go (chaining (Node cv (block bytes offset) counter 64 flags)) (offset + 64) 0
+      | otherwise = go (chaining (Node cv (block bytes offset) counter 64 flags)) (offset + 64) mode
 
-parentNode :: CV -> CV -> Node
-parentNode (CV a0 a1 a2 a3 a4 a5 a6 a7) (CV b0 b1 b2 b3 b4 b5 b6 b7) =
-  Node iv (W16 a0 a1 a2 a3 a4 a5 a6 a7 b0 b1 b2 b3 b4 b5 b6 b7) 0 64 parent
+parentNode :: CV -> Word32 -> CV -> CV -> Node
+parentNode key mode (CV a0 a1 a2 a3 a4 a5 a6 a7) (CV b0 b1 b2 b3 b4 b5 b6 b7) =
+  Node key (W16 a0 a1 a2 a3 a4 a5 a6 a7 b0 b1 b2 b3 b4 b5 b6 b7) 0 64 (mode .|. parent)
 
 -- | The root node: every chunk but the last is merged into a stack of
 -- subtree chaining values as BLAKE3's reference implementation does; the
 -- last chunk's node is then folded with the stack, top first.
-rootNode :: B.ByteString -> Node
-rootNode bytes = finish (go [] 0)
+rootNode :: CV -> Word32 -> B.ByteString -> Node
+rootNode key mode bytes = finish (go [] 0)
   where
     count = max 1 ((B.length bytes + 1023) `div` 1024)
     go stack index
-      | index == count - 1 = (stack, chunkNode bytes (index * 1024) (B.length bytes - index * 1024) (fromIntegral index))
+      | index == count - 1 = (stack, chunkNode key mode bytes (index * 1024) (B.length bytes - index * 1024) (fromIntegral index))
       | otherwise =
-          let cv = chaining (chunkNode bytes (index * 1024) 1024 (fromIntegral index))
+          let cv = chaining (chunkNode key mode bytes (index * 1024) 1024 (fromIntegral index))
           in go (merge stack cv (countTrailingZeros (fromIntegral (index + 1) :: Word64))) (index + 1)
     -- A completed chunk closes one subtree per trailing zero of the count.
     merge stack cv 0 = cv : stack
-    merge (left : rest) cv n = merge rest (chaining (parentNode left cv)) (n - 1 :: Int)
+    merge (left : rest) cv n = merge rest (chaining (parentNode key mode left cv)) (n - 1 :: Int)
     merge [] cv _ = [cv]
-    finish (stack, node) = foldl (\right left -> parentNode left (chaining right)) node stack
+    finish (stack, node) = foldl (\right left -> parentNode key mode left (chaining right)) node stack
 
 -- | The 32-byte digest of some bytes.
 blake3 :: B.ByteString -> B.ByteString
-blake3 bytes = case rootNode bytes of
+blake3 = digest iv 0
+
+-- | The 32-byte keyed digest: the key's eight little-endian words stand in
+-- for the initial value and every compression carries KEYED_HASH (BLAKE3
+-- specification, section 2.1). Nothing for a key that is not 32 bytes.
+blake3Keyed :: B.ByteString -> B.ByteString -> Maybe B.ByteString
+blake3Keyed key bytes
+  | B.length key /= 32 = Nothing
+  | otherwise = case block key 0 of
+      W16 a b c d e f g' h _ _ _ _ _ _ _ _ -> Just (digest (CV a b c d e f g' h) keyedHash bytes)
+
+digest :: CV -> Word32 -> B.ByteString -> B.ByteString
+digest key mode bytes = case rootNode key mode bytes of
   Node cv m counter len flags -> case compress (Node cv m counter len (flags .|. root)) of
     W16 a b c d e f g' h _ _ _ _ _ _ _ _ -> littleEndian [a, b, c, d, e, f, g', h]
   where

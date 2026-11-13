@@ -2,14 +2,19 @@
 module ContractRulesSpec (test_recordRulesBecomeCheckedValidators) where
 
 import Data.Aeson (Value(..), decode, encode, object, (.=))
+import qualified Data.Aeson as A
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Control.Monad (forM_)
 import Data.Foldable (toList)
 import Data.List (isInfixOf, isSuffixOf, sort)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Test.Hspec
 import LawSpec.Api (dispatch)
+import LawSpec.Blake3 (blake3Keyed, hexOf)
 import LawSpec.Compile
 import LawSpec.ContractRules
 import qualified LawSpec.Core as C
@@ -150,7 +155,7 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
         map fst (functions unit) `shouldSatisfy` \names -> all (`elem` names) ["maskedCard", "maskedCardDraft"]
         map lawName (laws unit) `shouldSatisfy` \names -> all (`elem` names) ["Card masks number", "Card hides pin"]
   it "refuse a mask it cannot generate, by name" $ do
-    refused (card ["  number shown as hash"]) "`hash` is not generated on any target yet"
+    refused (card ["  pin shown as hash"]) "pin is not a Text, so it can only be shown as hidden"
     refused (card ["  pin shown as last 2"]) "pin is not a Text, so it can only be shown as hidden"
     refused (card ["  number shown as last 0"]) "shows nothing; write hidden"
     refused (card ["  cvv shown as hidden"]) "the record has no field cvv"
@@ -186,6 +191,41 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
     python `shouldSatisfy` isInfixOf "ls.mask_last(4, self.number)"
     python `shouldSatisfy` isInfixOf "def unmasked_repr(self)"
     python `shouldSatisfy` isInfixOf "ls.mask_fields(\"probe.rules::type::Card::Card\", [0, 1])"
+  it "show a hashed field as a keyed digest natively and hide it in the checked rendering" $ do
+    let masks = card ["  number shown as hash"]
+        file target name = concat [content | (path, content) <- fst (planned target masks), name `isInfixOf` path]
+    file "java" "lawspec/data/Card.java" `shouldSatisfy` isInfixOf "\"Card{number=\" + lawspec.runtime.LawSpecMasks.hash(number)"
+    file "javascript" "lawspec_data.mjs" `shouldSatisfy` isInfixOf "ls.maskHash(this.number)"
+    file "typescript" "lawspec_data.ts" `shouldSatisfy` isInfixOf "ls.maskHash(this.number)"
+    file "python" "lawspec_data.py" `shouldSatisfy` isInfixOf "ls.mask_hash(self.number)"
+    snd (planned "kotlin" masks) `shouldSatisfy` any (isInfixOf "A field shown as hash is hidden on this target")
+    -- No generated file holds a key: the application sets one when it starts.
+    concatMap snd (fst (planned "java" masks)) `shouldSatisfy` (not . isInfixOf "setHashKey(new byte")
+  it "hash with keyed BLAKE3 as the fixture every runtime is tested against records" $ do
+    fixture <- BL.readFile "test/fixtures/blake3-keyed-text.json"
+    let rows name = case decode fixture of
+          Just (Object fields) | Just (Array cases) <- KM.lookup name fields ->
+            [ (truncate count :: Int, T.unpack hash)
+            | Object row <- toList cases, Just (A.Number count) <- [KM.lookup "count" row], Just (String hash) <- [KM.lookup "hash" row] ]
+          _ -> []
+        key = T.encodeUtf8 (T.pack "whats the Elvish word for friend")
+        keyed text = maybe "" hexOf (blake3Keyed key (T.encodeUtf8 (T.pack text)))
+    length (rows "letters") `shouldBe` 11
+    [(count, keyed (take count (cycle ['a' .. 'z']))) | (count, _) <- rows "letters"] `shouldBe` rows "letters"
+    [(count, keyed (concat (replicate count "a\233\8364\128512"))) | (count, _) <- rows "mixed"] `shouldBe` rows "mixed"
+    -- The first two keyed hashes of BLAKE3's published test vectors (key as
+    -- above, inputs of no bytes and of the byte 0), written from memory:
+    -- this repository holds no copy of the keyed vectors to read them from.
+    fmap hexOf (blake3Keyed key B.empty) `shouldBe` Just "92b2b75604ed3c761f9d6f62392c8a9227ad0ea3f09573e783f1498a4ed60d26"
+    fmap hexOf (blake3Keyed key (B.pack [0])) `shouldBe` Just "6d7878dfff2f485635d39013278ae14f1454b8c0a3a2d34bc1ab38228a80c95b"
+    blake3Keyed (B.pack [1, 2, 3]) B.empty `shouldBe` Nothing
+    -- Each runtime's own test compares its digests with these rows.
+    forM_ [ "acceptance/contracts-masking/java/native/src/test/java/example/MaskedRenderingTest.java"
+          , "acceptance/contracts-masking/javascript/native/test/masked_rendering.test.mjs"
+          , "acceptance/contracts-masking/typescript/native/test/masked_rendering.test.ts"
+          , "acceptance/contracts-masking/python/native/tests/test_masked_rendering.py" ] $ \path -> do
+      native <- readFile path
+      [hash | (_, hash) <- rows "letters" ++ rows "mixed", not (hash `isInfixOf` native)] `shouldBe` []
   it "say so on a target whose native rendering is not masked" $ do
     let (files, warnings) = planned "kotlin" (card ["  pin shown as hidden"])
     files `shouldSatisfy` (not . null)

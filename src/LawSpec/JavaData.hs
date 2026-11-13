@@ -292,7 +292,7 @@ emitJavaDataWithProfile bits layout declarations = do
           Just C.MaskHidden -> E.quoted ((if index == 0 then name ++ "{" else ", ") ++ field ++ "=***")
           Just (C.MaskLast count) -> label index field <> D.text (" + lawspec.runtime.LawSpecMasks.last(" ++ show count ++ ", " ++ field ++ ")")
           Just C.MaskEmail -> label index field <> D.text (" + lawspec.runtime.LawSpecMasks.email(" ++ field ++ ")")
-          Just C.MaskHash -> E.quoted ((if index == 0 then name ++ "{" else ", ") ++ field ++ "=***")
+          Just C.MaskHash -> label index field <> D.text (" + lawspec.runtime.LawSpecMasks.hash(" ++ field ++ ")")
           Nothing -> label index field <> D.text (" + " ++ field)
 
 -- | The class that holds one constructor's values: the record itself for a

@@ -155,6 +155,7 @@ emitWebDataWithProfile ts bits layout declarations = do
           case if masked then lookup field masks else Nothing of
             Just (C.MaskLast count) -> [E.Str lead, E.call "ls.maskLast" [E.Num (show count), E.member E.This field]]
             Just C.MaskEmail -> [E.Str lead, E.call "ls.maskEmail" [E.member E.This field]]
+            Just C.MaskHash -> [E.Str lead, E.call "ls.maskHash" [E.member E.This field]]
             Just _ -> [E.Str (lead ++ "***")]
             Nothing -> [E.Str lead, E.call "String" [E.member E.This field]]
     key name = if name `elem` ["constructor","__proto__"] then "[" ++ q name ++ "]" else name
