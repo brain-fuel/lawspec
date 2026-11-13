@@ -203,7 +203,22 @@ test_explanationsWordOneTypedLawInEachRegister = describe "law explanations (ref
       message (refund ["view" .= s "evidence"]) `shouldBe`
         ["explain view \"evidence\" was removed; run lawspec evidence <unit>::<law> for a law's evidence; choose --view eng|math|dev"]
       message (refund ["view" .= s "other"]) `shouldBe` ["unknown explain view \"other\"; choose --view eng|math|dev"]
-      message (refund ["law" .= s "example.refunds::missing"]) `shouldBe` ["No matching law"]
+      message (refund ["law" .= s "example.refunds::missing"]) `shouldBe`
+        ["No matching law: example.refunds has no law missing. Its laws: example.refunds::|an eligible flagged refund requires review|"]
+    it "selects a phrase-named law with or without its delimiters" $ do
+      let explained selector = str (get "text" (refund ["law" .= s selector]))
+          exact = explained lawSelector
+      exact `shouldSatisfy` T.isPrefixOf "Law: an eligible flagged refund requires review"
+      explained "example.refunds::an eligible flagged refund requires review" `shouldBe` exact
+      explained "example.refunds::\"|an eligible flagged refund requires review|" `shouldBe` exact
+    it "names the nearest laws of the unit, or the units that have laws, when none matches" $ do
+      let message selector = [str (get "message" d) | d <- items (get "diagnostics" (refund ["law" .= s selector]))]
+      message "example.refunds::an eligible flaged refund needs review" `shouldBe`
+        ["No matching law: example.refunds has no law an eligible flaged refund needs review. Nearest: example.refunds::|an eligible flagged refund requires review|"]
+      message "example.refunds::flagged refund" `shouldBe`
+        ["No matching law: example.refunds has no law flagged refund. Nearest: example.refunds::|an eligible flagged refund requires review|"]
+      message "example.refund::an eligible flagged refund requires review" `shouldBe`
+        ["No matching law: no unit example.refund has a law. Units with laws: example.refunds"]
     it "presents host-completed native evidence in dev only, without changing any obligation" $ do
       let row = object ["declaration" .= s "example.refunds::law::|an eligible flagged refund requires review|", "stage" .= s "law"
                        , "status" .= s "property-tested", "reason" .= s "recorded"

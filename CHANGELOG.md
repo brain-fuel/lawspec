@@ -21,6 +21,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   deepest path the compiler would write, and on Windows reports
   `LongPathsEnabled`.
 - `LAWSPEC_CACHE_TRACE` reaches the WebAssembly compiler.
+- `lawspec explain` selects a phrase-named law by the phrase alone
+  (`unit::an eligible flagged refund requires review`) as well as with its
+  delimiters. A selector that matches no law lists the nearest law names of
+  that unit, or the units that have laws. The CLI reference showed a selector
+  that never matched; it is corrected.
 
 ### Changed
 

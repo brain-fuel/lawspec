@@ -67,17 +67,74 @@ data ExplainOptions = ExplainOptions
 -- no law matched.
 explainResult :: ExplainOptions -> Value -> Either String Value
 explainResult options result =
-  let laws = [law | law <- arr (field "laws" result) ++ arr (field "temporalLaws" result),
-                   maybe True (== selector law) (explainLaw options)]
-      selector law = str "owner" law <> "::" <> str "name" law
+  let allLaws = arr (field "laws" result) ++ arr (field "temporalLaws" result)
+      laws = maybe allLaws (`selectLaws` allLaws) (explainLaw options)
       context = presentation result
       evidence = fromMaybe (field "evidence" result) (explainEvidence options)
       explanations = [if kind law `elem` ["model", "history"]
         then explainTemporal (explainView options) evidence law
         else explainOne context (explainView options) evidence law | law <- laws]
-  in if null laws then Left "No matching law" else Right (object
+  in if null laws then Left (noMatchingLaw (explainLaw options) allLaws) else Right (object
        [ "explanations" .= map explanationJson explanations
        , "text" .= T.intercalate "\n\n" (map explanationText explanations) ])
+
+-- | The laws a selector names. The exact @owner::name@ of the wire law wins.
+-- Otherwise a phrase name matches with or without its delimiters: the stored
+-- @|phrase|@, the bare @phrase@ and the source spelling @"|phrase|@ select the
+-- same law.
+selectLaws :: Text -> [Value] -> [Value]
+selectLaws wanted laws = case [law | law <- laws, lawSelector law == wanted] of
+  [] -> [law | law <- laws, fmap barePhrase (splitSelector (lawSelector law)) == fmap barePhrase (splitSelector wanted)]
+  exact -> exact
+
+lawSelector :: Value -> Text
+lawSelector law = str "owner" law <> "::" <> str "name" law
+
+-- | A selector's unit and law name; the unit is empty when none was written.
+splitSelector :: Text -> (Text, Text)
+splitSelector selector = case T.breakOn "::" selector of
+  (owner, rest) | Just name <- T.stripPrefix "::" rest -> (owner, name)
+  _ -> ("", selector)
+
+-- | A law name without the phrase delimiters, however many of them were kept.
+barePhrase :: Text -> Text
+barePhrase name =
+  let opened = fromMaybe name (T.stripPrefix "\"" name)
+      closed = fromMaybe opened (T.stripSuffix "\"" opened)
+  in case T.stripPrefix "|" closed >>= T.stripSuffix "|" of
+       Just phrase | not (T.null phrase) -> T.strip phrase
+       _ -> name
+
+-- | Why no law matched, with the nearest law names of the selected unit, or
+-- the units that have laws when the unit itself is unknown.
+noMatchingLaw :: Maybe Text -> [Value] -> String
+noMatchingLaw Nothing _ = "No matching law"
+noMatchingLaw (Just wanted) laws
+  | null laws = "No matching law"
+  | null inUnit = T.unpack ("No matching law: no unit " <> owner <> " has a law. Units with laws: " <> T.intercalate ", " units)
+  | otherwise = T.unpack ("No matching law: " <> owner <> " has no law " <> name <> ". "
+      <> (if null near then "Its laws: " else "Nearest: ")
+      <> T.intercalate "; " (take 5 (if null near then inUnit else near))
+      <> (if null near && length inUnit > 5 then "; and " <> T.pack (show (length inUnit - 5)) <> " more" else ""))
+  where
+    (owner, name) = splitSelector wanted
+    units = S.toList (S.fromList [str "owner" law | law <- laws])
+    inUnit = [lawSelector law | law <- laws, str "owner" law == owner]
+    near = map snd (sortOn fst
+      [ (distance, selector)
+      | selector <- inUnit
+      , let candidate = fold (snd (splitSelector selector))
+            distance = if fold name `T.isInfixOf` candidate || candidate `T.isInfixOf` fold name then 0 else editDistance (fold name) candidate
+      , distance * 3 <= max (T.length candidate) (T.length (fold name)) ])
+    fold = T.toLower . barePhrase
+
+-- | Levenshtein distance, for near-match suggestions only.
+editDistance :: Text -> Text -> Int
+editDistance left right = last (T.foldl' row [0 .. T.length right] left)
+  where
+    row previous@(corner : above) c = scanl step (corner + 1) (zip3 (T.unpack right) previous above)
+      where step leftCost (d, diagonal, up) = minimum [leftCost + 1, up + 1, diagonal + fromEnum (c /= d)]
+    row [] _ = []
 
 data Explanation = Explanation { exView :: View, exLaw :: Text, exName :: Text, exSections :: [Section] }
 
