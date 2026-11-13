@@ -60,6 +60,7 @@ directory**, initialize before installing, so that LawSpec can create
 
 ```sh
 git clone https://github.com/brain-fuel/lawspec.git lawspec
+npm ci --ignore-scripts --prefix lawspec/npm
 mkdir lawspec-example
 cd lawspec-example
 node ../lawspec/npm/bin/lawspec.mjs init --target javascript
@@ -69,6 +70,14 @@ npx lawspec check
 npx lawspec explain 'example.codec::codec'
 npx lawspec doctor
 ```
+
+`npm ci` installs the checkout's own dependencies: npm links a directory
+outside the project and does not install that directory's dependencies.
+Installing the link needs no flags, and `--ignore-scripts` also works. If your
+registry mirror does not have a released version yet,
+[install from a release tarball](docs/how-to/install-and-init.md#install-from-a-release-tarball).
+`ricestax`, which only `lawspec project` uses, is an
+[optional package](docs/how-to/install-and-init.md#optional-packages).
 
 New projects start with `verification.layers: []`: intrinsic definition checks
 run, and no law verification is selected. Set `verification.layers` to

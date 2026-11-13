@@ -17,26 +17,31 @@ You do not need a Haskell toolchain. The reference platforms are macOS and Linux
 
 This guide describes the canonical authoring profile in the unreleased minor on
 `main`. The checkout includes its prebuilt WASM package. Install that package
-locally; you do not need to build the Haskell compiler. For the released
-[0.24.0 npm package](https://www.npmjs.com/package/lawspec/v/0.24.0), follow the
-[0.24.0 documentation](https://github.com/brain-fuel/lawspec/tree/v0.24.0).
+locally; you do not need to build the Haskell compiler. To use the released
+package instead, install `lawspec@0.33.0` from
+[npm](https://www.npmjs.com/package/lawspec) and follow the
+[0.33.0 documentation](https://github.com/brain-fuel/lawspec/tree/v0.33.0).
 
 ```sh
 git clone https://github.com/brain-fuel/lawspec.git lawspec
 ```
 
-To run the CLI straight from the checkout, install its locked dependencies
-first. The lock pins the integrity of every package, including the optional
-native compiler package for each platform:
+Install the checkout's locked dependencies first, both to run the CLI straight
+from the checkout and to install the checkout into a project: npm links a
+directory outside the project and does not install that directory's
+dependencies. The lock pins the integrity of every package, including the
+optional native compiler package for each platform:
 
 ```sh
 npm ci --ignore-scripts --prefix lawspec/npm
 node lawspec/npm/bin/lawspec.mjs --version
 ```
 
-The default WASM runtime needs none of the optional packages, so
-`npm ci --omit=optional` also works. Between releases, `main` names native
-compiler packages that are not published yet; use `--omit=optional` there.
+The default WASM runtime needs none of the [optional packages](#optional-packages),
+so `npm ci --omit=optional` also works; it also leaves out `ricestax`, which
+only `lawspec project` uses. Between releases, `main` names native compiler
+packages that are not published yet. npm skips an optional package that the
+registry does not have.
 
 ## Start in a new, empty directory
 
@@ -53,6 +58,12 @@ npx lawspec check
 npx lawspec explain 'example.codec::codec'
 npx lawspec doctor
 ```
+
+Installing the checkout's `npm` directory needs no flags. Its `postinstall`
+step prepares the optional native component runtime, which a checkout does not
+contain, so there it does nothing. `npm install --ignore-scripts` works too.
+To copy the checkout's package into the project with its dependencies, instead
+of linking it, use `npm install --save-dev --install-links ../lawspec/npm`.
 
 `init` writes:
 
@@ -76,7 +87,7 @@ lists the build setup `init` creates and the toolchain it expects.
 New projects have `verification.layers: []`. Compiler checks for definitions
 remain mandatory, and `check` reports that no optional law checks were selected.
 To run the starter's properties and examples, set `verification.layers` to
-`["property", "examples"]` in the generated `lawspec.edn`, then generate:
+`[:property :examples]` in the generated `lawspec.edn`, then generate:
 
 ```sh
 npx lawspec generate
@@ -116,6 +127,45 @@ npx lawspec init --target javascript
 dependency and test-runner changes you need to make. Apply them before you
 generate. [Configure an existing project](configure-an-existing-project.md)
 covers the details.
+
+## Install from a release tarball
+
+A registry mirror can lag behind npm. From 0.34.0, each
+[GitHub release](https://github.com/brain-fuel/lawspec/releases) has the packed
+npm package attached as `lawspec-<version>.tgz`: the archive that was
+published to npm. Download it and install the file:
+
+```sh
+npm install --save-dev ./lawspec-0.33.0.tgz
+npx lawspec --version
+```
+
+Use `npm install --global ./lawspec-0.33.0.tgz` for a global CLI. The archive
+holds LawSpec only. npm still downloads its dependencies (`web-tree-sitter`,
+`@modelcontextprotocol/server`, `edn-data`, `tar` and `zod`) from your
+configured registry, so the mirror must have those. npm records the dependency
+as a `file:` path in `package.json`; keep the archive where every installation
+of the project can read it, for example in the repository or an internal
+artifact store.
+
+## Optional packages
+
+LawSpec declares these as optional dependencies. An installation succeeds when
+the registry lacks one, and with `--omit=optional` or `--ignore-scripts`:
+
+- `ricestax@0.3.2` sets Canon up for `lawspec project init` and `adopt`, and
+  runs Canon for `lawspec project status` and `validate`. Without it, those
+  commands say how to install it:
+  `npm install --save-dev ricestax@0.3.2` beside a local `lawspec`, or
+  `npm install --global ricestax@0.3.2` beside a global one. `status` and
+  `validate` can use a matching `canon` executable named by the `CANON`
+  environment variable instead. No other command uses it.
+- `wasm-platform-kit` and the `@goforgedev/compiler-<platform>` packages are
+  the native component runtime. The CLI compiles with its WebAssembly core and
+  does not need them. When `wasm-platform-kit` or its package for your
+  platform is missing, `postinstall` prints one line saying so and succeeds.
+  When only the `@goforgedev/compiler-<platform>` package is missing,
+  `postinstall` compiles the component on your machine, which takes longer.
 
 ## Editor support
 
