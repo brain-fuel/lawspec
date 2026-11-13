@@ -5,7 +5,7 @@
 -- lines, a declaration broken after its =, and a chained call broken
 -- before its dot. Strings are Kotlin literals ($ escaped) and never split.
 module LawSpec.KotlinLayout
-  ( kotlinString, escapedPath, operators, call, callThen, selects, castCall, cast, callWith, arguments, lambda, trailing, trailingCall, bind, Receiver, expressionReceiver, callReceiver, receiverDoc, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody
+  ( kotlinString, escapedPath, operators, call, callThen, selects, castCall, cast, callWith, arguments, lambda, trailing, trailingCall, bind, Receiver, expressionReceiver, callReceiver, receiverDoc, chain, block, statements, kotlinStyle, pairTo, condition, equalsBody, parameter
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -25,6 +25,12 @@ escapedPath = joinDots . map escape . splitOn
       (a, []) -> [a]
       (a, _ : b) -> a : splitOn b
     joinDots = foldr1 (\a b -> a ++ "." ++ b)
+
+-- | A parameter and its type. A type that does not fit after the name goes
+-- to the next line, indented, before its own arguments break: ktfmt breaks
+-- the outer level first.
+parameter :: String -> D.Doc -> D.Doc
+parameter name ty = D.group (D.text (name ++ ":") <> D.nest 4 (D.softline <> ty))
 
 -- | A string literal.
 kotlinString :: String -> D.Doc

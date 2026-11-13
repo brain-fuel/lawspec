@@ -28,7 +28,7 @@ import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc, sourceDoc, hangValue, Codec, codecCall)
+import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc, sourceDoc, hangValue, hangValueWith, Codec, codecCall)
 import qualified LawSpec.Naming as Nm
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.SourceLink (generatedHeader)
@@ -277,13 +277,20 @@ statements env scope resultType sink e = case expressionNode e of
               _ -> [D.text ("(" ++ intercalate ", " (map fst changed) ++ ") = (") <> D.joinWith (D.text ", ") (map snd changed) <> D.text ")"]
         modify (\(n, assigned, _) -> (n, map fst changed ++ assigned, True))
         pure (concatMap fst parts ++ assignment ++ [D.text "continue"])
+  -- A concatenation moved to the line after return or = is already a
+  -- continuation there: swift-format puts its operator under its first
+  -- operand, not a level further in.
+  Helper Append [a, b] -> do
+    (sa, xa) <- cexpr env scope a
+    (sb, xb) <- cexpr env scope b
+    pure (sa ++ sb ++ [hangValueWith prefix (binaryDoc xa "+" xb) (D.group (xa <> D.softline <> D.text "+ " <> xb))])
   _ -> do
     (s, x) <- cexprWith Top env scope e
-    pure (s ++ [finish x])
+    pure (s ++ [hangValue prefix x])
   where
-    finish x = case sink of
-      Return -> hangValue "return" x
-      Assign name -> hangValue (name ++ " =") x
+    prefix = case sink of
+      Return -> "return"
+      Assign name -> name ++ " ="
     -- A value computed for its effects only.
     discard value x = case expressionNode value of
       Local _ -> []

@@ -9,7 +9,7 @@ module LawSpec.Swift.Code
   ( Ty(..), Expr(..), Codec(..), ClosureEffect(..), codecInvoke, typeText, typeDoc
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
   , call, pure', str, longStringLiteral, closureDoc, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
-  , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, sourceDoc, codecDoc, codecCall, fileHeader, blockDoc, comment
+  , indentation, swiftLayout, hangValue, hangValueWith, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, sourceDoc, codecDoc, codecCall, fileHeader, blockDoc, comment
   ) where
 
 import qualified LawSpec.Code.Doc as D

@@ -262,11 +262,26 @@ brokenW w i c e = case e of
     in exprW w i c (head operands) ++ concat [opening (pad i (o ++ " ")) (exprW w i (i + length o + 1) x) | x <- drop 1 operands]
   A s -> [s]
   -- An operation in parentheses continues aligned after the parenthesis.
-  Paren x@(Infix {}) -> closing ")" (opening "(" (exprW w (c + 1) (c + 1) x))
+  -- Its first operand's own breaks are indented from the line when the
+  -- parenthesis starts the line (Fantomas indents from the line there, and
+  -- from the operation's column only once something precedes it).
+  Paren x@(Infix {}) -> parenthesisedChain (if c == i then i else c + 1) c x
   Paren x -> closing ")" (opening "(" (exprW w i (c + 1) x))
   Prefix o x -> opening o (exprW w i (c + length o) x)
   Annotated x t -> opening "(" (exprW w i (c + 1) x) ++ [pad i (": " ++ t ++ ")")]
   where
+    parenthesisedChain base column x = case x of
+      Infix o _ _ ->
+        let operands = chain o x
+            inner = column + 1
+            first = case head operands of
+              h@(Paren y@(Infix {})) | maybe True (\t -> inner + columns t - 1 > w) (flat h) -> parenthesisedChain base inner y
+              h | base == inner -> exprW w inner inner h
+              h -> case flat h of
+                Just t | inner + columns t <= w -> [t]
+                _ -> brokenW w base inner h
+        in closing ")" (opening "(" (first ++ concat [opening (pad inner (o ++ " ")) (exprW w inner (inner + length o + 1) y) | y <- drop 1 operands]))
+      _ -> closing ")" (opening "(" (exprW w (column + 1) (column + 1) x))
     commaList open close args =
       let items = map (itemW w (i + 4)) args
       in [open] ++ concat [if k == length items then ls else closing "," ls | (k, ls) <- zip [1 :: Int ..] items] ++ [pad i close]

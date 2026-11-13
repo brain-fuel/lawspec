@@ -139,7 +139,7 @@ emitKotlinDefinitions layout bits declarations units = do
           types <- mapM (Native.kotlinDataTypeDoc declarations) args
           resultType <- flat <$> Native.kotlinDataTypeDoc declarations result
           let declaration = definitionDeclaration d
-              parameters = D.text "symbols: MutableMap<String, Any>" : [D.text (parameter ++ ": ") <> ty | (parameter, ty) <- zip (apiParameters [] declaration) types]
+              parameters = D.text "symbols: MutableMap<String, Any>" : [KotlinLayout.parameter parameter ty | (parameter, ty) <- zip (apiParameters [] declaration) types]
           pure (KotlinLayout.equalsBody (D.text ("fun " ++ declarationName declaration) <> KotlinLayout.arguments parameters <> D.text ": " <> resultType)
             (KotlinLayout.call toNative [KotlinLayout.call function
               [KotlinLayout.call fromNative [D.text parameter] | (parameter, (fromNative, _)) <- zip (apiParameters [] declaration) conversions]]))
@@ -156,7 +156,7 @@ emitKotlinDefinitions layout bits declarations units = do
                      , Just (_, a) <- [findAbility units ability] ]
           parameters = D.text "symbols: MutableMap<String, Any>" :
             [D.text (name ++ ": " ++ abilityInterface ability) | (ability, name) <- handlers] ++
-            [D.text (parameter ++ ": ") <> ty | (parameter,ty) <- zip (apiParameters (map snd handlers) declaration) types]
+            [KotlinLayout.parameter parameter ty | (parameter,ty) <- zip (apiParameters (map snd handlers) declaration) types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
           installs = [call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",

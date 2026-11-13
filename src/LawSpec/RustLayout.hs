@@ -726,7 +726,19 @@ infixDoc e = case (flat e, e) of
       [(op, x)] | callRoot first, Just r <- oneLine x, Just f <- oneLine first ->
         [D.text f <> D.nest 4 (D.hardline <> D.text (op ++ " ") <> expr x), expr first <> D.text (" " ++ op ++ " " ++ r)]
       _ -> []
-    broken = expr first <> D.nest 4 (mconcat [D.hardline <> D.text (op ++ " ") <> expr x | (op, x) <- rest])
+    -- (rustfmt's rewrite_pairs_multiline keeps an operand on the line where
+    -- the one before it ends when that line is no wider than an indent,
+    -- which is so after a call that had to break: its closing bracket
+    -- stands alone)
+    broken = expr first <> mconcat
+      [ if closesAlone before then D.text (" " ++ op ++ " ") <> kept x else D.nest 4 (D.hardline <> D.text (op ++ " ") <> expr x)
+      | (before, (op, x)) <- zip (first : map snd rest) rest ]
+    closesAlone x = callRoot x && isNothing (oneLine x)
+    -- (a parenthesised operand kept on that line is laid out a column
+    -- short, for its closing parenthesis, as rustfmt's rewrite_paren does)
+    kept x = case x of
+      Paren a -> D.text "(" <> D.narrow 1 (expr a) <> D.text ")"
+      _ -> expr x
     operands x = case x of
       Infix p op a b -> let (f, r) = sameLevel p a in (f, r ++ [(op, b)])
       _ -> (x, [])
