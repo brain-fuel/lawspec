@@ -24,7 +24,7 @@ RECORDED = [
 
 
 def test_mask_hash_in_a_specification_is_the_runtime_mask_hash_under_the_key():
-    ls.set_mask_key(KEY)
+    ls.set_mask_hash_key(KEY)
     for text in TEXTS:
         shown = definitions.fingerprint({}, KEY, text)
         assert shown == ls.mask_hash(text)
@@ -41,7 +41,7 @@ def test_the_default_hash_is_the_blake3_one():
 
 
 def test_a_record_rendered_with_the_key_is_its_native_rendering():
-    ls.set_mask_key(KEY)
+    ls.set_mask_hash_key(KEY)
     session = data.Session("ann", "tok-12345678", "c")
     shown = definitions.maskedSessionWith({}, KEY, session)
     assert shown == repr(session)

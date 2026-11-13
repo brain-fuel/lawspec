@@ -199,6 +199,7 @@ async function setup(target)
         'mod',
         'download',
         'pgregory.net/rapid',
+        'goforge.dev/blake3sum',
         'github.com/cloudflare/circl@v1.6.5',
       ],
       root,

@@ -93,6 +93,7 @@ extra-source-files:
     runtime/LawSpecKotlinStrategies.kt
     runtime/LawSpecKotlinTesting.kt
     runtime/LawSpecStrategies.kt
+    runtime/lawspec_blake3.go
     runtime/lawspec_codecs.go
     runtime/lawspec_data_strategies.go
     runtime/lawspec_fast.go
@@ -850,6 +851,7 @@ library
       LawSpec.Manifest.EDN
       LawSpec.Manifest.Types
       LawSpec.MappingCheck
+      LawSpec.MaskAdvice
       LawSpec.Matchers
       LawSpec.Memo
       LawSpec.Model

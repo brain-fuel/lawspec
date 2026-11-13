@@ -609,7 +609,7 @@ walk signatures contracts self provenance facts expression = case expression of
           [derived | derived <- derivedFacts known fact, faithful derived, derived `S.notMember` truthSet known]) facts (truths facts)
     unless (entails saturated (Literal (SBool False)))
       (Left (if name == unknownKeyLength
-        then "maskHash is given a key that is not known to be 32 bytes; say so where the key comes from: (key :: Bytes where prelude.length key = 32)"
+        then "a keyed hash is given a key that is not known to be 32 bytes; say so where the key comes from: (key :: Bytes where prelude.length key = 32)"
         else "a match leaves out " ++ name ++ ", which its value's index allows; add a branch for " ++ name))
     pure []
   Conditional condition yes no -> do

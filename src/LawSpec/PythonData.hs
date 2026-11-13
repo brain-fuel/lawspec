@@ -78,8 +78,11 @@ emitPythonDataWithProfile bits layout declarations = do
           -- What a masking block hides is hidden in everything the runtime
           -- prints about a failure. ref:DEC-masking
           [ D.joinWith D.hardline
-              [ invoke "ls.mask_fields" [D.text (q (C.idText tag)), array (map (D.text . show) positions)]
-              | (tag, positions) <- Backend.maskedPositions declarations ]
+              ([ invoke "ls.mask_fields" [D.text (q (C.idText tag)), array (map (D.text . show) positions)]
+              | (tag, positions) <- Backend.maskedPositions declarations ] ++
+              [ invoke "ls.digest_fields"
+                  [D.text (q (C.idText tag)), array [E.tuple [D.text (show position), D.text (q context)] | (position, context) <- positions]]
+              | (tag, positions) <- Backend.digestPositions declarations ])
           | not (null (Backend.maskedPositions declarations)) ] ++
           [D.text "return " <> invoke "_schema.Schema"
             [array metadata, array (map (D.text . q . primitiveName) primitives)]]))
@@ -148,6 +151,8 @@ emitPythonDataWithProfile bits layout declarations = do
                 Just (C.MaskLast count) -> [D.text (q lead), D.text ("ls.mask_last(" ++ show count ++ ", self." ++ label ++ ")")]
                 Just C.MaskEmail -> [D.text (q lead), D.text ("ls.mask_email(self." ++ label ++ ")")]
                 Just (C.MaskHash algorithm) -> [D.text (q lead), D.text ("ls." ++ Backend.maskFunction "python" algorithm ++ "(self." ++ label ++ ")")]
+                Just (C.MaskDigest algorithm context) ->
+                  [D.text (q lead), invoke ("ls." ++ Backend.digestFunction "python" algorithm) [D.text (q context), D.text ("self." ++ label)]]
                 Just _ -> [D.text (q (lead ++ "***"))]
                 Nothing -> [D.text (q lead), D.text ("ls.plain(self." ++ label ++ ")")]
             -- A joined list is laid out the same way whatever its length.

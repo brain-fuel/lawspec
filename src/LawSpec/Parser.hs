@@ -1045,19 +1045,21 @@ canonicalRecordP = sourceNode "record-declaration" (const Nothing) $ do
           | (label, ty) <- [last fields]]
 
 -- | masking Record is field shown as mask ... end masking. A mask is email,
--- last n, hash (with or without its algorithm's name) or hidden.
+-- last n, hash or digest (with or without its algorithm's name) or hidden.
 maskingP :: P MaskingDeclaration
 maskingP = blockP "masking" $ do
   ((record, fields), range) <- withSpan $ do
     keyword "masking"
     record <- ident
     keyword "is"
+    -- The algorithm's name, where the next word is not the next field.
+    let algorithm = optional (try (ident <* notFollowedBy (keyword "shown")))
     fields <- many (sourceNode "masking-field" (Just . fst) $ do
       label <- try (ident <* keyword "shown")
       keyword "as"
-      mask <- (MaskEmail <$ keyword "email") <|> (MaskHash <$> (keyword "hash" *> optional (try (ident <* notFollowedBy (keyword "shown"))))) <|> (MaskHidden <$ keyword "hidden")
+      mask <- (MaskEmail <$ keyword "email") <|> (MaskHash <$> (keyword "hash" *> algorithm)) <|> (MaskDigest <$> (keyword "digest" *> algorithm)) <|> (MaskHidden <$ keyword "hidden")
         <|> (MaskLast <$> (keyword "last" *> lexeme L.decimal))
-        <?> "a mask: email, last <n>, hash, hash <algorithm> or hidden"
+        <?> "a mask: email, last <n>, hash, digest (each with or without its algorithm) or hidden"
       pure (label, mask))
     closeP "masking"
     pure (record, fields)

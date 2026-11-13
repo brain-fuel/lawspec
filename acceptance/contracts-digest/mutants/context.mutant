@@ -1,0 +1,7 @@
+expect: a field's digest is the digest within its own context
+@@ acceptance/contracts-digest/digest_masking.lawspec
+<<<<<<<
+        "Account{owner=" ++ value.owner ++ ", iban=" ++ prelude.maskDigestIn "example.digest.Account.iban" value.iban
+=======
+        "Account{owner=" ++ value.owner ++ ", iban=" ++ prelude.maskDigestIn "example.digest.Account.reference" value.iban
+>>>>>>>

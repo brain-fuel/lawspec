@@ -196,14 +196,21 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   , recordContracts :: [RecordContract] } deriving (Eq, Show, Generic)
 
 -- | How a masked field is shown: the first character of an address's local
--- part and its domain; the last n characters; a keyed hash; or nothing of it.
--- A hash names its algorithm or takes the default one (hashAlgorithms).
-data FieldMask = MaskEmail | MaskLast Integer | MaskHash (Maybe String) | MaskHidden deriving (Eq, Show, Generic)
+-- part and its domain; the last n characters; a keyed hash; a digest, which
+-- needs no key; or nothing of it. A hash and a digest name their algorithm
+-- or take the default one (hashAlgorithms).
+data FieldMask = MaskEmail | MaskLast Integer | MaskHash (Maybe String) | MaskDigest (Maybe String) | MaskHidden deriving (Eq, Show, Generic)
 
--- | The algorithms `shown as hash <algorithm>` may name. `shown as hash`
--- alone is the first: changing it is a breaking change. ref:DEC-masking
+-- | The algorithms `shown as hash <algorithm>` and `shown as digest
+-- <algorithm>` may name. Without a name it is the first: changing it is a
+-- breaking change. ref:DEC-masking
 hashAlgorithms :: [String]
 hashAlgorithms = ["blake3"]
+
+-- | What separates the digests of one masked field from every other
+-- field's: its unit, record and name. ref:DEC-masking
+digestContext :: String -> String -> String -> String
+digestContext unit record field = unit ++ "." ++ record ++ "." ++ field
 
 -- | The words that name a mask after `shown as`.
 fieldMaskText :: FieldMask -> String
@@ -212,6 +219,8 @@ fieldMaskText mask = case mask of
   MaskLast count -> "last " ++ show count
   MaskHash Nothing -> "hash"
   MaskHash (Just algorithm) -> "hash " ++ algorithm
+  MaskDigest Nothing -> "digest"
+  MaskDigest (Just algorithm) -> "digest " ++ algorithm
   MaskHidden -> "hidden"
 
 -- | masking Record is field shown as mask ... end masking.

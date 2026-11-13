@@ -448,8 +448,9 @@ auditCollected context declarations constructors bits unit templates = do
         checkedScale <- convert integers (S.Named "Int32") (effectiveType scale) scaleValue
         pure (T.Sequence [value,checkedScale])
       ("length", _, [value]) -> pure (T.Opaque "length" [value])
-      (hash, _, [key, text]) | hash `elem` ["maskHash", "maskHashBlake3"] ->
-        pure (T.keyedBy key (T.Opaque "maskHashBlake3" [key, text]))
+      ("blake3Keyed", _, [key, bytes]) -> pure (T.keyedBy key (T.Opaque "blake3Keyed" [key, bytes]))
+      ("blake3", _, [bytes]) -> pure (T.Opaque "blake3" [bytes])
+      ("blake3DeriveKey", _, [context, material]) -> pure (T.Opaque "blake3DeriveKey" [context, material])
       ("rfc822Uncommented", _, [value]) -> pure (T.Opaque "rfc822Uncommented" [value])
       -- Sequence helpers are total.
       _ | name `elem` ["append","slice","take","drop","at","range","octets","bytesOf","utf8","textOf","join","split","trim","words","lines","isUnicodeWhitespace","trimAsciiControl","wrapping","saturating","bounded"] ->

@@ -213,6 +213,28 @@ export function maskFields(tag, positions)
   MASKED_FIELDS.set(tag, new Set(positions));
 }
 
+// The fields a masking block shows as digest, by constructor tag and
+// position, each with its context: a failure shows such a field's digest,
+// which is what the record's own rendering shows.
+const DIGEST_FIELDS = new Map();
+
+export function digestFields(tag, contexts)
+{
+  DIGEST_FIELDS.set(tag, new Map(contexts));
+}
+
+/** What a failure shows of a masked field: its digest, or three stars. */
+function concealedField(tag, position, field)
+{
+  const context = DIGEST_FIELDS.get(tag)?.get(position);
+  if (context !== undefined && typeof field === 'string')
+  {
+    const text = maskDigestIn(context, field);
+    return Object.freeze({toString: () => text});
+  }
+  return MASKED_FIELDS.get(tag)?.has(position) ? CONCEALED : null;
+}
+
 /**
  * Three stars and the last characters; a text no longer than that is not
  * shown at all. As rulesMaskLast of lawspec.rules.
@@ -249,6 +271,8 @@ const BLAKE3_CHUNK_END = 2;
 const BLAKE3_PARENT = 4;
 const BLAKE3_ROOT = 8;
 const BLAKE3_KEYED_HASH = 16;
+const BLAKE3_DERIVE_KEY_CONTEXT = 32;
+const BLAKE3_DERIVE_KEY_MATERIAL = 64;
 
 /** Sixteen little-endian words of a block, zero padded past its length. */
 function blake3Words(bytes, offset, length)
@@ -297,32 +321,41 @@ function blake3Compress(node, extra)
 }
 
 /**
- * Keyed BLAKE3-256 (the BLAKE3 specification, section 2.1) of some bytes
- * under a key of eight words, in lower-case hexadecimal. The chunks are
- * merged as the reference implementation merges them: a stack of subtree
- * chaining values, one subtree closed per trailing zero of the chunk count.
+ * The 32-byte BLAKE3 output of some bytes from a key of eight words and a
+ * mode's flag (the BLAKE3 specification, section 2: the initial value and
+ * no flag hash, a key and KEYED_HASH hash under the key, and the two
+ * DERIVE_KEY flags derive a key). The chunks are merged as the reference
+ * implementation merges them: a stack of subtree chaining values, one
+ * subtree closed per trailing zero of the chunk count. One thread, no SIMD;
+ * the official test vectors check it for every mode (the contracts-digest
+ * acceptance suite).
  */
-function blake3KeyedHex(key, bytes)
+function blake3Digest(key, mode, bytes)
 {
   const parent = (left, right) =>
   {
     const words = new Uint32Array(16);
     words.set(left);
     words.set(right, 8);
-    const flags = BLAKE3_KEYED_HASH | BLAKE3_PARENT;
-    return {cv: key, words, counter: 0, length: 64, flags};
+    return {
+      cv: key,
+      words,
+      counter: 0,
+      length: 64,
+      flags: mode | BLAKE3_PARENT,
+    };
   };
   const chunk = index =>
   {
     const end = Math.min(bytes.length, index * 1024 + 1024);
     let offset = index * 1024;
     let cv = key;
-    let flags = BLAKE3_KEYED_HASH | BLAKE3_CHUNK_START;
+    let flags = mode | BLAKE3_CHUNK_START;
     while (end - offset > 64)
     {
       const words = blake3Words(bytes, offset, 64);
       cv = blake3Compress({cv, words, counter: index, length: 64, flags}, 0);
-      flags = BLAKE3_KEYED_HASH;
+      flags = mode;
       offset += 64;
     }
     return {
@@ -344,30 +377,66 @@ function blake3KeyedHex(key, bytes)
     stack.push(cv);
   }
   while (stack.length > 0) node = parent(stack.pop(), blake3Compress(node, 0));
-  let hex = '';
-  for (const word of blake3Compress(node, BLAKE3_ROOT))
-  {
-    for (let shift = 0; shift < 32; shift += 8)
-      hex += ((word >>> shift) & 255).toString(16).padStart(2, '0');
-  }
-  return hex;
+  const out = new Uint8Array(32);
+  const view = new DataView(out.buffer);
+  blake3Compress(node, BLAKE3_ROOT).forEach((word, i) =>
+    view.setUint32(4 * i, word, true),
+  );
+  return out;
+}
+
+const blake3Key = bytes => blake3Words(bytes, 0, 32).slice(0, 8);
+
+/** The 32-byte BLAKE3 hash of some bytes: LawSpec's `blake3`. */
+export function blake3(bytes)
+{
+  return blake3Digest(Uint32Array.from(BLAKE3_IV), 0, bytes);
+}
+
+/**
+ * The 32-byte BLAKE3 keyed hash of some bytes under a key of 32 bytes:
+ * LawSpec's `blake3Keyed`.
+ */
+export function blake3Keyed(key, bytes)
+{
+  if (!(key instanceof Uint8Array) || key.length !== 32)
+    throw new TypeError('blake3Keyed: the key is a Uint8Array of 32 bytes');
+  return blake3Digest(blake3Key(key), BLAKE3_KEYED_HASH, bytes);
+}
+
+/**
+ * The 32 bytes BLAKE3 derives from some key material in a context, which is
+ * a text: LawSpec's `blake3DeriveKey`.
+ */
+export function blake3DeriveKey(context, material)
+{
+  const contextKey = blake3Digest(
+    Uint32Array.from(BLAKE3_IV),
+    BLAKE3_DERIVE_KEY_CONTEXT,
+    new TextEncoder().encode(String(context)),
+  );
+  return blake3Digest(
+    blake3Key(contextKey),
+    BLAKE3_DERIVE_KEY_MATERIAL,
+    material,
+  );
 }
 
 /** The key of the hash mask: set by the application, never generated. */
-let MASK_KEY = null;
+let MASK_HASH_KEY = null;
 
 /**
  * Sets the key of the `hash` mask: 32 secret bytes the application loads
  * when it starts. LawSpec never writes a key into generated code, and has
  * no default.
  */
-export function setMaskKey(key)
+export function setMaskHashKey(key)
 {
   if (!(key instanceof Uint8Array) || key.length !== 32)
     throw new TypeError(
       'LawSpec masking: the hash key is a Uint8Array of 32 bytes',
     );
-  MASK_KEY = blake3Words(key, 0, 32).slice(0, 8);
+  MASK_HASH_KEY = Uint8Array.from(key);
 }
 
 /** What a hidden value shows: three stars, whatever the value. */
@@ -377,20 +446,20 @@ export function maskStar(_value)
 }
 
 /**
- * `hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes, under
- * the key the application set: equal values show alike, and the value
- * cannot be read back without the key. Without a key it throws; it never
- * falls back to showing or hiding. A lone surrogate is hashed as U+FFFD.
+ * `hash:` and the BLAKE3 keyed hash of the text's UTF-8 bytes, under the
+ * key the application set: equal values show alike, and the value cannot be
+ * found without the key, even by trying candidates. Without a key it
+ * throws; it never falls back to showing or hiding. A lone surrogate is
+ * hashed as U+FFFD.
  */
 export function maskHashBlake3(value)
 {
-  if (MASK_KEY === null)
+  if (MASK_HASH_KEY === null)
     throw new Error(
       'LawSpec masking: a field is shown as hash and no key is set; call' +
-        ' setMaskKey with 32 secret bytes when the application starts',
+        ' setMaskHashKey with 32 secret bytes when the application starts',
     );
-  const bytes = new TextEncoder().encode(String(value));
-  return 'hash:' + blake3KeyedHex(MASK_KEY, bytes);
+  return maskHashBlake3With(MASK_HASH_KEY, value);
 }
 
 /**
@@ -399,6 +468,35 @@ export function maskHashBlake3(value)
  * (maskHashBlake3) where the digests must stay comparable.
  */
 export const maskHash = maskHashBlake3;
+
+/**
+ * `digest:` and the BLAKE3 hash of the text's UTF-8 bytes: LawSpec's
+ * `maskDigestBlake3 text`, and what b3sum prints for the same bytes. It
+ * needs no key, so whoever can guess the text can check the guess. A lone
+ * surrogate is hashed as U+FFFD.
+ */
+export function maskDigestBlake3(value)
+{
+  return 'digest:' + hex(blake3(new TextEncoder().encode(String(value))));
+}
+
+/**
+ * The digest of a text within a context, by BLAKE3's key derivation:
+ * LawSpec's `maskDigestBlake3In context text`. A field shown as digest is
+ * rendered in the context `<unit>.<Record>.<field>`, so one text has
+ * unrelated digests in two fields.
+ */
+export function maskDigestBlake3In(context, value)
+{
+  const bytes = new TextEncoder().encode(String(value));
+  return (
+    'digest:' + hex(blake3DeriveKey('lawspec 0.34 mask ' + context, bytes))
+  );
+}
+
+/** The digest masks of this version's default algorithm, BLAKE3. */
+export const maskDigest = maskDigestBlake3;
+export const maskDigestIn = maskDigestBlake3In;
 
 /**
  * maskHashBlake3 under a key given with the call: LawSpec's own
@@ -411,7 +509,7 @@ export function maskHashBlake3With(key, value)
       'LawSpec masking: the hash key is a Uint8Array of 32 bytes',
     );
   const bytes = new TextEncoder().encode(String(value));
-  return 'hash:' + blake3KeyedHex(blake3Words(key, 0, 32).slice(0, 8), bytes);
+  return 'hash:' + hex(blake3Keyed(key, bytes));
 }
 
 /** As maskHash, under a key given with the call. */
@@ -475,11 +573,10 @@ export function concealed(v)
   if (Array.isArray(v)) return v.map(concealed);
   if (v instanceof DataValue && !isHandle(v))
   {
-    const masked = MASKED_FIELDS.get(v.tag);
     return new DataValue(
       v.tag,
-      v.fields.map((field, i) =>
-        masked?.has(i) ? CONCEALED : concealed(field),
+      v.fields.map(
+        (field, i) => concealedField(v.tag, i, field) ?? concealed(field),
       ),
     );
   }
@@ -1202,7 +1299,9 @@ const sequenceHelpers = {
   isUnicodeWhitespace: ([text]) => isUnicodeWhitespaceText(text),
   trimAsciiControl: ([text]) => trimAsciiControlText(text),
   rfc822Uncommented: ([text]) => rfc822Uncommented(text),
-  maskHashBlake3: ([key, text]) => maskHashBlake3With(key, text),
+  blake3: ([bytes]) => blake3(bytes),
+  blake3Keyed: ([key, bytes]) => blake3Keyed(key, bytes),
+  blake3DeriveKey: ([context, bytes]) => blake3DeriveKey(context, bytes),
   words: ([text]) => wordsOfText(text),
   lines: ([text]) => linesOfText(text),
 };
@@ -3376,12 +3475,13 @@ export function shown(v)
   if (v instanceof DataValue && !isHandle(v))
   {
     const name = v.tag.split('::').pop();
-    const masked = MASKED_FIELDS.get(v.tag);
     return v.fields.length
       ? name +
           '(' +
           v.fields
-            .map((field, i) => (masked?.has(i) ? '***' : shown(field)))
+            .map((field, i) =>
+              String(concealedField(v.tag, i, field) ?? shown(field)),
+            )
             .join(', ') +
           ')'
       : name;

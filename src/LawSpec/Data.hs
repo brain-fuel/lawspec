@@ -158,7 +158,9 @@ dataDeclarationHeaders units = do
           S.MaskHidden -> C.MaskHidden
           S.MaskLast count -> C.MaskLast count
           S.MaskEmail -> C.MaskEmail
-          S.MaskHash algorithm -> C.MaskHash algorithm)
+          S.MaskHash algorithm -> C.MaskHash algorithm
+          -- A draft's digests are its record's.
+          S.MaskDigest algorithm -> C.MaskDigest algorithm (S.digestContext (S.unitName u) (S.contractRecord contract) field))
       | contract <- S.recordContracts u
       , name `elem` [S.contractRecord contract, S.contractRecord contract ++ "Draft"]
       , (field, mask) <- S.contractMasks contract ]

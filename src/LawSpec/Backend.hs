@@ -3,6 +3,7 @@
 -- substitution, type inference, or refinement expansion belongs here.
 module LawSpec.Backend where
 import qualified LawSpec.Core as C
+import qualified LawSpec.Targets as Targets
 import qualified LawSpec.Code.Doc as Doc
 import LawSpec.Testing (PlannedProperty(..), GeneratorRequirement(..))
 import LawSpec.Common (Generation, Location(..), Quantification(..), renderReference, documentaryUnit, documentaryName)
@@ -165,20 +166,36 @@ domainBounds g = [(C.binaryName op,e) | (op,e) <- generatorBounds g]
 maskedRenderingTargets :: [String]
 maskedRenderingTargets = ["java", "javascript", "python", "typescript"]
 
--- | The targets whose runtime has the two text primitives no other runtime
--- has yet: the comment pass of the rfc822Address format and keyed BLAKE3.
--- ref:DEC-email-format ref:DEC-masking
+-- | The targets whose runtime has the comment pass of the rfc822Address
+-- format, which no other runtime has yet. ref:DEC-email-format
 runtimePrimitiveTargets :: [String]
 runtimePrimitiveTargets = ["java", "javascript", "python", "typescript"]
+
+-- | The targets whose runtime has BLAKE3 (hash, keyed hash and key
+-- derivation), which maskDigest and maskHash are defined by: every target.
+-- Go calls goforge.dev/blake3sum; each other runtime has its own
+-- single-threaded implementation (Prolog runs over Python's, the JVM
+-- languages over Java's, C# over F#'s, Elixir and Gleam over Erlang's). A
+-- new target is refused these definitions until it is listed here.
+-- ref:DEC-masking ref:DEC-blake3-port
+blake3Targets :: [String]
+blake3Targets = Targets.targets
 
 -- | The runtime function a `shown as hash` field renders through, in the
 -- target's own casing: the default algorithm's when none is named, and the
 -- named algorithm's otherwise. ref:DEC-masking
 maskFunction :: String -> Maybe String -> String
-maskFunction target algorithm = cased (words' algorithm)
+maskFunction target algorithm = runtimeName target (["mask", "hash"] ++ maybe [] pure algorithm)
+
+-- | The runtime function a `shown as digest` field renders through: it
+-- takes the field's context and its text. ref:DEC-masking
+digestFunction :: String -> Maybe String -> String
+digestFunction target algorithm = runtimeName target (["mask", "digest"] ++ maybe [] pure algorithm ++ ["in"])
+
+-- | A runtime function's name from its words, in the target's casing.
+runtimeName :: String -> [String] -> String
+runtimeName target = cased
   where
-    words' Nothing = ["mask", "hash"]
-    words' (Just name) = ["mask", "hash", name]
     cased parts
       | target == "python" = intercalate "_" parts
       | otherwise = head parts ++ concatMap capital (tail parts)
@@ -195,6 +212,19 @@ maskedPositions declarations =
   , constructor <- C.dataConstructors declaration
   , let positions = [position | (position, field) <- zip [0 ..] (C.constructorFields constructor)
                               , C.binderName field `elem` map fst (C.dataMasking declaration)]
+  , not (null positions) ]
+
+-- | Each masked record's constructor and the positions of the fields its
+-- masking block shows as digest, each with its context: a runtime shows
+-- such a field's digest where it prints a failure. ref:DEC-masking
+digestPositions :: [C.DataDeclaration] -> [(C.Id, [(Int, String)])]
+digestPositions declarations =
+  [ (C.constructorId constructor, positions)
+  | declaration <- declarations, not (null (C.dataMasking declaration))
+  , constructor <- C.dataConstructors declaration
+  , let positions = [ (position, context)
+                    | (position, field) <- zip [0 ..] (C.constructorFields constructor)
+                    , Just (C.MaskDigest _ context) <- [lookup (C.binderName field) (C.dataMasking declaration)] ]
   , not (null positions) ]
 
 -- | Portable runtime keys retain nested presence and Either argument boundaries.

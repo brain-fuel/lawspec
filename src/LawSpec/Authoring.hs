@@ -92,7 +92,8 @@ adviceView syntax program =
                  [ ("prelude-helper", "recursive List length and membership shapes"),
                    ("prelude-law", "unrestricted unary idempotence and left-inverse equations"),
                    ("vacuous-guard", "regex and literal-list guards on a directly quantified input"),
-                   ("adapter-guard", "guards that call an adapter on a quantified input")
+                   ("adapter-guard", "guards that call an adapter on a quantified input"),
+                   ("enumerable-digest", "fields shown as digest whose restriction is a regex, a literal list, a length bound or an equation, counted up to 2^64 values")
                  ]
              ]
                ++ missing

@@ -392,7 +392,9 @@ shape registry bits ref ty@(C.Constructor name arguments)
                           C.MaskLast count -> "last " ++ show count
                           C.MaskEmail -> "email"
                           C.MaskHash Nothing -> "hash"
-                          C.MaskHash (Just algorithm) -> "hash " ++ algorithm))
+                          C.MaskHash (Just algorithm) -> "hash " ++ algorithm
+                          C.MaskDigest Nothing _ -> "digest"
+                          C.MaskDigest (Just algorithm) _ -> "digest " ++ algorithm))
                       | (field, mask) <- C.dataMasking declaration ]
             annotated schema = case schema of
               JObject members | not (null masking) -> JObject (members ++ [("x-lawspec-masking", JObject masking)])

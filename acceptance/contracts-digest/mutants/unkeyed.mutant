@@ -1,0 +1,7 @@
+expect: a hash is the keyed hash in hexadecimal
+@@ acceptance/contracts-digest/digest_masking.lawspec
+<<<<<<<
+      prelude.maskHash (sampleKey ()) token = "hash:" ++ prelude.hex (prelude.blake3Keyed (sampleKey ()) (prelude.utf8 token))
+=======
+      prelude.maskHash (sampleKey ()) token = "hash:" ++ prelude.hex (prelude.blake3 (prelude.utf8 token))
+>>>>>>>

@@ -34,14 +34,14 @@
 module LawSpec.ContractRules
   ( rulesUnit, rulesAlias, rulesTypes, rulesSource, usesRules, programUsesRules, ruleOperation, ruleOperations
   , contractDemand, contractNames, draftName, validatorName, violationsName, draftOfName, maskedName, maskedDraftName, maskedWithName, maskedDraftWithName
-  , Rule(..), recordRules, maskSentinel, elaborateContracts
+  , Rule(..), recordRules, maskSentinel, elaborateContracts, digestContextPrefix
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
 import Data.Char (isAlphaNum, isLower, isUpper, toUpper)
-import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, stripPrefix)
+import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, stripPrefix, tails)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import LawSpec.Formats (formatDescription, formatNames)
 import LawSpec.Model
 import LawSpec.RuleNames (rulesAlias, rulesUnit)
@@ -57,7 +57,20 @@ ruleOperations :: [(String, String)]
 ruleOperations =
   [ ("violatedRules", "rulesViolated"), ("failsWithRule", "rulesFailsWith")
   , ("messagesHide", "rulesMessagesHide"), ("maskEmail", "rulesMaskEmail"), ("maskLast", "rulesMaskLast")
-  , ("maskStar", "rulesMaskStar") ]
+  , ("maskStar", "rulesMaskStar")
+  -- maskHash and maskDigest are the default algorithm's functions: BLAKE3
+  -- in this version. A later default is a breaking change. ref:DEC-masking
+  , ("hex", "rulesHexOf")
+  , ("maskHash", "rulesMaskHashBlake3"), ("maskHashBlake3", "rulesMaskHashBlake3")
+  , ("maskDigest", "rulesMaskDigestBlake3"), ("maskDigestBlake3", "rulesMaskDigestBlake3")
+  , ("maskDigestIn", "rulesMaskDigestBlake3In"), ("maskDigestBlake3In", "rulesMaskDigestBlake3In") ]
+
+-- | What a scoped digest's context is prefixed with before it becomes a
+-- BLAKE3 key-derivation context: the application, when the construction
+-- was fixed, and its purpose, as the BLAKE3 specification asks of a
+-- context. ref:DEC-masking
+digestContextPrefix :: String
+digestContextPrefix = "lawspec 0.34 mask "
 
 ruleOperation :: String -> Maybe String
 ruleOperation name = lookup name ruleOperations
@@ -78,6 +91,14 @@ maskedDraftWithName record = "masked" ++ record ++ "DraftWith"
 contractNames :: String -> [String]
 contractNames record = map ($ record)
   [draftName, validatorName, violationsName, draftOfName, maskedName, maskedDraftName, maskedWithName, maskedDraftWithName]
+
+-- | The names a record's contract may add to its unit: the renderings are
+-- a masked record's, and the keyed ones are reserved for it whether or not
+-- a program names one yet.
+generatedNames :: RecordContract -> [String]
+generatedNames contract = map ($ contractRecord contract)
+  ([draftName, validatorName, violationsName, draftOfName] ++
+    if null (contractMasks contract) then [] else [maskedName, maskedDraftName, maskedWithName, maskedDraftWithName])
 
 -- | Whether a program names a rendering that takes the hash key. Every
 -- masked record then has one, so that a record inside another is rendered
@@ -193,6 +214,50 @@ rulesSource = unlines
   , "function rulesMaskStar (value :: Text) -> Text is"
   , "  \"***\""
   , "end function"
+  , ""
+  , "-- Bytes in lowercase hexadecimal."
+  , "function rulesHexDigit (value :: UInt8) -> Text is"
+  , "  prelude.take 1 (prelude.drop value \"0123456789abcdef\")"
+  , "end function"
+  , ""
+  , "function rulesHex (octets :: List UInt8) -> Text is"
+  , "  first matching case of octets :"
+  , "  when Nil then \"\""
+  , "  when Cons octet rest then"
+  , "    rulesHexDigit (prelude.quot octet 16) ++ rulesHexDigit (prelude.rem octet 16) ++ rulesHex rest"
+  , "  end case"
+  , "end function"
+  , ""
+  , "function rulesHexOf (value :: Bytes) -> Text is"
+  , "  rulesHex (prelude.octets value)"
+  , "end function"
+  , ""
+  , "-- A text shown as the keyed BLAKE3 hash of its UTF-8 bytes: equal texts"
+  , "-- show alike, and without the key a text cannot be found from its hash,"
+  , "-- even by trying candidates."
+  , "function rulesMaskHashBlake3 (key :: (k :: Bytes where prelude.length k = 32)) (value :: Text) -> Text is"
+  , "  \"hash:\" ++ rulesHexOf (prelude.blake3Keyed key (prelude.utf8 value))"
+  , "end function"
+  , ""
+  , "-- A text shown as the BLAKE3 hash of its UTF-8 bytes, which needs no key"
+  , "-- and which b3sum gives for the same bytes. Whoever can guess the text can"
+  , "-- check the guess."
+  , "function rulesMaskDigestBlake3 (value :: Text) -> Text is"
+  , "  \"digest:\" ++ rulesHexOf (prelude.blake3 (prelude.utf8 value))"
+  , "end function"
+  , ""
+  , "-- The same within a context, by BLAKE3's key derivation: one text has"
+  , "-- unrelated digests in two contexts, so the digests of one field say"
+  , "-- nothing about another's."
+  , "function rulesMaskDigestBlake3In (context :: Text) (value :: Text) -> Text is"
+  , "  \"digest:\" ++ rulesHexOf (prelude.blake3DeriveKey (\"" ++ digestContextPrefix ++ "\" ++ context) (prelude.utf8 value))"
+  , "end function"
+  , ""
+  , "law \"|the digest of no text is BLAKE3's published hash of no bytes| is"
+  , "  definition :"
+  , "    rulesMaskDigestBlake3 \"\" = \"digest:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262\""
+  , "  end definition"
+  , "end law"
   , ""
   , "-- A text shown as three stars and its last characters. A text no longer"
   , "-- than that is not shown at all."
@@ -370,10 +435,14 @@ bound name value body = MatchExpr value [MatchBranch letTag [name] body]
 call :: String -> [Expr] -> Expr
 call name = foldl Apply (Var name)
 
+-- | Texts joined in order. The appends form a balanced tree, so a record of
+-- many fields nests its rendering a few levels deep and not one per field.
 joined :: [Expr] -> Expr
 joined pieces = case pieces of
   [] -> StringLit ""
-  _ -> foldr1 (\piece rest -> call "prelude.append" [piece, rest]) pieces
+  [piece] -> piece
+  _ -> let (front, back) = splitAt ((length pieces + 1) `div` 2) pieces
+       in call "prelude.append" [joined front, joined back]
 
 containsText :: Expr -> Expr -> Expr
 containsText text part = call "prelude.contains" [text, part]
@@ -420,6 +489,15 @@ elaborateContracts demand unit = do
           (failed (record ++ " has type parameters; a validator is generated for a record without them"))
         generated <- either failed Right (generate (keyedDemand demand) unit definitions declaration rules masks)
         pure [(summary True, Just generated)]
+  -- Two records whose generated names meet (Order and OrderWith both give
+  -- maskedOrderWith; Order and OrderDraft both give maskedOrderDraft) would
+  -- leave one name for two functions.
+  let producing = [(contractRecord contract, generatedNames contract) | (contract, Just _) <- contracts]
+  forM_ [(first, second, name) | (first, names) : later <- tails producing, (second, others) <- later, name <- names, name `elem` others] $
+    \(first, second, name) ->
+      Left ( listToMaybe [spanStart (dataTypeSpan declaration) | declaration <- dataTypes unit, dataTypeName declaration == second]
+           , "the records " ++ first ++ " and " ++ second ++ " would both be given the name " ++ name ++
+             ": rename one of them, since a name that ends in With or Draft after another record's name reads as that record's" )
   let additions = [generated | (_, Just generated) <- contracts]
       plain = unit { dataTypes = map plainDeclaration (dataTypes unit) }
       leftover = [prefix | prefix <- [ruleLabelPrefix, recordRulePrefix], prefix `isInfixOf` show (dataTypes plain)]
@@ -448,6 +526,8 @@ generate keyed unit definitions declaration rules masks = do
     case mask of
       MaskHash (Just algorithm) | algorithm `notElem` hashAlgorithms ->
         Left ("masking " ++ record ++ ": " ++ algorithm ++ " is not a hash this version has; write " ++ intercalate " or " (map ("hash " ++) hashAlgorithms))
+      MaskDigest (Just algorithm) | algorithm `notElem` hashAlgorithms ->
+        Left ("masking " ++ record ++ ": " ++ algorithm ++ " is not a digest this version has; write " ++ intercalate " or " (map ("digest " ++) hashAlgorithms))
       MaskLast count | count < 1 -> Left ("masking " ++ record ++ ": last " ++ show count ++ " shows nothing; write hidden")
       _ | mask /= MaskHidden && ty /= Named "Text" -> Left ("masking " ++ record ++ ": " ++ label ++ " is not a Text, so it can only be shown as hidden")
       _ -> Right ()
@@ -489,6 +569,10 @@ generate keyed unit definitions declaration rules masks = do
       Just (MaskHash algorithm) -> Just (case key of
         Nothing -> StringLit "***"
         Just secret -> call ("prelude.maskHash" ++ maybe "" capitalised algorithm) [Var secret, Var label])
+      -- A digest needs no key, so every rendering shows it. Its context is
+      -- the field's own, whichever of the record and its draft is rendered.
+      Just (MaskDigest algorithm) -> Just (call ("prelude.maskDigest" ++ maybe "" capitalised algorithm ++ "In")
+        [StringLit (digestContext (unitName unit) record label), Var label])
       Nothing -> case ty of
         Named "Text" -> Just (Var label)
         Named "Bool" -> Just (select (Var label) (StringLit "true") (StringLit "false"))

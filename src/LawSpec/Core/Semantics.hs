@@ -7,10 +7,8 @@ import Control.Monad (unless)
 import Data.List (isPrefixOf, isSuffixOf, isInfixOf)
 import LawSpec.Regex (regexMatchesText)
 import LawSpec.Formats (rfc822Uncommented)
-import LawSpec.Blake3 (blake3Keyed, hexOf)
+import LawSpec.Blake3 (blake3, blake3DeriveKey, blake3Keyed)
 import qualified Data.ByteString as B
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 
 -- | Conversions follow LawSpec's rules, so a non-finite float never becomes an
 -- exact number on any target. ref:DEC-portable-exact-arithmetic
@@ -64,6 +62,9 @@ binaryValue bits op a b
         let x = floatValue a; y = floatValue b
         pure $ if op `elem` ["<","<=",">",">=","==","!="] then SBool (cmp op x y) else floatScalar result (case op of "+" -> x+y; "-" -> x-y; "*" -> x*y; "/" -> x/y; _ -> 0)
 -- | Built-in operations have one reference meaning each runtime must match.
+bytesScalar :: B.ByteString -> Scalar
+bytesScalar = SSequence "Bytes" . map fromIntegral . B.unpack
+
 helperValue :: Int -> String -> [Scalar] -> Either String Scalar
 helperValue bits "checked" [_] = Right (SBool True)
 helperValue bits "length" [SSequence _ xs] = Right (SInteger "Integer" (fromIntegral (length xs)))
@@ -87,13 +88,14 @@ helperValue _ "endsWith" [SSequence "Text" t, SSequence "Text" p] = Right (SBool
 helperValue _ "textContains" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isInfixOf p t))
 helperValue _ "regexMatches" [SSequence "Text" p, SSequence "Text" t] = SBool <$> regexMatchesText (map toEnum p) t
 helperValue _ "rfc822Uncommented" [SSequence "Text" t] = Right (SSequence "Text" (map fromEnum (rfc822Uncommented (map toEnum t))))
--- A code point that is not a Unicode scalar value (a lone surrogate) is
--- hashed as U+FFFD, which is what encoding to UTF-8 makes of it here and in
--- every runtime.
-helperValue _ "maskHashBlake3" [SSequence "Bytes" key, SSequence "Text" t] =
-  case blake3Keyed (B.pack (map fromIntegral key)) (T.encodeUtf8 (T.pack (map toEnum t))) of
-    Just digest -> Right (SSequence "Text" (map fromEnum ("hash:" ++ hexOf digest)))
-    Nothing -> Left "maskHashBlake3: the key is 32 bytes"
+-- BLAKE3-256 of bytes, in its three modes. A derivation context is its
+-- text's UTF-8 bytes.
+helperValue _ "blake3" [SSequence "Bytes" bytes] = Right (bytesScalar (blake3 (B.pack (map fromIntegral bytes))))
+helperValue _ "blake3Keyed" [SSequence "Bytes" key, SSequence "Bytes" bytes] =
+  maybe (Left "blake3Keyed: the key is 32 bytes") (Right . bytesScalar)
+    (blake3Keyed (B.pack (map fromIntegral key)) (B.pack (map fromIntegral bytes)))
+helperValue _ "blake3DeriveKey" [SSequence "Text" context, SSequence "Bytes" material] =
+  Right (bytesScalar (blake3DeriveKey (B.pack (map fromIntegral (concatMap utf8Units context))) (B.pack (map fromIntegral material))))
 -- Text and Bytes: joined, sliced by index (clamped), encoded and printed.
 helperValue _ "append" [SSequence t a, SSequence u b] | t == u = Right (SSequence t (a ++ b))
 helperValue _ "slice" [SSequence t xs, from, to] = do

@@ -29,7 +29,7 @@ final class KeyedMasksTest
   @Test
   void maskHashInASpecificationIsTheRuntimeMaskHashUnderTheKey()
   {
-    LawSpecMasks.setHashKey(KEY);
+    LawSpecMasks.setMaskHashKey(KEY);
     for (String text : TEXTS)
     {
       String shown = Keyed.fingerprint(Map.of(), KEY, text);
@@ -47,7 +47,7 @@ final class KeyedMasksTest
   @Test
   void aRecordRenderedWithTheKeyIsItsNativeRendering()
   {
-    LawSpecMasks.setHashKey(KEY);
+    LawSpecMasks.setMaskHashKey(KEY);
     var session = new Session("ann", "tok-12345678", "c");
     String shown = Keyed.maskedSessionWith(Map.of(), KEY, session);
     assertEquals(session.toString(), shown);

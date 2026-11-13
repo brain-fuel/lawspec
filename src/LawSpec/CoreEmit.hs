@@ -62,7 +62,7 @@ import qualified LawSpec.WebDefinitions as WebDefinitions
 import qualified LawSpec.Code.Doc as Doc
 import qualified LawSpec.JavaTestingRuntime as JavaTestingRuntime
 import LawSpec.RuntimeSources
-import LawSpec.Network (withNetworkModules, usesNetworkUnits)
+import LawSpec.Network (withBlake3Module, withNetworkModules, usesNetworkUnits)
 import qualified LawSpec.Core as C
 import LawSpec.BuiltinDefaults (withBuiltinDefaults, withBuiltinDefaultsFor, javaVectorCases)
 import LawSpec.Builtins (defaultedUnits)
@@ -246,7 +246,7 @@ builtinDefaults :: String -> Plan -> [Artifact] -> Either [Diagnostic] [Artifact
 builtinDefaults target plan artifacts = either (\message -> Left [Diagnostic "builtins" message Nothing]) Right $ do
   let units = map plannedUnit (plannedUnits plan)
   completed <- withBuiltinDefaults target (planDataDeclarations plan) (ownedAbilityUnits units) artifacts
-  withNetworkModules target units completed
+  withNetworkModules target units completed >>= withBlake3Module target units
 
 -- | Code beside the units: typed channel ends for the units' protocols, typed
 -- actors and mailboxes, and the definitions other nodes can evaluate by

@@ -7,10 +7,10 @@
 -- registers itself; in Rust and Haskell lawspec_network's install registers
 -- it, and the generated tests call it).
 module LawSpec.Network
-  ( networkUnit, networkSource, usesNetwork, usesNetworkUnits, withNetworkModules, cryptoUsed
+  ( networkUnit, networkSource, usesNetwork, usesNetworkUnits, withNetworkModules, withBlake3Module, cryptoUsed
   ) where
 
-import Data.List (isPrefixOf)
+import Data.List (isInfixOf, isPrefixOf)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.RuntimeSources (runtimeSource)
@@ -38,6 +38,30 @@ usesNetwork = elem networkUnit
 -- lawspec.network.
 cryptoUsed :: [String] -> Bool
 cryptoUsed units = any (`elem` units) ["lawspec.crypto", networkUnit]
+
+-- | Go has BLAKE3 from a module (goforge.dev/blake3sum), so the file that
+-- calls it is written beside each runtime file only for a program whose
+-- definitions reach the blake3 primitives: a program that does not hash
+-- needs no such module. The printed units are searched, as
+-- LawSpec.Api.runtimePrimitivesSupported searches them. ref:DEC-blake3-port
+withBlake3Module :: String -> [C.Unit] -> [Artifact] -> Either String [Artifact]
+withBlake3Module target units files
+  | target /= "go" || not (any (`isInfixOf` printed) ["Helper Blake3", "Helper Blake3Keyed", "Helper Blake3DeriveKey"]) = Right files
+  | otherwise = (files ++) . concat <$> mapM sibling files
+  where
+    printed = show units
+    packages = [(map (\c -> if c == '.' then '/' else c) identity ++ "/", reverse (takeWhile (/= '.') (reverse identity)))
+      | unit <- units, let identity = C.idText (C.unitId unit)]
+    sibling artifact = case break (== '/') (reverse (artifactPath artifact)) of
+      (name, directory) | reverse name == "lawspec_runtime.go" -> case lookup (reverse directory) packages of
+        Nothing -> Left ("no checked Go package for the BLAKE3 runtime at " ++ artifactPath artifact)
+        Just package -> pure [Artifact (reverse directory ++ "lawspec_blake3.go") (packaged package (runtimeSource "go-blake3")) (ownership artifact) (artifactPlacement artifact)]
+      _ -> pure []
+    placeholder = "RUNTIME_PACKAGE" :: String
+    packaged package value = case value of
+      [] -> []
+      c : rest | placeholder `isPrefixOf` value -> package ++ packaged package (drop (length placeholder) value)
+               | otherwise -> c : packaged package rest
 
 -- | Companion runtime modules, selected from checked unit/package metadata.
 -- Test headers and initialization belong to their structured target emitters.

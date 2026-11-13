@@ -67,12 +67,12 @@ MIXED = [
 
 def test_a_hashed_field_needs_a_key_and_shows_the_keyed_digest(monkeypatch):
     session = data.Session("ann", "tok-12345678")
-    monkeypatch.setattr(ls, "_MASK_KEY", None)
+    monkeypatch.setattr(ls, "_MASK_HASH_KEY", None)
     with pytest.raises(RuntimeError, match="no key is set"):
         repr(session)
     with pytest.raises(TypeError, match="32 bytes"):
-        ls.set_mask_key(b"short")
-    ls.set_mask_key(b"whats the Elvish word for friend")
+        ls.set_mask_hash_key(b"short")
+    ls.set_mask_hash_key(b"whats the Elvish word for friend")
     for count, digest in LETTERS:
         text = ("abcdefghijklmnopqrstuvwxyz" * 400)[:count]
         assert ls.mask_hash(text) == "hash:" + digest

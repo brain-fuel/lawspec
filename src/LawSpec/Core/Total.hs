@@ -342,7 +342,8 @@ proofExpression schema bits = proof
       -- rebuild of the same field proves.
       -- The key of a keyed hash is 32 bytes: the call is total only where
       -- that is a fact, as a branch the facts rule out is.
-      Helper MaskHashBlake3 [key, text] -> T.keyedBy (proof key) (T.Opaque "maskHashBlake3" [proof key, proof text])
+      Helper Blake3Keyed [key, bytes] -> T.keyedBy (proof key) (T.Opaque "blake3Keyed" [proof key, proof bytes])
+      Helper builtin values | builtin `elem` [Blake3, Blake3DeriveKey] -> T.Opaque (builtinName builtin) (map proof values)
       Helper Rfc822Uncommented values -> T.Opaque "rfc822Uncommented" (map proof values)
       Helper builtin values | builtin `elem` [StartsWith, EndsWith, TextContains, RegexMatches, Append, Slice, At, Range, Octets, BytesOf, Utf8, TextOf, Join, Split, Trim, Words, Lines, IsUnicodeWhitespace, TrimAsciiControl] ->
         T.Opaque (builtinName builtin) (map proof values)

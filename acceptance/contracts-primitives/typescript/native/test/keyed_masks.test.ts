@@ -24,7 +24,7 @@ const recorded: [string, string][] = [
 
 test('maskHash in a specification is the runtime maskHash under the key', () =>
 {
-  ls.setMaskKey(key);
+  ls.setMaskHashKey(key);
   for (const text of texts)
   {
     const shown = definitions.fingerprint(new Map(), key, text);
@@ -45,7 +45,7 @@ test('the default hash is the BLAKE3 one', () =>
 
 test('a record rendered with the key is its native rendering', () =>
 {
-  ls.setMaskKey(key);
+  ls.setMaskHashKey(key);
   const session = new data.Session('ann', 'tok-12345678', 'c');
   const shown = definitions.maskedSessionWith(new Map(), key, session);
   assert.equal(shown, String(session));

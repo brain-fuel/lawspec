@@ -1,14 +1,17 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE UnboxedTuples #-}
--- | Portable BLAKE3-256, unkeyed and keyed. The native and WASM builds share this pure
+-- | Portable BLAKE3-256 in its three modes: hash, keyed hash and key
+-- derivation. The native and WASM builds share this pure
 -- implementation, so their hashes agree. It follows goforge's blake3sum:
 -- unboxed 32-bit state through an unrolled compression function, message
 -- words read straight from the input, one compression for an input of one
 -- block, and hashMany for the many small nodes of content identity. The
--- keyed mode (blake3Keyed) is the reference the runtimes' `hash` mask is
--- tested against; the compiler itself hashes nothing with a key.
+-- keyed and derive-key modes are what the masks of a specification evaluate
+-- to (prelude.blake3Keyed, prelude.blake3DeriveKey); the compiler itself
+-- hashes nothing with a key. All three modes are tested against the BLAKE3
+-- team's test vectors (test/fixtures/blake3-official).
 -- ref:DEC-blake3-port
-module LawSpec.Blake3 (blake3, blake3Keyed, blake3Hex, blake3Text, hashMany, hexOf) where
+module LawSpec.Blake3 (blake3, blake3Keyed, blake3DeriveKey, blake3Hex, blake3Text, hashMany, hexOf) where
 
 import Data.Bits (rotateR, shiftL, shiftR, xor, (.&.), (.|.), countTrailingZeros)
 import qualified Data.ByteString as B
@@ -33,12 +36,14 @@ data Node = Node !CV !W16 {-# UNPACK #-} !Word64 {-# UNPACK #-} !Word32 {-# UNPA
 iv :: CV
 iv = CV 0x6a09e667 0xbb67ae85 0x3c6ef372 0xa54ff53a 0x510e527f 0x9b05688c 0x1f83d9ab 0x5be0cd19
 
-chunkStart, chunkEnd, parent, root, keyedHash :: Word32
+chunkStart, chunkEnd, parent, root, keyedHash, deriveKeyContext, deriveKeyMaterial :: Word32
 chunkStart = 1
 chunkEnd = 2
 parent = 4
 root = 8
 keyedHash = 16
+deriveKeyContext = 32
+deriveKeyMaterial = 64
 
 -- | The BLAKE3 quarter-round, on four state words and two message words.
 g :: Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> (# Word32, Word32, Word32, Word32 #)
@@ -154,6 +159,14 @@ blake3Keyed key bytes
   | B.length key /= 32 = Nothing
   | otherwise = case block key 0 of
       W16 a b c d e f g' h _ _ _ _ _ _ _ _ -> Just (digest (CV a b c d e f g' h) keyedHash bytes)
+
+-- | The 32 bytes derived from some key material under a context (BLAKE3
+-- specification, section 2.1): the context's bytes are hashed with
+-- DERIVE_KEY_CONTEXT, and that digest keys the hash of the material, with
+-- DERIVE_KEY_MATERIAL. Different contexts give unrelated outputs.
+blake3DeriveKey :: B.ByteString -> B.ByteString -> B.ByteString
+blake3DeriveKey context material = case block (digest iv deriveKeyContext context) 0 of
+  W16 a b c d e f g' h _ _ _ _ _ _ _ _ -> digest (CV a b c d e f g' h) deriveKeyMaterial material
 
 digest :: CV -> Word32 -> B.ByteString -> B.ByteString
 digest key mode bytes = case rootNode key mode bytes of

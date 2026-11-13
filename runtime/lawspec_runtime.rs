@@ -4392,6 +4392,12 @@ fn sequence_helper(name: &str, args: &[Value]) -> Result<Option<Value>>
         ("trim", [Text(text)]) => Text(text_trim(text).to_string()),
         ("isUnicodeWhitespace", [Text(text)]) => Bool(text_is_unicode_whitespace(text)),
         ("trimAsciiControl", [Text(text)]) => Text(text_trim_ascii_control(text).to_string()),
+        ("blake3", [Bytes(data)]) => Bytes(blake3(data).to_vec()),
+        ("blake3Keyed", [Bytes(key), Bytes(data)]) => Bytes(blake3_keyed(key, data)?.to_vec()),
+        ("blake3DeriveKey", [Text(context), Bytes(data)]) =>
+        {
+            Bytes(blake3_derive_key(context, data).to_vec())
+        }
         ("words", [Text(text)]) => List(
             text_words(text)
                 .into_iter()
@@ -4436,6 +4442,202 @@ pub fn text_split<'a>(separator: &str, text: &'a str) -> Vec<&'a str>
         return vec![text];
     }
     text.split(separator).collect()
+}
+
+// BLAKE3 (the BLAKE3 specification, section 2) with its default 32-byte
+// output: the hash, the keyed hash and key derivation, written from the
+// specification and its reference implementation (CC0 1.0 or Apache-2.0).
+// One thread, no SIMD; the official test vectors check every mode (the
+// contracts-digest acceptance suite). ref:DEC-blake3-port
+const BLAKE3_IV: [u32; 8] = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+];
+const BLAKE3_SCHEDULE: [usize; 16] = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8];
+const BLAKE3_CHUNK_START: u32 = 1;
+const BLAKE3_CHUNK_END: u32 = 2;
+const BLAKE3_PARENT: u32 = 4;
+const BLAKE3_ROOT: u32 = 8;
+const BLAKE3_KEYED_HASH: u32 = 16;
+const BLAKE3_DERIVE_KEY_CONTEXT: u32 = 32;
+const BLAKE3_DERIVE_KEY_MATERIAL: u32 = 64;
+
+/// Sixteen little-endian words of a block, zero padded to 64 bytes.
+fn blake3_words(block: &[u8]) -> [u32; 16]
+{
+    let mut padded = [0u8; 64];
+    padded[..block.len()].copy_from_slice(block);
+    std::array::from_fn(|i| {
+        u32::from_le_bytes([
+            padded[4 * i],
+            padded[4 * i + 1],
+            padded[4 * i + 2],
+            padded[4 * i + 3],
+        ])
+    })
+}
+
+fn blake3_mix(state: &mut [u32; 16], at: [usize; 4], x: u32, y: u32)
+{
+    let [a, b, c, d] = at;
+    state[a] = state[a].wrapping_add(state[b]).wrapping_add(x);
+    state[d] = (state[d] ^ state[a]).rotate_right(16);
+    state[c] = state[c].wrapping_add(state[d]);
+    state[b] = (state[b] ^ state[c]).rotate_right(12);
+    state[a] = state[a].wrapping_add(state[b]).wrapping_add(y);
+    state[d] = (state[d] ^ state[a]).rotate_right(8);
+    state[c] = state[c].wrapping_add(state[d]);
+    state[b] = (state[b] ^ state[c]).rotate_right(7);
+}
+
+/// The first eight words of BLAKE3's compression: a chaining value.
+fn blake3_compress(
+    cv: &[u32; 8],
+    block: &[u32; 16],
+    counter: u64,
+    length: u32,
+    flags: u32,
+) -> [u32; 8]
+{
+    let mut state = [0u32; 16];
+    state[..8].copy_from_slice(cv);
+    state[8..12].copy_from_slice(&BLAKE3_IV[..4]);
+    state[12] = counter as u32;
+    state[13] = (counter >> 32) as u32;
+    state[14] = length;
+    state[15] = flags;
+    let mut m = *block;
+    for round in 0..7
+    {
+        blake3_mix(&mut state, [0, 4, 8, 12], m[0], m[1]);
+        blake3_mix(&mut state, [1, 5, 9, 13], m[2], m[3]);
+        blake3_mix(&mut state, [2, 6, 10, 14], m[4], m[5]);
+        blake3_mix(&mut state, [3, 7, 11, 15], m[6], m[7]);
+        blake3_mix(&mut state, [0, 5, 10, 15], m[8], m[9]);
+        blake3_mix(&mut state, [1, 6, 11, 12], m[10], m[11]);
+        blake3_mix(&mut state, [2, 7, 8, 13], m[12], m[13]);
+        blake3_mix(&mut state, [3, 4, 9, 14], m[14], m[15]);
+        if round < 6
+        {
+            m = std::array::from_fn(|i| m[BLAKE3_SCHEDULE[i]]);
+        }
+    }
+    std::array::from_fn(|i| state[i] ^ state[i + 8])
+}
+
+/// A chunk's chaining value; its last block carries the extra flags.
+fn blake3_chunk(key: &[u32; 8], mode: u32, data: &[u8], index: usize, last: u32) -> [u32; 8]
+{
+    let end = data.len().min(index * 1024 + 1024);
+    let mut offset = index * 1024;
+    let mut cv = *key;
+    let mut flags = mode | BLAKE3_CHUNK_START;
+    while end - offset > 64
+    {
+        cv = blake3_compress(
+            &cv,
+            &blake3_words(&data[offset..offset + 64]),
+            index as u64,
+            64,
+            flags,
+        );
+        flags = mode;
+        offset += 64;
+    }
+    let length = (end - offset) as u32;
+    let flags = flags | BLAKE3_CHUNK_END | last;
+    blake3_compress(
+        &cv,
+        &blake3_words(&data[offset..end]),
+        index as u64,
+        length,
+        flags,
+    )
+}
+
+fn blake3_parent(key: &[u32; 8], left: &[u32; 8], right: &[u32; 8], flags: u32) -> [u32; 8]
+{
+    let mut block = [0u32; 16];
+    block[..8].copy_from_slice(left);
+    block[8..].copy_from_slice(right);
+    blake3_compress(key, &block, 0, 64, flags | BLAKE3_PARENT)
+}
+
+/// The 32-byte output from a key of eight words and a mode's flag: the
+/// initial value and no flag hash, a key and KEYED_HASH hash under the key,
+/// and the two DERIVE_KEY flags derive a key. The chunks are merged as the
+/// reference implementation merges them: a stack of subtree chaining
+/// values, one subtree closed per trailing zero of the chunk count.
+fn blake3_digest(key: &[u32; 8], mode: u32, data: &[u8]) -> [u8; 32]
+{
+    let chunks = data.len().div_ceil(1024).max(1);
+    let mut stack: Vec<[u32; 8]> = Vec::new();
+    for index in 0..chunks - 1
+    {
+        let mut cv = blake3_chunk(key, mode, data, index, 0);
+        let mut total = index + 1;
+        while total % 2 == 0
+        {
+            let left = stack.pop().unwrap_or(*key);
+            cv = blake3_parent(key, &left, &cv, mode);
+            total /= 2;
+        }
+        stack.push(cv);
+    }
+    let root = if stack.is_empty()
+    {
+        blake3_chunk(key, mode, data, chunks - 1, BLAKE3_ROOT)
+    }
+    else
+    {
+        let mut cv = blake3_chunk(key, mode, data, chunks - 1, 0);
+        while stack.len() > 1
+        {
+            let left = stack.pop().unwrap_or(*key);
+            cv = blake3_parent(key, &left, &cv, mode);
+        }
+        blake3_parent(key, &stack[0], &cv, mode | BLAKE3_ROOT)
+    };
+    let mut out = [0u8; 32];
+    for (i, word) in root.iter().enumerate()
+    {
+        out[4 * i..4 * i + 4].copy_from_slice(&word.to_le_bytes());
+    }
+    out
+}
+
+fn blake3_key(key: &[u8]) -> [u32; 8]
+{
+    let words = blake3_words(key);
+    std::array::from_fn(|i| words[i])
+}
+
+/// The 32-byte BLAKE3 hash of some bytes: LawSpec's `blake3`.
+pub fn blake3(data: &[u8]) -> [u8; 32]
+{
+    blake3_digest(&BLAKE3_IV, 0, data)
+}
+
+/// The 32-byte BLAKE3 keyed hash of some bytes under a key of 32 bytes:
+/// LawSpec's `blake3Keyed`.
+pub fn blake3_keyed(key: &[u8], data: &[u8]) -> Result<[u8; 32]>
+{
+    if key.len() != 32
+    {
+        return Err("blake3Keyed: the key is 32 bytes".into());
+    }
+    Ok(blake3_digest(&blake3_key(key), BLAKE3_KEYED_HASH, data))
+}
+
+/// The 32 bytes BLAKE3 derives from some key material in a context, which
+/// is a text: LawSpec's `blake3DeriveKey`.
+pub fn blake3_derive_key(context: &str, material: &[u8]) -> [u8; 32]
+{
+    let context_key = blake3_digest(&BLAKE3_IV, BLAKE3_DERIVE_KEY_CONTEXT, context.as_bytes());
+    blake3_digest(
+        &blake3_key(&context_key),
+        BLAKE3_DERIVE_KEY_MATERIAL,
+        material,
+    )
 }
 
 pub fn text_trim(text: &str) -> &str

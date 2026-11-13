@@ -71,8 +71,10 @@ test('a hashed field needs a key, and shows the keyed BLAKE3 digest', () =>
 {
   const session = new data.Session('ann', 'tok-12345678');
   assert.throws(() => String(session), /no key is set/);
-  assert.throws(() => ls.setMaskKey(new Uint8Array(31)), /32 bytes/);
-  ls.setMaskKey(new TextEncoder().encode('whats the Elvish word for friend'));
+  assert.throws(() => ls.setMaskHashKey(new Uint8Array(31)), /32 bytes/);
+  ls.setMaskHashKey(
+    new TextEncoder().encode('whats the Elvish word for friend'),
+  );
   for (const [count, hash] of letters)
   {
     const text = 'abcdefghijklmnopqrstuvwxyz'.repeat(400).slice(0, count);

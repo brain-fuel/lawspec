@@ -120,6 +120,26 @@ def mask_fields(tag, positions):
     _MASKED_FIELDS[tag] = frozenset(positions)
 
 
+# The fields a masking block shows as digest, by constructor tag and
+# position, each with its context: a failure shows such a field's digest,
+# which is what the record's own rendering shows.
+_DIGEST_FIELDS = {}
+
+
+class _Digest:
+    def __init__(self, text):
+        self.text = text
+
+    def __repr__(self):
+        return self.text
+
+    __str__ = __repr__
+
+
+def digest_fields(tag, contexts):
+    _DIGEST_FIELDS[tag] = dict(contexts)
+
+
 @dataclass(eq=False, frozen=True, repr=False)
 class DataValue:
     tag: str
@@ -177,6 +197,8 @@ _BLAKE3_CHUNK_END = 2
 _BLAKE3_PARENT = 4
 _BLAKE3_ROOT = 8
 _BLAKE3_KEYED_HASH = 16
+_BLAKE3_DERIVE_KEY_CONTEXT = 32
+_BLAKE3_DERIVE_KEY_MATERIAL = 64
 _WORD = 0xFFFFFFFF
 
 
@@ -211,28 +233,31 @@ def _blake3_compress(cv, words, counter, length, flags):
     return [state[i] ^ state[i + 8] for i in range(8)]
 
 
-def _blake3_keyed_hex(key, data):
-    """Keyed BLAKE3-256 (the BLAKE3 specification, section 2.1) of some
-    bytes under a key of eight words, in lower-case hexadecimal. The chunks
-    are merged as the reference implementation merges them: a stack of
-    subtree chaining values, one subtree closed per trailing zero of the
-    chunk count."""
+def _blake3_digest(key, mode, data):
+    """The 32-byte BLAKE3 output of some bytes from a key of eight words
+    and a mode's flag (the BLAKE3 specification, section 2: the initial
+    value and no flag hash, a key and KEYED_HASH hash under the key, and the
+    two DERIVE_KEY flags derive a key). The chunks are merged as the
+    reference implementation merges them: a stack of subtree chaining
+    values, one subtree closed per trailing zero of the chunk count. One
+    thread, no SIMD; the official test vectors check it for every mode
+    (the contracts-digest acceptance suite)."""
 
     def chunk(index):
         end = min(len(data), index * 1024 + 1024)
         offset = index * 1024
         cv = key
-        flags = _BLAKE3_KEYED_HASH | _BLAKE3_CHUNK_START
+        flags = mode | _BLAKE3_CHUNK_START
         while end - offset > 64:
             words = _blake3_words(data[offset : offset + 64])
             cv = _blake3_compress(cv, words, index, 64, flags)
-            flags = _BLAKE3_KEYED_HASH
+            flags = mode
             offset += 64
         words = _blake3_words(data[offset:end])
         return (cv, words, index, end - offset, flags | _BLAKE3_CHUNK_END)
 
     def parent(left, right):
-        return (key, left + right, 0, 64, _BLAKE3_KEYED_HASH | _BLAKE3_PARENT)
+        return (key, left + right, 0, 64, mode | _BLAKE3_PARENT)
 
     chunks = max(1, (len(data) + 1023) // 1024)
     stack = []
@@ -248,20 +273,44 @@ def _blake3_keyed_hex(key, data):
         node = parent(stack.pop(), _blake3_compress(*node))
     cv, words, counter, length, flags = node
     root = _blake3_compress(cv, words, counter, length, flags | _BLAKE3_ROOT)
-    return b"".join(word.to_bytes(4, "little") for word in root).hex()
+    return b"".join(word.to_bytes(4, "little") for word in root)
 
 
-_MASK_KEY = None
+def blake3(data):
+    """The 32-byte BLAKE3 hash of some bytes: LawSpec's `blake3`."""
+    return _blake3_digest(_BLAKE3_IV, 0, bytes(data))
 
 
-def set_mask_key(key):
+def blake3_keyed(key, data):
+    """The 32-byte BLAKE3 keyed hash of some bytes under a key of 32 bytes:
+    LawSpec's `blake3Keyed`."""
+    if not isinstance(key, (bytes, bytearray)) or len(key) != 32:
+        raise TypeError("blake3Keyed: the key is 32 bytes")
+    words = _blake3_words(bytes(key))[:8]
+    return _blake3_digest(words, _BLAKE3_KEYED_HASH, bytes(data))
+
+
+def blake3_derive_key(context, material):
+    """The 32 bytes BLAKE3 derives from some key material in a context,
+    which is a text: LawSpec's `blake3DeriveKey`."""
+    context_key = _blake3_digest(
+        _BLAKE3_IV, _BLAKE3_DERIVE_KEY_CONTEXT, _mask_text_bytes(context)
+    )
+    words = _blake3_words(context_key)[:8]
+    return _blake3_digest(words, _BLAKE3_DERIVE_KEY_MATERIAL, bytes(material))
+
+
+_MASK_HASH_KEY = None
+
+
+def set_mask_hash_key(key):
     """Sets the key of the `hash` mask: 32 secret bytes the application
     loads when it starts. LawSpec never writes a key into generated code,
     and has no default."""
-    global _MASK_KEY
+    global _MASK_HASH_KEY
     if not isinstance(key, (bytes, bytearray)) or len(key) != 32:
         raise TypeError("LawSpec masking: the hash key is 32 bytes")
-    _MASK_KEY = _blake3_words(bytes(key))[:8]
+    _MASK_HASH_KEY = bytes(key)
 
 
 def mask_star(_value):
@@ -278,16 +327,17 @@ def _mask_text_bytes(value):
 
 
 def mask_hash_blake3(value):
-    """`hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes,
-    under the key the application set: equal values show alike, and the
-    value cannot be read back without the key. Without a key it raises; it
-    never falls back to showing or hiding."""
-    if _MASK_KEY is None:
+    """`hash:` and the BLAKE3 keyed hash of the text's UTF-8 bytes, under
+    the key the application set: equal values show alike, and the value
+    cannot be found without the key, even by trying candidates. Without a
+    key it raises; it never falls back to showing or hiding."""
+    if _MASK_HASH_KEY is None:
         raise RuntimeError(
             "LawSpec masking: a field is shown as hash and no key is set;"
-            " call set_mask_key with 32 secret bytes when the application starts"
+            " call set_mask_hash_key with 32 secret bytes when the"
+            " application starts"
         )
-    return "hash:" + _blake3_keyed_hex(_MASK_KEY, _mask_text_bytes(value))
+    return mask_hash_blake3_with(_MASK_HASH_KEY, value)
 
 
 # The hash mask of this version's default algorithm, BLAKE3. A version that
@@ -301,12 +351,34 @@ def mask_hash_blake3_with(key, value):
     `maskHashBlake3 key text`, which is pure. The key is 32 bytes."""
     if not isinstance(key, (bytes, bytearray)) or len(key) != 32:
         raise TypeError("LawSpec masking: the hash key is 32 bytes")
-    words = _blake3_words(bytes(key))[:8]
-    return "hash:" + _blake3_keyed_hex(words, _mask_text_bytes(value))
+    return "hash:" + blake3_keyed(key, _mask_text_bytes(value)).hex()
 
 
 # As mask_hash, under a key given with the call.
 mask_hash_with = mask_hash_blake3_with
+
+
+def mask_digest_blake3(value):
+    """`digest:` and the BLAKE3 hash of the text's UTF-8 bytes: LawSpec's
+    `maskDigestBlake3 text`, and what b3sum prints for the same bytes. It
+    needs no key, so whoever can guess the text can check the guess."""
+    return "digest:" + blake3(_mask_text_bytes(value)).hex()
+
+
+def mask_digest_blake3_in(context, value):
+    """The digest of a text within a context, by BLAKE3's key derivation:
+    LawSpec's `maskDigestBlake3In context text`. A field shown as digest
+    is rendered in the context `<unit>.<Record>.<field>`, so one text has
+    unrelated digests in two fields."""
+    derived = blake3_derive_key(
+        "lawspec 0.34 mask " + str(context), _mask_text_bytes(value)
+    )
+    return "digest:" + derived.hex()
+
+
+# The digest masks of this version's default algorithm, BLAKE3.
+mask_digest = mask_digest_blake3
+mask_digest_in = mask_digest_blake3_in
 
 
 def rfc822_uncommented(text):
@@ -371,10 +443,15 @@ def concealed(v):
         return tuple(concealed(x) for x in v)
     if isinstance(v, DataValue) and not is_handle(v):
         masked = _MASKED_FIELDS.get(v.tag, ())
+        digests = _DIGEST_FIELDS.get(v.tag, {})
         return DataValue(
             v.tag,
             tuple(
-                _CONCEALED if i in masked else concealed(x)
+                _Digest(mask_digest_in(digests[i], x))
+                if i in digests and isinstance(x, str)
+                else _CONCEALED
+                if i in masked
+                else concealed(x)
                 for i, x in enumerate(v.fields)
             ),
         )
@@ -1068,7 +1145,9 @@ _SEQUENCE_HELPERS = {
     "isUnicodeWhitespace": lambda text: _text_is_unicode_whitespace(text),
     "trimAsciiControl": lambda text: _text_trim_ascii_control(text),
     "rfc822Uncommented": lambda text: rfc822_uncommented(text),
-    "maskHashBlake3": lambda key, text: mask_hash_blake3_with(key, text),
+    "blake3": lambda data: blake3(data),
+    "blake3Keyed": lambda key, data: blake3_keyed(key, data),
+    "blake3DeriveKey": lambda context, data: blake3_derive_key(context, data),
     "words": lambda text: _text_words(text),
     "lines": lambda text: _text_lines(text),
 }

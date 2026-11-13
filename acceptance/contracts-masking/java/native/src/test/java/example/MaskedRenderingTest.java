@@ -113,8 +113,9 @@ final class MaskedRenderingTest
   {
     var session = new Session("ann", "tok-12345678");
     assertThrows(IllegalStateException.class, session::toString);
-    assertThrows(IllegalArgumentException.class, () -> LawSpecMasks.setHashKey(new byte[31]));
-    LawSpecMasks.setHashKey("whats the Elvish word for friend".getBytes(StandardCharsets.UTF_8));
+    assertThrows(IllegalArgumentException.class, () -> LawSpecMasks.setMaskHashKey(new byte[31]));
+    LawSpecMasks.setMaskHashKey(
+        "whats the Elvish word for friend".getBytes(StandardCharsets.UTF_8));
     for (String[] row : LETTERS)
     {
       String text = "abcdefghijklmnopqrstuvwxyz".repeat(400).substring(0, Integer.parseInt(row[0]));

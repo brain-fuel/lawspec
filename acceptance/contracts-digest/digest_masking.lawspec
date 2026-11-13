@@ -1,0 +1,134 @@
+unit example.digest
+
+-- maskDigest shows a text as the BLAKE3 hash of its UTF-8 bytes. It takes no
+-- key, so it is the same in every rendering and on every target, and b3sum
+-- prints the same digits for the same bytes. It hides a text from a reader;
+-- whoever can guess the text can hash the guess and compare.
+
+law "|a digest is the BLAKE3 hash of the text| is
+  definition :
+    prelude.maskDigest "abc" = "digest:6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85"
+    and prelude.maskDigest "" = "digest:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+  end definition
+end law
+
+law "|the digest is BLAKE3 in this version| is
+  definition :
+    for all (token :: Text) => prelude.maskDigest token = prelude.maskDigestBlake3 token end for all
+  end definition
+end law
+
+law "|a digest shows no more than its 64 digits| is
+  definition :
+    for all (token :: Text) => prelude.maskDigest token matches regex "digest:[0-9a-f]{64}" end for all
+  end definition
+end law
+
+law "|a digest is the hexadecimal of the hash| is
+  definition :
+    for all (token :: Text) => prelude.maskDigest token = "digest:" ++ prelude.hex (prelude.blake3 (prelude.utf8 token)) end for all
+  end definition
+end law
+
+function fingerprint (token :: Text) -> Text is
+  prelude.maskDigest token
+end function
+
+function fingerprintIn (context :: Text) (token :: Text) -> Text is
+  prelude.maskDigestIn context token
+end function
+
+-- maskDigestIn is the digest within a context: BLAKE3's key derivation, with
+-- the context "lawspec 0.34 mask " and the context given. One text has
+-- unrelated digests in two contexts.
+
+law "|a digest within a context is derived in it| is
+  definition :
+    prelude.maskDigestIn "orders" "GB82WEST12345698765432" = "digest:64b6fec1cf199e85ac052a27ae5f1bca0ae2c5062c0e587c68c68258e0efa9e1"
+    and prelude.maskDigestIn "orders" "GB82WEST12345698765432" = prelude.maskDigestBlake3In "orders" "GB82WEST12345698765432"
+  end definition
+end law
+
+law "|a digest within a context is the derived key in hexadecimal| is
+  definition :
+    for all (token :: Text) =>
+      prelude.maskDigestIn "orders" token = "digest:" ++ prelude.hex (prelude.blake3DeriveKey "lawspec 0.34 mask orders" (prelude.utf8 token))
+    end for all
+  end definition
+end law
+
+law "|two contexts give two digests| is
+  definition :
+    for all (token :: Text) => prelude.maskDigestIn "orders" token != prelude.maskDigestIn "refunds" token end for all
+  end definition
+end law
+
+law "|bytes are written in lowercase hexadecimal| is
+  definition :
+    prelude.hex (bytes([0, 9, 171, 255])) = "0009abff"
+  end definition
+end law
+
+-- `shown as digest` takes the default algorithm and `shown as digest blake3`
+-- names it. A field's context is its unit, record and field, so the two
+-- fields below show different digests of one text, and maskedAccount shows
+-- them wherever it is called: a digest needs no key.
+type Account is a record{
+  owner :: Text,
+  iban :: (v :: Text where prelude.length v >= 8),
+  reference :: Text}
+end type
+
+masking Account is
+  iban shown as digest
+  reference shown as digest blake3
+end masking
+
+function account (u :: Unit) -> AccountDraft is
+  AccountDraft record{owner = "ann", iban = "GB82WEST12345698765432", reference = "GB82WEST12345698765432"}
+end function
+
+law "|an account is shown with its digests| is
+  definition :
+    maskedAccountDraft (account ()) =
+      "Account{owner=ann, iban=digest:bef19ccbcf87f759cb18235af8a4d031a4cd89369514a9300e348803fe129d02, reference=digest:c88e885494a2d3f82a49e3efbda8ab5dad1560ac499caa380ba9db31abb5a727}"
+  end definition
+end law
+
+law "|a field's digest is the digest within its own context| is
+  definition :
+    for all (value :: Account) =>
+      maskedAccount value =
+        "Account{owner=" ++ value.owner ++ ", iban=" ++ prelude.maskDigestIn "example.digest.Account.iban" value.iban
+          ++ ", reference=" ++ prelude.maskDigestIn "example.digest.Account.reference" value.reference ++ "}"
+    end for all
+  end definition
+end law
+
+law "|a violation shows the digest and not the value| is
+  definition :
+    violationsOfAccount (account () with iban = "GB82") = [Violation record{rule = "iban.minLength", field = Present "iban", message = "iban must have at least 8 characters, but was digest:a6253c10d51b70451b2c84d50ed3c197465d1c39aa4bd5f259ff7847d2b2d77c"}]
+  end definition
+end law
+
+-- The keyed hash, for comparison: maskHash takes its key, and one key gives
+-- one hash on every target.
+function sampleKey (u :: Unit) -> (key :: Bytes where prelude.length key = 32) is
+  bytes([119, 104, 97, 116, 115, 32, 116, 104, 101, 32, 69, 108, 118, 105, 115, 104, 32, 119, 111, 114, 100, 32, 102, 111, 114, 32, 102, 114, 105, 101, 110, 100])
+end function
+
+law "|a text is hashed under a key as on every target| is
+  definition :
+    prelude.maskHash (sampleKey ()) "GB82WEST12345698765432" = "hash:6d6275e3d3a24a77b80e4d975e8b29ebf952b415162473f92d946c494c3004e6"
+    and prelude.maskHash (sampleKey ()) "abc" = "hash:157f8b4b104070014ab0b3b7aff364f794e010e92b1c976318e892f380b53406"
+  end definition
+end law
+
+law "|a hash is the keyed hash in hexadecimal| is
+  definition :
+    for all (token :: Text) =>
+      prelude.maskHash (sampleKey ()) token = "hash:" ++ prelude.hex (prelude.blake3Keyed (sampleKey ()) (prelude.utf8 token))
+    end for all
+  end definition
+end law
+end unit

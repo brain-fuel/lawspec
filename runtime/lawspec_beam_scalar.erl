@@ -10,6 +10,9 @@
     text_trim/1,
     text_is_unicode_whitespace/1,
     text_trim_ascii_control/1,
+    blake3/1,
+    blake3_keyed/2,
+    blake3_derive_key/2,
     text_words/1,
     text_lines/1,
     wire/2,
@@ -966,6 +969,11 @@ helper(<<"isUnicodeWhitespace">>, [Text], _, _) when is_binary(Text) ->
     text_is_unicode_whitespace(Text);
 helper(<<"trimAsciiControl">>, [Text], _, _) when is_binary(Text) ->
     text_trim_ascii_control(Text);
+helper(<<"blake3">>, [Data], _, _) when is_binary(Data) -> blake3(Data);
+helper(<<"blake3Keyed">>, [Key, Data], _, _) when is_binary(Key), is_binary(Data) ->
+    blake3_keyed(Key, Data);
+helper(<<"blake3DeriveKey">>, [Context, Data], _, _) when is_binary(Context), is_binary(Data) ->
+    blake3_derive_key(Context, Data);
 helper(<<"words">>, [Text], _, _) when is_binary(Text) -> text_words(Text);
 helper(<<"lines">>, [Text], _, _) when is_binary(Text) -> text_lines(Text);
 helper(Op, [A, B], [TA, TB], _) when Op =:= <<"quot">>; Op =:= <<"rem">>; Op =:= <<"pow">> ->
@@ -1078,3 +1086,132 @@ unit(Kind, _) ->
 require(true, _) -> ok;
 require(false, Reason) -> fail(Reason).
 fail(Reason) -> erlang:error({lawspec, Reason}).
+
+%% BLAKE3 (the BLAKE3 specification, section 2) with its default 32-byte
+%% output: the hash, the keyed hash and key derivation, written from the
+%% specification and its reference implementation (CC0 1.0 or Apache-2.0).
+%% OTP's crypto has no BLAKE3. One process, no SIMD; the official test
+%% vectors check every mode (the contracts-digest acceptance suite).
+%% ref:DEC-blake3-port
+-define(BLAKE3_IV,
+    {16#6a09e667, 16#bb67ae85, 16#3c6ef372, 16#a54ff53a, 16#510e527f, 16#9b05688c, 16#1f83d9ab,
+        16#5be0cd19}
+).
+-define(BLAKE3_CHUNK_START, 1).
+-define(BLAKE3_CHUNK_END, 2).
+-define(BLAKE3_PARENT, 4).
+-define(BLAKE3_ROOT, 8).
+-define(BLAKE3_KEYED_HASH, 16).
+-define(BLAKE3_DERIVE_KEY_CONTEXT, 32).
+-define(BLAKE3_DERIVE_KEY_MATERIAL, 64).
+-define(WORD, 16#ffffffff).
+
+%% @doc The 32-byte BLAKE3 hash of some bytes: LawSpec's blake3.
+blake3(Data) -> blake3_digest(?BLAKE3_IV, 0, Data).
+
+%% @doc The 32-byte BLAKE3 keyed hash of some bytes under a key of 32 bytes:
+%% LawSpec's blake3Keyed.
+blake3_keyed(Key, Data) when byte_size(Key) =:= 32 ->
+    blake3_digest(blake3_key(Key), ?BLAKE3_KEYED_HASH, Data);
+blake3_keyed(_, _) ->
+    erlang:error({lawspec, <<"blake3Keyed: the key is 32 bytes">>}).
+
+%% @doc The 32 bytes BLAKE3 derives from some key material in a context,
+%% which is a text: LawSpec's blake3DeriveKey.
+blake3_derive_key(Context, Material) ->
+    ContextKey = blake3_digest(?BLAKE3_IV, ?BLAKE3_DERIVE_KEY_CONTEXT, Context),
+    blake3_digest(blake3_key(ContextKey), ?BLAKE3_DERIVE_KEY_MATERIAL, Material).
+
+blake3_key(
+    <<A:32/little, B:32/little, C:32/little, D:32/little, E:32/little, F:32/little, G:32/little,
+        H:32/little>>
+) ->
+    {A, B, C, D, E, F, G, H}.
+
+%% The output from a key of eight words and a mode's flag: the initial value
+%% and no flag hash, a key and KEYED_HASH hash under the key, and the two
+%% DERIVE_KEY flags derive a key. The chunks are merged as the reference
+%% implementation merges them: a stack of subtree chaining values, one
+%% subtree closed per trailing zero of the chunk count.
+blake3_digest(Key, Mode, Data) ->
+    Root = blake3_chunks(Key, Mode, Data, 0, []),
+    <<<<Word:32/little>> || Word <- tuple_to_list(Root)>>.
+
+blake3_chunks(Key, Mode, <<Chunk:1024/binary, Rest/binary>>, Index, Stack) when Rest =/= <<>> ->
+    Cv = blake3_chunk(Key, Mode, Chunk, Index, 0),
+    blake3_chunks(Key, Mode, Rest, Index + 1, blake3_merge(Key, Mode, Stack, Cv, Index + 1));
+blake3_chunks(Key, Mode, Last, Index, []) ->
+    blake3_chunk(Key, Mode, Last, Index, ?BLAKE3_ROOT);
+blake3_chunks(Key, Mode, Last, Index, Stack) ->
+    blake3_finish(Key, Mode, Stack, blake3_chunk(Key, Mode, Last, Index, 0)).
+
+blake3_merge(Key, Mode, [Left | Below], Cv, Total) when Total rem 2 =:= 0 ->
+    blake3_merge(Key, Mode, Below, blake3_parent(Key, Mode, Left, Cv, 0), Total div 2);
+blake3_merge(_, _, Stack, Cv, _) ->
+    [Cv | Stack].
+
+blake3_finish(Key, Mode, [Left], Cv) ->
+    blake3_parent(Key, Mode, Left, Cv, ?BLAKE3_ROOT);
+blake3_finish(Key, Mode, [Left | Below], Cv) ->
+    blake3_finish(Key, Mode, Below, blake3_parent(Key, Mode, Left, Cv, 0)).
+
+blake3_parent(Key, Mode, Left, Right, Flags) ->
+    Block = list_to_tuple(tuple_to_list(Left) ++ tuple_to_list(Right)),
+    blake3_compress(Key, Block, 0, 64, Mode bor ?BLAKE3_PARENT bor Flags).
+
+%% A chunk's chaining value; its last block carries the extra flags.
+blake3_chunk(Key, Mode, Chunk, Index, Last) ->
+    blake3_blocks(Key, Mode, Chunk, Index, Mode bor ?BLAKE3_CHUNK_START, Last).
+
+blake3_blocks(Cv, Mode, <<Block:64/binary, Rest/binary>>, Index, Flags, Last) when Rest =/= <<>> ->
+    Next = blake3_compress(Cv, blake3_words(Block), Index, 64, Flags),
+    blake3_blocks(Next, Mode, Rest, Index, Mode, Last);
+blake3_blocks(Cv, _, Block, Index, Flags, Last) ->
+    Padded = <<Block/binary, 0:((64 - byte_size(Block)) * 8)>>,
+    blake3_compress(
+        Cv, blake3_words(Padded), Index, byte_size(Block), Flags bor ?BLAKE3_CHUNK_END bor Last
+    ).
+
+blake3_words(Block) ->
+    list_to_tuple([Word || <<Word:32/little>> <= Block]).
+
+%% The first eight words of BLAKE3's compression: a chaining value.
+blake3_compress(Cv, Block, Counter, Length, Flags) ->
+    {I0, I1, I2, I3, _, _, _, _} = ?BLAKE3_IV,
+    State0 = list_to_tuple(
+        tuple_to_list(Cv) ++
+            [I0, I1, I2, I3, Counter band ?WORD, (Counter bsr 32) band ?WORD, Length, Flags]
+    ),
+    State = blake3_rounds(State0, Block, 7),
+    list_to_tuple([element(I, State) bxor element(I + 8, State) || I <- lists:seq(1, 8)]).
+
+blake3_rounds(State, _, 0) ->
+    State;
+blake3_rounds(S0, M, Rounds) ->
+    S1 = blake3_mix(S0, 1, 5, 9, 13, element(1, M), element(2, M)),
+    S2 = blake3_mix(S1, 2, 6, 10, 14, element(3, M), element(4, M)),
+    S3 = blake3_mix(S2, 3, 7, 11, 15, element(5, M), element(6, M)),
+    S4 = blake3_mix(S3, 4, 8, 12, 16, element(7, M), element(8, M)),
+    S5 = blake3_mix(S4, 1, 6, 11, 16, element(9, M), element(10, M)),
+    S6 = blake3_mix(S5, 2, 7, 12, 13, element(11, M), element(12, M)),
+    S7 = blake3_mix(S6, 3, 8, 9, 14, element(13, M), element(14, M)),
+    S8 = blake3_mix(S7, 4, 5, 10, 15, element(15, M), element(16, M)),
+    Next = list_to_tuple([
+        element(From, M)
+     || From <- [3, 7, 4, 11, 8, 1, 5, 14, 2, 12, 13, 6, 10, 15, 16, 9]
+    ]),
+    blake3_rounds(S8, Next, Rounds - 1).
+
+blake3_mix(State, A, B, C, D, X, Y) ->
+    A1 = (element(A, State) + element(B, State) + X) band ?WORD,
+    D1 = blake3_rotate(element(D, State) bxor A1, 16),
+    C1 = (element(C, State) + D1) band ?WORD,
+    B1 = blake3_rotate(element(B, State) bxor C1, 12),
+    A2 = (A1 + B1 + Y) band ?WORD,
+    D2 = blake3_rotate(D1 bxor A2, 8),
+    C2 = (C1 + D2) band ?WORD,
+    B2 = blake3_rotate(B1 bxor C2, 7),
+    setelement(A, setelement(B, setelement(C, setelement(D, State, D2), C2), B2), A2).
+
+blake3_rotate(Value, Count) ->
+    ((Value bsr Count) bor (Value bsl (32 - Count))) band ?WORD.

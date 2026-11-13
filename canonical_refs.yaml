@@ -700,6 +700,10 @@ blake3-spec:
   kind: article
   title: "The BLAKE3 specification and official test vectors"
   locator: https://github.com/BLAKE3-team/BLAKE3
+blake3-test-vectors:
+  kind: article
+  title: "BLAKE3 official test vectors (test_vectors/test_vectors.json at commit ae3e8e6b, CC0 1.0 or Apache-2.0), kept unchanged in test/fixtures/blake3-official"
+  locator: https://github.com/BLAKE3-team/BLAKE3/blob/ae3e8e6b3a5ae3190ca5d62820789b17886a0038/test_vectors/test_vectors.json
 unison-hashing:
   kind: article
   title: "Unison: the big idea (content-addressed code) and unison-hashing-v2 ABT cycle hashing"

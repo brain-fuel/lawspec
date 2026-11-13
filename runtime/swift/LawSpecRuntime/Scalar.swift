@@ -953,6 +953,16 @@ public enum Scalar {
       if case .text(let t) = values[0] { return .bool(textIsUnicodeWhitespace(t)) }
     case ("trimAsciiControl", 1):
       if case .text(let t) = values[0] { return .text(textTrimAsciiControl(t)) }
+    case ("blake3", 1):
+      if case .bytes(let data) = values[0] { return .bytes(Blake3.hash(data)) }
+    case ("blake3Keyed", 2):
+      if case .bytes(let key) = values[0], case .bytes(let data) = values[1] {
+        return .bytes(try Blake3.keyedHash(key, data))
+      }
+    case ("blake3DeriveKey", 2):
+      if case .text(let context) = values[0], case .bytes(let data) = values[1] {
+        return .bytes(Blake3.deriveKey(context, data))
+      }
     case ("words", 1):
       if case .text(let t) = values[0] { return .list(textWords(t).map { .text($0) }) }
     case ("lines", 1):

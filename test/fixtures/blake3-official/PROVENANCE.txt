@@ -1,0 +1,14 @@
+test_vectors.json is the official BLAKE3 test vector file, copied unchanged.
+
+Source:  https://raw.githubusercontent.com/BLAKE3-team/BLAKE3/ae3e8e6b3a5ae3190ca5d62820789b17886a0038/test_vectors/test_vectors.json
+Commit:  ae3e8e6b3a5ae3190ca5d62820789b17886a0038 (2020-09-29), the last change to the file
+SHA-256: dcb91ea8accc77e6d6e632af7cdc1a99a9f3ae78cf648da595c7d064db32f624
+Licence: the BLAKE3 repository is released under CC0 1.0 or Apache-2.0, at
+         the user's choice; LICENSE_CC0 is its copy of the former.
+
+Each case's input is input_len bytes of the pattern 0, 1, ..., 250 repeated.
+Each output is 131 bytes of extended output; its first 32 bytes are the
+default-length output LawSpec uses. The key and the context string are in the
+file. test/ContractRulesSpec.hs checks LawSpec.Blake3 against every case in
+all three modes, and ties acceptance/contracts-digest/official_vectors.lawspec,
+which every target's runtime runs, to the same file.

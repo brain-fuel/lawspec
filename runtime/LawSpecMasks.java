@@ -10,9 +10,13 @@ package lawspec.runtime;
  * checks; the contracts-masking acceptance suite compares the two renderings.
  *
  * <p>
- * The hash mask is keyed BLAKE3-256 (the BLAKE3 specification, section 2.1). Its key is 32 secret
- * bytes the application sets when it starts; LawSpec never writes a key into generated code and has
- * no default, so a rendering without a key throws.
+ * The hash mask is the BLAKE3 keyed hash (the BLAKE3 specification, section 2). Its key is 32
+ * secret bytes the application sets when it starts; LawSpec never writes a key into generated code
+ * and has no default, so a rendering without a key throws.
+ *
+ * <p>
+ * The digest mask is the BLAKE3 hash and needs no key: it hides a value from a reader, and not
+ * from someone who can guess candidates and hash each one.
  */
 public final class LawSpecMasks
 {
@@ -71,7 +75,7 @@ public final class LawSpecMasks
    *
    * @throws IllegalArgumentException when the key is not 32 bytes
    */
-  public static void setHashKey(byte[] key)
+  public static void setMaskHashKey(byte[] key)
   {
     if (key == null || key.length != 32)
     {
@@ -81,9 +85,9 @@ public final class LawSpecMasks
   }
 
   /**
-   * The word hash, a colon and the keyed BLAKE3-256 digest of the text's UTF-8 bytes, under the key
-   * the application set: equal values show alike, and the value cannot be read back without the
-   * key. A lone surrogate is hashed as U+FFFD.
+   * The word hash, a colon and the BLAKE3 keyed hash of the text's UTF-8 bytes, under the key the
+   * application set: equal values show alike, and the value cannot be found without the key, even
+   * by trying candidates. A lone surrogate is hashed as U+FFFD.
    *
    * @throws IllegalStateException when no key is set; it never falls back to showing or hiding
    */
@@ -94,7 +98,7 @@ public final class LawSpecMasks
     {
       throw new IllegalStateException(
           "LawSpec masking: a field is shown as hash and no key is set; call"
-              + " LawSpecMasks.setHashKey with 32 secret bytes when the application starts");
+              + " LawSpecMasks.setMaskHashKey with 32 secret bytes when the application starts");
     }
     return LawSpecRuntime.maskHashBlake3With(key, value);
   }
@@ -124,5 +128,37 @@ public final class LawSpecMasks
   public static String maskHashWith(byte[] key, String value)
   {
     return maskHashBlake3With(key, value);
+  }
+
+  /**
+   * The word digest, a colon and the BLAKE3 hash of the text's UTF-8 bytes: LawSpec's {@code
+   * maskDigestBlake3 text}, and what b3sum prints for the same bytes. It needs no key, so whoever
+   * can guess the text can check the guess. A lone surrogate is hashed as U+FFFD.
+   */
+  public static String maskDigestBlake3(String value)
+  {
+    return LawSpecRuntime.maskDigestBlake3(value);
+  }
+
+  /** The digest mask of this version's default algorithm, BLAKE3. */
+  public static String maskDigest(String value)
+  {
+    return maskDigestBlake3(value);
+  }
+
+  /**
+   * The digest of a text within a context, by BLAKE3's key derivation: LawSpec's {@code
+   * maskDigestBlake3In context text}. A field shown as digest is rendered in the context {@code
+   * <unit>.<Record>.<field>}, so one text has unrelated digests in two fields.
+   */
+  public static String maskDigestBlake3In(String context, String value)
+  {
+    return LawSpecRuntime.maskDigestBlake3In(context, value);
+  }
+
+  /** As maskDigestBlake3In, for this version's default algorithm. */
+  public static String maskDigestIn(String context, String value)
+  {
+    return maskDigestBlake3In(context, value);
   }
 }

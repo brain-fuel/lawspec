@@ -519,7 +519,8 @@ public final class LawSpecRuntime
       var shown = new StringBuilder("Data[tag=").append(tag).append(", fields=[");
       for (int i = 0; i < fields.size(); i++)
       {
-        shown.append(i == 0 ? "" : ", ").append(masked(tag, i) ? "***" : fields.get(i));
+        Object field = fields.get(i);
+        shown.append(i == 0 ? "" : ", ").append(masked(tag, i) ? concealed(tag, i, field) : field);
       }
       return shown.append("]]").toString();
     }
@@ -539,6 +540,51 @@ public final class LawSpecRuntime
       hidden.add(position);
     }
     MASKED_FIELDS.put(tag, java.util.Set.copyOf(hidden));
+  }
+
+  // The fields a masking block shows as digest, by constructor tag and position, each with its
+  // context: a failure shows such a field's digest, which is what the record's own rendering shows.
+  private static final Map<String, Map<Integer, String>> DIGEST_FIELDS =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
+  public static void digestField(String tag, int position, String context)
+  {
+    DIGEST_FIELDS.computeIfAbsent(tag, key -> new java.util.concurrent.ConcurrentHashMap<>())
+        .put(position, context);
+  }
+
+  /** What a failure shows of a masked field: its digest, or three stars. */
+  static String concealed(String tag, int position, Object field)
+  {
+    var contexts = DIGEST_FIELDS.get(tag);
+    String context = contexts == null ? null : contexts.get(position);
+    if (context != null && field instanceof Value value && "Text".equals(value.type()))
+    {
+      return maskDigestBlake3In(context, codePointsText(value));
+    }
+    return "***";
+  }
+
+  /** A Bytes value's bytes. */
+  private static byte[] octets(Value value)
+  {
+    var units = (List<?>) value.data;
+    byte[] bytes = new byte[units.size()];
+    for (int i = 0; i < bytes.length; i++)
+    {
+      bytes[i] = (byte) ((Number) units.get(i)).intValue();
+    }
+    return bytes;
+  }
+
+  private static Value bytesValue(byte[] bytes)
+  {
+    var units = new ArrayList<Integer>();
+    for (byte b : bytes)
+    {
+      units.add(b & 0xff);
+    }
+    return new Value("Bytes", List.copyOf(units));
   }
 
   static boolean masked(String tag, int position)
@@ -571,7 +617,8 @@ public final class LawSpecRuntime
       var parts = new ArrayList<String>();
       for (int i = 0; i < value.fields().size(); i++)
       {
-        parts.add(masked(tag, i) ? "***" : renderMasked(value.fields().get(i)));
+        Value field = value.fields().get(i);
+        parts.add(masked(tag, i) ? concealed(tag, i, field) : renderMasked(field));
       }
       return (cut < 0 ? tag : tag.substring(cut + 2)) + "(" + String.join(", ", parts) + ")";
     }
@@ -1868,16 +1915,12 @@ public final class LawSpecRuntime
         return textValue(textTrimAsciiControl(codePointsText(args[0])));
       case "rfc822Uncommented":
         return textValue(textRfc822Uncommented(codePointsText(args[0])));
-      case "maskHashBlake3":
-      {
-        var units = (List<?>) args[0].data;
-        byte[] key = new byte[units.size()];
-        for (int i = 0; i < key.length; i++)
-        {
-          key[i] = (byte) ((Number) units.get(i)).intValue();
-        }
-        return textValue(maskHashBlake3With(key, codePointsText(args[1])));
-      }
+      case "blake3":
+        return bytesValue(blake3(octets(args[0])));
+      case "blake3Keyed":
+        return bytesValue(blake3Keyed(octets(args[0]), octets(args[1])));
+      case "blake3DeriveKey":
+        return bytesValue(blake3DeriveKey(codePointsText(args[0]), octets(args[1])));
       case "words":
         return textList(textWords(codePointsText(args[0])));
       case "lines":
@@ -9757,7 +9800,10 @@ public final class LawSpecRuntime
     return text.codePoints().allMatch(LawSpecRuntime::textWhiteSpace);
   }
 
-  // Keyed BLAKE3-256 (the BLAKE3 specification, section 2.1), for the hash mask.
+  // BLAKE3 (the BLAKE3 specification, section 2) with its default 32-byte output: the hash, the
+  // keyed hash and key derivation, for the blake3 functions and the hash and digest masks. One
+  // thread, no SIMD; the official test vectors check every mode (the contracts-digest acceptance
+  // suite). ref:DEC-blake3-port
   private static final int[] BLAKE3_IV = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
       0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
   private static final int[] BLAKE3_SCHEDULE =
@@ -9767,21 +9813,47 @@ public final class LawSpecRuntime
   private static final int BLAKE3_PARENT = 4;
   private static final int BLAKE3_ROOT = 8;
   private static final int BLAKE3_KEYED_HASH = 16;
+  private static final int BLAKE3_DERIVE_KEY_CONTEXT = 32;
+  private static final int BLAKE3_DERIVE_KEY_MATERIAL = 64;
+
+  /** The 32-byte BLAKE3 hash of some bytes: LawSpec's {@code blake3}. */
+  public static byte[] blake3(byte[] bytes)
+  {
+    return blake3Digest(BLAKE3_IV, 0, bytes);
+  }
 
   /**
-   * The word hash, a colon and the keyed BLAKE3-256 digest of the text's UTF-8 bytes in
-   * hexadecimal: LawSpec's {@code maskHashBlake3 key text}. A lone surrogate is hashed as U+FFFD.
+   * The 32-byte BLAKE3 keyed hash of some bytes: LawSpec's {@code blake3Keyed}.
    *
    * @throws IllegalArgumentException when the key is not 32 bytes
    */
-  public static String maskHashBlake3With(byte[] secret, String value)
+  public static byte[] blake3Keyed(byte[] key, byte[] bytes)
   {
-    if (secret == null || secret.length != 32)
+    if (key == null || key.length != 32)
     {
-      throw new IllegalArgumentException("LawSpec masking: the hash key is 32 bytes");
+      throw new IllegalArgumentException("blake3Keyed: the key is 32 bytes");
     }
-    int[] key = new int[8];
-    System.arraycopy(blake3Words(secret, 0, 32), 0, key, 0, 8);
+    return blake3Digest(blake3Key(key), BLAKE3_KEYED_HASH, bytes);
+  }
+
+  /**
+   * The 32 bytes BLAKE3 derives from some key material in a context, which is a text: LawSpec's
+   * {@code blake3DeriveKey}.
+   */
+  public static byte[] blake3DeriveKey(String context, byte[] material)
+  {
+    byte[] contextKey = blake3Digest(BLAKE3_IV, BLAKE3_DERIVE_KEY_CONTEXT, scalarUtf8(context));
+    return blake3Digest(blake3Key(contextKey), BLAKE3_DERIVE_KEY_MATERIAL, material);
+  }
+
+  private static int[] blake3Key(byte[] key)
+  {
+    return java.util.Arrays.copyOf(blake3Words(key, 0, 32), 8);
+  }
+
+  /** A text's UTF-8 bytes, a lone surrogate encoded as U+FFFD. */
+  static byte[] scalarUtf8(String value)
+  {
     var scalar = new StringBuilder();
     String text = String.valueOf(value);
     for (int i = 0; i < text.length(); i++)
@@ -9799,7 +9871,48 @@ public final class LawSpecRuntime
         scalar.append(Character.isSurrogate(unit) ? '\uFFFD' : unit);
       }
     }
-    byte[] bytes = scalar.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    return scalar.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  }
+
+  /**
+   * The word hash, a colon and the BLAKE3 keyed hash of the text's UTF-8 bytes in hexadecimal:
+   * LawSpec's {@code maskHashBlake3 key text}. A lone surrogate is hashed as U+FFFD.
+   *
+   * @throws IllegalArgumentException when the key is not 32 bytes
+   */
+  public static String maskHashBlake3With(byte[] secret, String value)
+  {
+    if (secret == null || secret.length != 32)
+    {
+      throw new IllegalArgumentException("LawSpec masking: the hash key is 32 bytes");
+    }
+    return "hash:" + hex(blake3Keyed(secret, scalarUtf8(value)));
+  }
+
+  /**
+   * The word digest, a colon and the BLAKE3 hash of the text's UTF-8 bytes in hexadecimal:
+   * LawSpec's {@code maskDigestBlake3 text}. A lone surrogate is hashed as U+FFFD.
+   */
+  public static String maskDigestBlake3(String value)
+  {
+    return "digest:" + hex(blake3(scalarUtf8(value)));
+  }
+
+  /**
+   * The digest of a text within a context, by BLAKE3's key derivation: LawSpec's {@code
+   * maskDigestBlake3In context text}.
+   */
+  public static String maskDigestBlake3In(String context, String value)
+  {
+    return "digest:" + hex(blake3DeriveKey("lawspec 0.34 mask " + context, scalarUtf8(value)));
+  }
+
+  /**
+   * The 32-byte output from a key of eight words and a mode's flag: the initial value and no flag
+   * hash, a key and KEYED_HASH hash under the key, and the two DERIVE_KEY flags derive a key.
+   */
+  private static byte[] blake3Digest(int[] key, int mode, byte[] bytes)
+  {
     int chunks = Math.max(1, (bytes.length + 1023) / 1024);
     // The reference implementation's merge: a stack of subtree chaining values, one subtree
     // closed per trailing zero of the chunk count.
@@ -9807,12 +9920,11 @@ public final class LawSpecRuntime
     int depth = 0;
     for (int index = 0; index < chunks - 1; index++)
     {
-      int[] cv = blake3Chunk(key, bytes, index, 0);
+      int[] cv = blake3Chunk(key, mode, bytes, index, 0);
       for (int total = index + 1; total % 2 == 0; total /= 2)
       {
         depth--;
-        cv = blake3Compress(
-            key, blake3Join(stack[depth], cv), 0, 64, BLAKE3_KEYED_HASH | BLAKE3_PARENT);
+        cv = blake3Compress(key, blake3Join(stack[depth], cv), 0, 64, mode | BLAKE3_PARENT);
       }
       stack[depth] = cv;
       depth++;
@@ -9820,43 +9932,41 @@ public final class LawSpecRuntime
     int[] root;
     if (depth == 0)
     {
-      root = blake3Chunk(key, bytes, chunks - 1, BLAKE3_ROOT);
+      root = blake3Chunk(key, mode, bytes, chunks - 1, BLAKE3_ROOT);
     }
     else
     {
-      int[] cv = blake3Chunk(key, bytes, chunks - 1, 0);
+      int[] cv = blake3Chunk(key, mode, bytes, chunks - 1, 0);
       while (depth > 1)
       {
         depth--;
-        cv = blake3Compress(
-            key, blake3Join(stack[depth], cv), 0, 64, BLAKE3_KEYED_HASH | BLAKE3_PARENT);
+        cv = blake3Compress(key, blake3Join(stack[depth], cv), 0, 64, mode | BLAKE3_PARENT);
       }
-      int flags = BLAKE3_KEYED_HASH | BLAKE3_PARENT | BLAKE3_ROOT;
+      int flags = mode | BLAKE3_PARENT | BLAKE3_ROOT;
       root = blake3Compress(key, blake3Join(stack[0], cv), 0, 64, flags);
     }
-    StringBuilder hex = new StringBuilder("hash:");
-    for (int word : root)
+    byte[] out = new byte[32];
+    for (int i = 0; i < 8; i++)
     {
-      for (int shift = 0; shift < 32; shift += 8)
+      for (int shift = 0; shift < 4; shift++)
       {
-        int octet = (word >>> shift) & 255;
-        hex.append(Character.forDigit(octet >>> 4, 16)).append(Character.forDigit(octet & 15, 16));
+        out[4 * i + shift] = (byte) (root[i] >>> (8 * shift));
       }
     }
-    return hex.toString();
+    return out;
   }
 
   /** A chunk's chaining value; its last block carries the extra flags. */
-  private static int[] blake3Chunk(int[] key, byte[] bytes, int index, int last)
+  private static int[] blake3Chunk(int[] key, int mode, byte[] bytes, int index, int last)
   {
     int end = Math.min(bytes.length, index * 1024 + 1024);
     int offset = index * 1024;
     int[] cv = key;
-    int flags = BLAKE3_KEYED_HASH | BLAKE3_CHUNK_START;
+    int flags = mode | BLAKE3_CHUNK_START;
     while (end - offset > 64)
     {
       cv = blake3Compress(cv, blake3Words(bytes, offset, 64), index, 64, flags);
-      flags = BLAKE3_KEYED_HASH;
+      flags = mode;
       offset += 64;
     }
     return blake3Compress(cv, blake3Words(bytes, offset, end - offset), index, end - offset,

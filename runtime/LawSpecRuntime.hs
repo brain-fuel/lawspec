@@ -22,7 +22,7 @@ module LawSpecRuntime where
 import Control.Concurrent (Chan, MVar, forkIO, killThread, modifyMVar, newChan, newEmptyMVar, newMVar, putMVar, readChan, readMVar, takeMVar, threadDelay, tryPutMVar, writeChan, yield)
 import Control.Exception (ErrorCall (..), Exception, SomeException (..), catch, displayException, evaluate, finally, fromException, throwIO, toException, try)
 import Control.Monad (filterM, foldM, forM, forM_, replicateM)
-import Data.Bits (bit, finiteBitSize, setBit, shiftL, shiftR, testBit, xor, (.&.), (.|.))
+import Data.Bits (bit, finiteBitSize, rotateR, setBit, shiftL, shiftR, testBit, xor, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Builder as BB
@@ -823,6 +823,12 @@ helper n args bits = case (n, args) of
   ("trim", [SSequence _ text]) -> SSequence "Text" (trimText text)
   ("isUnicodeWhitespace", [SSequence _ text]) -> SBool (all textWhiteSpace text)
   ("trimAsciiControl", [SSequence _ text]) -> SSequence "Text" (trimAsciiControlText text)
+  ("blake3", [SSequence _ octets]) -> blake3Scalar (blake3 (map fromIntegral octets))
+  ("blake3Keyed", [SSequence _ key, SSequence _ octets])
+    | length key == 32 -> blake3Scalar (blake3Keyed (map fromIntegral key) (map fromIntegral octets))
+    | otherwise -> error "blake3Keyed: the key is 32 bytes"
+  ("blake3DeriveKey", [SSequence _ context, SSequence _ octets]) ->
+    blake3Scalar (blake3DeriveKey (B.unpack (TE.encodeUtf8 (T.pack (map chr context)))) (map fromIntegral octets))
   ("words", [SSequence _ text]) -> SList (map (SSequence "Text") (wordsOfText text))
   ("lines", [SSequence _ text]) -> SList (map (SSequence "Text") (linesOfText text))
   ("startsWith", [SSequence _ t, SSequence _ p]) -> SBool (p `isPrefixOf` t)
@@ -7200,6 +7206,118 @@ splitText separator text = go [] text
 
 trimText :: [Int] -> [Int]
 trimText = reverse . dropWhile textWhiteSpace . reverse . dropWhile textWhiteSpace
+
+-- BLAKE3 (the BLAKE3 specification, section 2) with its default 32-byte
+-- output: the hash, the keyed hash and key derivation, written from the
+-- specification and its reference implementation (CC0 1.0 or Apache-2.0).
+-- One thread, no SIMD; the official test vectors check every mode (the
+-- contracts-digest acceptance suite). ref:DEC-blake3-port
+blake3Iv :: [Word32]
+blake3Iv = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+
+blake3ChunkStart, blake3ChunkEnd, blake3Parent, blake3Root, blake3KeyedHash, blake3DeriveKeyContext, blake3DeriveKeyMaterial :: Word32
+blake3ChunkStart = 1
+blake3ChunkEnd = 2
+blake3Parent = 4
+blake3Root = 8
+blake3KeyedHash = 16
+blake3DeriveKeyContext = 32
+blake3DeriveKeyMaterial = 64
+
+-- | Sixteen little-endian words of a block, zero padded to 64 bytes.
+blake3Words :: [Word8] -> [Word32]
+blake3Words block = go (take 64 (block ++ replicate 64 0))
+  where
+    go (a : b : c : d : rest) =
+      (fromIntegral a .|. (fromIntegral b `shiftL` 8) .|. (fromIntegral c `shiftL` 16) .|. (fromIntegral d `shiftL` 24)) : go rest
+    go _ = []
+
+-- | The first eight words of BLAKE3's compression: a chaining value.
+blake3Compress :: [Word32] -> [Word32] -> Word64 -> Word32 -> Word32 -> [Word32]
+blake3Compress cv block counter size flags =
+  zipWith xor (take 8 final) (drop 8 final)
+  where
+    start = cv ++ take 4 blake3Iv ++ [fromIntegral counter, fromIntegral (counter `shiftR` 32), size, flags]
+    final = fst (foldl (\(state, m) _ -> (blake3Round state m, map (m !!) schedule)) (start, block) [1 .. 7 :: Int])
+    schedule = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8]
+
+-- | One round: the four columns, then the four diagonals.
+blake3Round :: [Word32] -> [Word32] -> [Word32]
+blake3Round state m = case state of
+  [s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15] ->
+    let (a0, a4, a8, a12) = blake3Mix s0 s4 s8 s12 (m !! 0) (m !! 1)
+        (a1, a5, a9, a13) = blake3Mix s1 s5 s9 s13 (m !! 2) (m !! 3)
+        (a2, a6, a10, a14) = blake3Mix s2 s6 s10 s14 (m !! 4) (m !! 5)
+        (a3, a7, a11, a15) = blake3Mix s3 s7 s11 s15 (m !! 6) (m !! 7)
+        (b0, b5, b10, b15) = blake3Mix a0 a5 a10 a15 (m !! 8) (m !! 9)
+        (b1, b6, b11, b12) = blake3Mix a1 a6 a11 a12 (m !! 10) (m !! 11)
+        (b2, b7, b8, b13) = blake3Mix a2 a7 a8 a13 (m !! 12) (m !! 13)
+        (b3, b4, b9, b14) = blake3Mix a3 a4 a9 a14 (m !! 14) (m !! 15)
+     in b0 `seq` [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15]
+  _ -> state
+
+blake3Mix :: Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> (Word32, Word32, Word32, Word32)
+blake3Mix a0 b0 c0 d0 x y =
+  let a1 = a0 + b0 + x
+      d1 = rotateR (d0 `xor` a1) 16
+      c1 = c0 + d1
+      b1 = rotateR (b0 `xor` c1) 12
+      a2 = a1 + b1 + y
+      d2 = rotateR (d1 `xor` a2) 8
+      c2 = c1 + d2
+      b2 = rotateR (b1 `xor` c2) 7
+   in a2 `seq` b2 `seq` c2 `seq` d2 `seq` (a2, b2, c2, d2)
+
+-- | A chunk's chaining value; its last block carries the extra flags.
+blake3Chunk :: [Word32] -> Word32 -> [Word8] -> Word64 -> Word32 -> [Word32]
+blake3Chunk key mode chunk index lastFlags = go key chunk (mode .|. blake3ChunkStart)
+  where
+    go cv rest flags
+      | length (take 65 rest) > 64 =
+          let next = blake3Compress cv (blake3Words (take 64 rest)) index 64 flags
+           in sum next `seq` go next (drop 64 rest) mode
+      | otherwise = blake3Compress cv (blake3Words rest) index (fromIntegral (length rest)) (flags .|. blake3ChunkEnd .|. lastFlags)
+
+-- | The 32-byte output from a key of eight words and a mode's flag: the
+-- initial value and no flag hash, a key and KEYED_HASH hash under the key,
+-- and the two DERIVE_KEY flags derive a key. The chunks are merged as the
+-- reference implementation merges them: a stack of subtree chaining values,
+-- one subtree closed per trailing zero of the chunk count.
+blake3Digest :: [Word32] -> Word32 -> [Word8] -> [Word8]
+blake3Digest key mode octets = concatMap littleEndian (go [] 0 octets)
+  where
+    parent left right flags = blake3Compress key (left ++ right) 0 64 (mode .|. blake3Parent .|. flags)
+    go stack index rest
+      | length (take 1025 rest) > 1024 =
+          let cv = blake3Chunk key mode (take 1024 rest) index 0
+           in go (merge stack cv (index + 1)) (index + 1) (drop 1024 rest)
+      | otherwise = case stack of
+          [] -> blake3Chunk key mode rest index blake3Root
+          _ -> finish stack (blake3Chunk key mode rest index 0)
+    merge (left : below) cv total | even total = merge below (parent left cv 0) (total `div` 2)
+    merge stack cv _ = cv : stack
+    finish [left] cv = parent left cv blake3Root
+    finish (left : below) cv = finish below (parent left cv 0)
+    finish [] cv = cv
+    littleEndian word = [fromIntegral (word `shiftR` shift) | shift <- [0, 8, 16, 24]]
+
+-- | The 32-byte BLAKE3 hash of some bytes: LawSpec's blake3.
+blake3 :: [Word8] -> [Word8]
+blake3 = blake3Digest blake3Iv 0
+
+-- | The 32-byte BLAKE3 keyed hash under a key of 32 bytes: LawSpec's
+-- blake3Keyed.
+blake3Keyed :: [Word8] -> [Word8] -> [Word8]
+blake3Keyed key = blake3Digest (take 8 (blake3Words key)) blake3KeyedHash
+
+-- | The 32 bytes BLAKE3 derives from some key material in a context, whose
+-- bytes are a text's UTF-8: LawSpec's blake3DeriveKey.
+blake3DeriveKey :: [Word8] -> [Word8] -> [Word8]
+blake3DeriveKey context =
+  blake3Digest (take 8 (blake3Words (blake3Digest blake3Iv blake3DeriveKeyContext context))) blake3DeriveKeyMaterial
+
+blake3Scalar :: [Word8] -> Scalar
+blake3Scalar octets = SSequence "Bytes" (map fromIntegral octets)
 
 -- | The text without the code points up to U+0020 at its two ends.
 trimAsciiControlText :: [Int] -> [Int]

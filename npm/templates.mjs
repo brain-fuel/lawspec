@@ -287,7 +287,7 @@ export const setup = {
     'Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2, and for a program that imports lawspec.crypto or lawspec.network npm install @noble/post-quantum@0.7.1.',
   typescript:
     'Use Node 22+, package.json type=module, npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4 (and npm install @noble/post-quantum@0.7.1 for a program that imports lawspec.crypto or lawspec.network). Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=["src/**/*.ts","test/**/*.ts"].',
-  go: 'Use Go 1.25+ and go get pgregory.net/rapid@v1.3.0 (and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.',
+  go: 'Use Go 1.25+ and go get pgregory.net/rapid@v1.3.0 goforge.dev/blake3sum@v1.0.0 (the second for a program that validates or masks records, whose masks hash with BLAKE3; and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.',
   haskell:
     'Use Stack with lts-24.58, directory and time as dependencies (and, for a program that imports lawspec.crypto, lawspec.network or lawspec.randomness, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 as dependencies too), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.',
   kotlin:
@@ -565,11 +565,11 @@ const scaffolds = {
   go: {
     readable: {
       'go.mod':
-        'module example.com/lawspec-example\n\ngo 1.25.0\n\nrequire pgregory.net/rapid v1.3.0\n',
+        'module example.com/lawspec-example\n\ngo 1.25.0\n\nrequire (\n\tgoforge.dev/blake3sum v1.0.0\n\tpgregory.net/rapid v1.3.0\n)\n\nrequire (\n\tgithub.com/klauspost/cpuid/v2 v2.2.7 // indirect\n\tgolang.org/x/sys v0.29.0 // indirect\n)\n',
     },
     compact: {
       'go.mod':
-        'module example.com/lawspec-example\n\ngo 1.25.0\n\nrequire pgregory.net/rapid v1.3.0\n',
+        'module example.com/lawspec-example\n\ngo 1.25.0\n\nrequire (\n\tgoforge.dev/blake3sum v1.0.0\n\tpgregory.net/rapid v1.3.0\n)\n\nrequire (\n\tgithub.com/klauspost/cpuid/v2 v2.2.7 // indirect\n\tgolang.org/x/sys v0.29.0 // indirect\n)\n',
     },
   },
   haskell: {

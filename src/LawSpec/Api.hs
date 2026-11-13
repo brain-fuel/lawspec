@@ -34,6 +34,7 @@ import LawSpec.Discharge (bindingEvidence, defaultHandlerEvidence, refutations, 
 import LawSpec.Explain (ExplainOptions (..), View (..), explainResult, parseView)
 import LawSpec.Frontend (sourcePropertyId)
 import LawSpec.LawClaims (Expiry (..), analysisEvidence, analysisTaskViews, elaborateClaims, settleAnalysis)
+import qualified LawSpec.MaskAdvice as MaskAdvice
 import LawSpec.Memo (CacheFailure (..), Progress (..), Table, memoized, newPersistentTable, newTable, noProgress, staged, withRequest)
 import LawSpec.Model
 import LawSpec.ModelLaws (ModelRun (..))
@@ -151,6 +152,7 @@ dispatch bytes
                                   result files =
                                     withGoEmbeddingWarnings target method
                                       $ withMaskingWarnings target method core
+                                      $ withDigestAdvice us
                                       $ withSamplingWarnings
                                       $ withAuthoring syntax core
                                       $ withRefutations (refutations core obligations)
@@ -429,7 +431,7 @@ dispatch bytes
                       "message" .= (emitted ++ ": the masking block of " ++ name ++ " is applied by masked" ++ name ++
                         " and in violation messages only. This target's native rendering of the record and the output of a failed generated test show every field. Targets that mask those too: " ++
                         intercalate ", " Backend.maskedRenderingTargets ++
-                        (if hashed then ". A field shown as hash is hidden on this target: only those targets have the keyed digest" else ""))
+                        (if hashed then ". A field shown as hash is hidden in this target's native rendering: only those targets hold a configured hash key. masked" ++ name ++ "With shows it under a key the program passes" else ""))
                     ]
                 | (name, hashed) <- masked ]
               existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
@@ -438,6 +440,39 @@ dispatch bytes
                                              , not (null (C.dataMasking declaration))
                                              , not ("Draft" `isSuffixOf` C.dataName declaration) ]
     withMaskingWarnings _ _ _ response = response
+    -- A digest takes no key, so a field with few possible values is found
+    -- from its digest by trying them. The author is told in `advise` and by
+    -- a warning with the same words; nothing is refused. ref:DEC-masking
+    withDigestAdvice units (Object response)
+      | null found = Object response
+      | otherwise =
+          let located item = toJSON (MaskAdvice.digestAt item)
+              rows =
+                [ object
+                    [ "code" .= MaskAdvice.enumerableDigestRule,
+                      "severity" .= ("warning" :: String),
+                      "at" .= located item,
+                      "message" .= MaskAdvice.enumerableDigestMessage item
+                    ]
+                | item <- found ]
+              findings =
+                [ object
+                    [ "rule" .= MaskAdvice.enumerableDigestRule,
+                      "declaration" .= (MaskAdvice.digestUnit item ++ "::" ++ MaskAdvice.digestRecord item),
+                      "severity" .= ("warning" :: String),
+                      "suggestion" .= MaskAdvice.enumerableDigestSuggestion item,
+                      "message" .= MaskAdvice.enumerableDigestMessage item,
+                      "status" .= ("unresolved" :: String)
+                    ]
+                | item <- found ]
+              advised value = case value of
+                Object advice | Just (Array existing) <- KM.lookup "findings" advice ->
+                  Object (KM.insert "findings" (toJSON (toList existing ++ findings)) advice)
+                other -> other
+              existing = case KM.lookup "warnings" response of Just (Array values) -> toList values; _ -> []
+           in Object (KM.insert "warnings" (toJSON (existing ++ rows)) (maybe response (\advice -> KM.insert "advice" (advised advice) response) (KM.lookup "advice" response)))
+      where found = concatMap MaskAdvice.enumerableDigests units
+    withDigestAdvice _ response = response
     -- A scoped quantifier that bounded sampling can refute and never
     -- establish (law.sampledQuantifiers) is reported when the law is
     -- compiled, before a generated test fails with
@@ -892,16 +927,20 @@ failure ds = object ["schemaVersion" .= (5 :: Int), "diagnostics" .= ds]
 -- so the supported targets pay nothing. ref:DEC-email-format ref:DEC-masking
 runtimePrimitivesSupported :: String -> String -> C.Program -> Either [Diagnostic] ()
 runtimePrimitivesSupported target method program
-  | method /= "planGeneration" || target `elem` Backend.runtimePrimitiveTargets || null missing = Right ()
-  | otherwise = Left [Diagnostic "target-unsupported" (target ++ ": " ++ what ++ " Targets that have it: " ++ intercalate ", " Backend.runtimePrimitiveTargets) Nothing | what <- missing]
+  | method /= "planGeneration" || all ((target `elem`) . snd) primitives || null missing = Right ()
+  | otherwise = Left [Diagnostic "target-unsupported" (target ++ ": " ++ what ++ " Targets that have it: " ++ intercalate ", " targets) Nothing | (targets, what) <- missing]
   where
     printed = show program
+    primitives =
+      [ ([C.Rfc822Uncommented], Backend.runtimePrimitiveTargets)
+      , ([C.Blake3, C.Blake3Keyed, C.Blake3DeriveKey], Backend.blake3Targets) ]
     missing =
-      [ what
-      | (helper, what) <-
-          [ (C.Rfc822Uncommented, "the format rfc822Address removes RFC 822 comments before it matches, which this target has no pass for (and no JSON Schema pattern can do); `email` works on every target.")
-          , (C.MaskHashBlake3, "maskHash and maskHashBlake3 (and a masked<Record>With rendering of a hashed field) need keyed BLAKE3, which this target does not have.") ]
-      , ("Helper " ++ show helper) `isInfixOf` printed ]
+      [ (targets, what)
+      | ((helpers, targets), what) <- zip primitives
+          [ "the format rfc822Address removes RFC 822 comments before it matches, which this target has no pass for (and no JSON Schema pattern can do); `email` works on every target."
+          , "maskDigest, maskHash and the blake3 functions (and a rendering of a field shown as digest, or as hash under a key) need BLAKE3, which this target's runtime does not have." ]
+      , target `notElem` targets
+      , any (\helper -> ("Helper " ++ show helper) `isInfixOf` printed) helpers ]
 
 
 -- | The request without the fields that only select a method, target or layout.

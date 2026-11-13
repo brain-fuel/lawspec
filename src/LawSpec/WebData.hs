@@ -92,6 +92,9 @@ emitWebDataWithProfile ts bits layout declarations = do
          -- prints about a failure. ref:DEC-masking
          [ E.ExprStmt (E.call "ls.maskFields" [E.Str (C.idText tag), E.Array (map (E.Num . show) positions)])
          | (tag, positions) <- Backend.maskedPositions declarations ] ++
+         [ E.ExprStmt (E.call "ls.digestFields"
+             [E.Str (C.idText tag), E.Array [E.Array [E.Num (show position), E.Str context] | (position, context) <- positions]])
+         | (tag, positions) <- Backend.digestPositions declarations ] ++
          [E.ret (E.new' "schema.Schema"
           [E.Array metadata, E.Array (map (E.Str . primitiveName) primitives),
            E.Object [E.Prop (E.KName k) (E.Ident v) | (k, v) <- [("absent","Absent"),("present","Present"),("left","Left"),("right","Right"),("presence","Presence")]]])])
@@ -163,6 +166,8 @@ emitWebDataWithProfile ts bits layout declarations = do
             Just (C.MaskLast count) -> [E.Str lead, E.call "ls.maskLast" [E.Num (show count), E.member E.This field]]
             Just C.MaskEmail -> [E.Str lead, E.call "ls.maskEmail" [E.member E.This field]]
             Just (C.MaskHash algorithm) -> [E.Str lead, E.call ("ls." ++ Backend.maskFunction "javascript" algorithm) [E.member E.This field]]
+            Just (C.MaskDigest algorithm context) ->
+              [E.Str lead, E.call ("ls." ++ Backend.digestFunction "javascript" algorithm) [E.Str context, E.member E.This field]]
             Just _ -> [E.Str (lead ++ "***")]
             Nothing -> [E.Str lead, E.call "String" [E.member E.This field]]
     key name = if name `elem` ["constructor","__proto__"] then "[" ++ q name ++ "]" else name

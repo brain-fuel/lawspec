@@ -125,6 +125,10 @@ dataMasking declaration = let Masking fields = dataMasks declaration in fields
 data Mask = MaskHidden | MaskLast Integer | MaskEmail
   -- A keyed hash: by the named algorithm, or by the default one.
   | MaskHash (Maybe String)
+  -- A digest by the named or the default algorithm, which needs no key,
+  -- and the context that separates this field's digests from every other
+  -- field's: <unit>.<Record>.<field>.
+  | MaskDigest (Maybe String) String
   deriving (Eq, Show, Generic)
 pattern DataDeclaration :: Id -> String -> [Id] -> [DataConstructor] -> Origin -> Maybe FamilyIndex -> DataDeclaration
 pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _ _ _ _
@@ -452,10 +456,12 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   -- valid() removes them before it matches (LawSpec.Formats): what the
   -- rfc822Address format matches. ref:DEC-email-format
   | Rfc822Uncommented
-  -- maskHashBlake3 key text: "hash:" and the keyed BLAKE3-256 digest of the
-  -- text's UTF-8 bytes in hexadecimal. The key is 32 bytes; the audit of a
-  -- definition requires that proved where it is called. ref:DEC-masking
-  | MaskHashBlake3 deriving (Eq, Show, Generic)
+  -- BLAKE3-256 in its three modes, each 32 bytes: blake3 bytes; blake3Keyed
+  -- key bytes, whose key is 32 bytes (the audit of a definition requires
+  -- that proved where it is called); blake3DeriveKey context material. The
+  -- hash and digest masks are checked definitions over them
+  -- (LawSpec.ContractRules). ref:DEC-masking
+  | Blake3 | Blake3Keyed | Blake3DeriveKey deriving (Eq, Show, Generic)
 -- | What a law asserts: equations, implications and conjunctions, each equation
 -- with the evidence of how its sides are compared.
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition]
@@ -883,7 +889,9 @@ builtinName Trim = "trim"
 builtinName IsUnicodeWhitespace = "isUnicodeWhitespace"
 builtinName TrimAsciiControl = "trimAsciiControl"
 builtinName Rfc822Uncommented = "rfc822Uncommented"
-builtinName MaskHashBlake3 = "maskHashBlake3"
+builtinName Blake3 = "blake3"
+builtinName Blake3Keyed = "blake3Keyed"
+builtinName Blake3DeriveKey = "blake3DeriveKey"
 builtinName Words = "words"
 builtinName Lines = "lines"
 

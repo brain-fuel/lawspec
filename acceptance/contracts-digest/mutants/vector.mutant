@@ -1,0 +1,9 @@
+rejected-at: generation
+expect: refuted
+expect: 1025 bytes derive the published key
+@@ acceptance/contracts-digest/official_vectors.lawspec
+<<<<<<<
+    prelude.hex (prelude.blake3DeriveKey (context ()) (pattern 1025)) = "effaa245f065fbf82ac186839a249707c3bddf6d3fdda22d1b95a3c970379bcb"
+=======
+    prelude.hex (prelude.blake3DeriveKey (context ()) (pattern 1025)) = "effaa245f065fbf82ac186839a249707c3bddf6d3fdda22d1b95a3c970379bcc"
+>>>>>>>

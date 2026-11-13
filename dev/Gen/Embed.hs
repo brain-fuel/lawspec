@@ -99,6 +99,9 @@ runtimeFiles =
   , ("python-network", "lawspec_network.py"), ("javascript-network", "lawspec_network.mjs")
   , ("java-network", "LawSpecNetwork.java"), ("go-network", "lawspec_network.go")
   , ("haskell-network", "LawSpecNetwork.hs"), ("rust-network", "lawspec_network.rs")
+  -- BLAKE3 from its Go module, written only for programs whose definitions
+  -- reach it (LawSpec.Network.withBlake3Module).
+  , ("go-blake3", "lawspec_blake3.go")
   -- The checker of existing Pekko actors, written only for JVM projects
   -- whose native bindings bind actors (LawSpec.JavaNativeBinding).
   , ("java-pekko-native", "pekko/LawSpecPekkoNative.java")

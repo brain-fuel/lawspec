@@ -503,6 +503,40 @@ func lsMatchEither(value LawSpecValue, left, right func(LawSpecValue) LawSpecVal
 	}
 }
 
+// BLAKE3's three modes with the default 32-byte output. They are
+// goforge.dev/blake3sum's: lawspec_blake3.go, which the generator writes
+// beside this file for a program that reaches them, registers them in its
+// init, so a program that does not hash needs no such module.
+// ref:DEC-blake3-port
+var (
+	lsBlake3          func(data []byte) []byte
+	lsBlake3Keyed     func(key, data []byte) []byte
+	lsBlake3DeriveKey func(context string, material []byte) []byte
+)
+
+func lsBlake3Registered() {
+	if lsBlake3 == nil {
+		panic("LawSpec: BLAKE3 is not linked; regenerate the project so that lawspec_blake3.go is written beside lawspec_runtime.go")
+	}
+}
+
+func lsOctets(value LawSpecValue) []byte {
+	units := value.Data.([]int)
+	octets := make([]byte, len(units))
+	for i, unit := range units {
+		octets[i] = byte(unit)
+	}
+	return octets
+}
+
+func lsBytesValue(octets []byte) LawSpecValue {
+	units := make([]int, len(octets))
+	for i, octet := range octets {
+		units[i] = int(octet)
+	}
+	return LawSpecValue{"Bytes", units}
+}
+
 // Sequences: Text and Bytes hold their units, a List its values. Indices
 // count code points, octets or items, and a slice is clamped.
 func lsSequenceHelper(n string, args []LawSpecValue) (LawSpecValue, bool) {
@@ -593,6 +627,20 @@ func lsSequenceHelper(n string, args []LawSpecValue) (LawSpecValue, bool) {
 		return lsBool(lsTextIsUnicodeWhitespace(lsCodePointsText(args[0].Data.([]int)))), true
 	case "trimAsciiControl":
 		return LawSpecValue{"Text", lsTextUnits(lsTextTrimASCIIControl(lsCodePointsText(args[0].Data.([]int))))}, true
+	case "blake3":
+		lsBlake3Registered()
+		return lsBytesValue(lsBlake3(lsOctets(args[0]))), true
+	case "blake3Keyed":
+		lsBlake3Registered()
+		key := lsOctets(args[0])
+		if len(key) != 32 {
+			panic("blake3Keyed: the key is 32 bytes")
+		}
+		return lsBytesValue(lsBlake3Keyed(key, lsOctets(args[1]))), true
+	case "blake3DeriveKey":
+		lsBlake3Registered()
+		context := lsCodePointsText(args[0].Data.([]int))
+		return lsBytesValue(lsBlake3DeriveKey(context, lsOctets(args[1]))), true
 	case "words":
 		return lsTextList(lsTextWords(lsCodePointsText(args[0].Data.([]int)))), true
 	case "lines":
