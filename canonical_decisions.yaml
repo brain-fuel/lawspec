@@ -241,6 +241,7 @@ DEC-examples-pin-laws:
   question: Why do laws carry hand-written examples as well as generated cases?
   answer: |
     A law says what holds for every input but not what the answer is for a particular input, and two implementations can agree and both be wrong. Examples with expected results, written by the author and never inferred from code, fix the known answers; boundaries and examples always run, and custom generators or narrow refinements cannot remove them. Recorded in docs/explanation/why-executable-laws.md and generation-and-shrinking.md.
+    Amended in 0.34 (adopter feedback F8.6): an example's inputs may be computed by checked definitions and record updates (consumer = usualConsumer () with offerCode = Present ""), so a record of many fields is not repeated in every example. The compiler evaluates such an input when it compiles the law and stores the closed value, so targets receive a constant exactly as for a literal; it may call no adapter, since an adapter is the code under test, and it may not read another input. Expectations remain literals: what is pinned by hand is the answer, and an answer computed by the code it checks would pin nothing. An input the compiler cannot evaluate is rejected with the example's name.
   opened: 0.9.0
   decided: 0.9.0
 
@@ -1501,6 +1502,15 @@ DEC-text-pieces:
     compared by code point, as elsewhere. The built-ins are opaque to the
     proof view, as join is: a law about them is tested and evaluated, and a
     solver proof of one is an explicit unsupported result.
+    From 0.34 two more built-ins are named for exactly what they do, for laws
+    about code that uses a host's own text functions (adopter feedback F8.9).
+    isUnicodeWhitespace text holds when every code point has the White_Space
+    property above, so it equals trim text == "" and holds of the empty text.
+    trimAsciiControl text removes the code points up to U+0020 from both
+    ends, which is Java's String.trim(); it is deliberately not called trim.
+    Neither claims to be a host function: Java's isBlank follows
+    Character.isWhitespace, which differs from White_Space on U+0085, U+00A0,
+    U+2007, U+202F and U+001C to U+001F, and the reference states that.
   opened: 0.33.0
   decided: 0.33.0
   refs: [unicode-white-space]

@@ -17,6 +17,12 @@ function wordCount (text :: Text) -> Integer is
   prelude.length (prelude.words text)
 end function
 
+-- A key as a Java service reads it: String.trim() removes the code points
+-- up to U+0020 from both ends and nothing else.
+function hostTrimmedKey (line :: Text) -> Text is
+  prelude.trimAsciiControl line
+end function
+
 law "|joining the pieces gives the text back| is
   definition :
     for all (separator :: Text) (text :: Text) =>
@@ -36,6 +42,37 @@ end law
 
 law "|trim removes white space at both ends only| is
   definition : prelude.trim "  a b\t\n" = "a b" and prelude.trim "   " = "" and prelude.trim "é " = "é" end definition
+end law
+
+law "|white space is the Unicode property| is
+  definition :
+    prelude.isUnicodeWhitespace " \t\n\133\160\12288" and prelude.isUnicodeWhitespace "" and
+    not prelude.isUnicodeWhitespace " a " and not prelude.isUnicodeWhitespace "\31" and not prelude.isUnicodeWhitespace "\0"
+  end definition
+end law
+
+law "|a text is white space exactly when it trims to nothing| is
+  definition : for all (text :: Text) => prelude.isUnicodeWhitespace text = (prelude.trim text == "") end for all end definition
+end law
+
+law "|trimAsciiControl removes code points up to U+0020 at both ends only| is
+  definition :
+    prelude.trimAsciiControl "\0\31 a\tb \n" = "a\tb" and prelude.trimAsciiControl " \t " = "" and
+    prelude.trimAsciiControl "\160a\160" = "\160a\160" and prelude.trimAsciiControl "\133" = "\133" and
+    prelude.trimAsciiControl "é " = "é"
+  end definition
+end law
+
+law "|a text trimmed of ASCII controls stays trimmed| is
+  definition :
+    for all (text :: Text) => prelude.trimAsciiControl (prelude.trimAsciiControl text) = prelude.trimAsciiControl text end for all
+  end definition
+end law
+
+law "|a host-trimmed key keeps its no-break space| is
+  definition :
+    for all (key :: Text) => hostTrimmedKey ("\160" ++ key ++ "\160 \31") = "\160" ++ key ++ "\160" end for all
+  end definition
 end law
 
 law "|words have no white space and are never empty| is

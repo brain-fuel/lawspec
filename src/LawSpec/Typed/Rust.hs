@@ -542,6 +542,8 @@ expression env selfCall scope e = case expressionNode e of
     b <- expression env Nothing scope text
     pure (L.call "ls::fast::split" [borrow a, borrow b])
   Helper Trim [text] -> (\v -> L.call "ls::fast::trim" [borrow v]) <$> expression env Nothing scope text
+  Helper IsUnicodeWhitespace [text] -> (\v -> L.call "ls::fast::is_unicode_whitespace" [borrow v]) <$> expression env Nothing scope text
+  Helper TrimAsciiControl [text] -> (\v -> L.call "ls::fast::trim_ascii_control" [borrow v]) <$> expression env Nothing scope text
   Helper Words [text] -> (\v -> L.call "ls::fast::words" [borrow v]) <$> expression env Nothing scope text
   Helper Lines [text] -> (\v -> L.call "ls::fast::lines" [borrow v]) <$> expression env Nothing scope text
   _ -> lift (Left ("typed Rust: unsupported expression " ++ take 80 (show (expressionNode e))))

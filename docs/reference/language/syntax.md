@@ -23,7 +23,10 @@ The run says "pending"."""
 end function
 ```
 
-Both forms decode the same escapes, including `\n`, `\t`, `\\` and `\"`.
+Both forms decode the same escapes: `\\`, `\"`, `\'`, `\n`, `\t`, `\r`, `\0`,
+a decimal code point (`\955`) and a hexadecimal one (`\x3BB`). A backslash
+that starts none of them is an error reported at the backslash. A regex that
+needs a backslash writes two: `regex "\\s*"`.
 The first unescaped `"""` closes a triple-quoted literal; escape a quote to
 include that sequence in the value. Every physical newline, leading or trailing
 space, tab and Unicode character between the delimiters is part of the value.
@@ -36,6 +39,21 @@ unchanged. Comments and declaration words inside a literal remain text.
 Formatting preserves the delimiters and the complete literal spelling,
 including whitespace on its opening line. An unterminated triple-quoted
 literal is a syntax error and prevents formatting writes.
+
+## Type annotations
+
+A name is given its type with `of type`; the symbol `::` is an alias and means
+the same everywhere. Every annotation site accepts both: parameters,
+signatures, record fields, quantified inputs, example bindings, ability
+operations, mapping and table headers, harness strategies, expression
+annotations and a scenario's channels.
+
+```text
+function add (left of type Int32) (right of type Int32) -> Int32 is
+add :: (left :: Int32) -> (right :: Int32) -> Int32
+channel report of type Report
+channel report :: Report
+```
 
 ## Blocks and endings
 

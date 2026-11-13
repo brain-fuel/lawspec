@@ -591,6 +591,9 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
          let exampleEnv = M.union (monoEnvironment [(inputName inp,inputType inp) | inp <- checkedInputs]) env
          forM_ (expectations ex) $ \check -> do
            actualType <- infer exampleEnv (actual check) >>= resolve
+           -- Answers are pinned by hand, never computed. ref:DEC-examples-pin-laws
+           when (computedLiteral (expected check))
+             (throwC "an expected result must be a literal; only an example's inputs may be computed by checked definitions")
            checkExpr env actualType (literalExpr (expected check))
        let (a,b,gs) = firstConclusion body
        let lawEnvironment = M.union (monoEnvironment [(inputId inp,inputType inp) | inp <- checkedInputs ++ assertionInputs body]) env
@@ -750,7 +753,20 @@ assertionExpressions (AssertImplies g body) = g:assertionExpressions body
 assertionExpressions (AssertAll as) = concatMap assertionExpressions as
 assertionExpressions (AssertNot body) = assertionExpressions body
 assertionExpressions (AssertQuantified _ input body) = inputRefinements input ++ assertionExpressions body
+-- | Whether a literal holds a computed part (an example input only).
+computedLiteral :: Literal -> Bool
+computedLiteral literal = case literal of
+  ComputedLiteral _ -> True
+  ConstructorLiteral _ fields -> any computedLiteral fields
+  ListLiteral items -> any computedLiteral items
+  SetLiteral _ items -> any computedLiteral items
+  RecordLiteral fields -> any (computedLiteral . snd) fields
+  _ -> False
+
 normalizeLiteralWithContext :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Type -> Literal -> Either String Literal
+-- A computed example input is typed as an expression and evaluated once the
+-- program's definitions are checked (Frontend.materializeExampleBindings).
+normalizeLiteralWithContext _ _ _ _ computed@(ComputedLiteral _) = Right computed
 normalizeLiteralWithContext sourceTypes dataTypes bits t (ConstructorLiteral name fields) = do
   parameters <- evalStateT (constructorParameters t name) (withSourceContext sourceTypes (withDataDeclarations dataTypes (initialState bits)))
   unless (length parameters == length fields) (Left ("wrong constructor arity: " ++ name))

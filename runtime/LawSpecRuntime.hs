@@ -821,6 +821,8 @@ helper n args bits = case (n, args) of
   ("join", [SSequence _ separator, SList parts]) -> SSequence "Text" (intercalate separator [p | SSequence _ p <- parts])
   ("split", [SSequence _ separator, SSequence _ text]) -> SList (map (SSequence "Text") (splitText separator text))
   ("trim", [SSequence _ text]) -> SSequence "Text" (trimText text)
+  ("isUnicodeWhitespace", [SSequence _ text]) -> SBool (all textWhiteSpace text)
+  ("trimAsciiControl", [SSequence _ text]) -> SSequence "Text" (trimAsciiControlText text)
   ("words", [SSequence _ text]) -> SList (map (SSequence "Text") (wordsOfText text))
   ("lines", [SSequence _ text]) -> SList (map (SSequence "Text") (linesOfText text))
   ("startsWith", [SSequence _ t, SSequence _ p]) -> SBool (p `isPrefixOf` t)
@@ -7198,6 +7200,10 @@ splitText separator text = go [] text
 
 trimText :: [Int] -> [Int]
 trimText = reverse . dropWhile textWhiteSpace . reverse . dropWhile textWhiteSpace
+
+-- | The text without the code points up to U+0020 at its two ends.
+trimAsciiControlText :: [Int] -> [Int]
+trimAsciiControlText = reverse . dropWhile (<= 0x20) . reverse . dropWhile (<= 0x20)
 
 wordsOfText :: [Int] -> [[Int]]
 wordsOfText text = case dropWhile textWhiteSpace text of

@@ -477,6 +477,26 @@ export function trim(text)
   return trimText(text);
 }
 
+// Whether every code point is Unicode White_Space; the empty text is.
+export function isUnicodeWhitespace(text)
+{
+  for (const character of text)
+  {
+    if (!isWhiteSpace(character.codePointAt(0))) return false;
+  }
+  return true;
+}
+
+// The text without the code points up to U+0020 at its two ends.
+export function trimAsciiControl(text)
+{
+  let start = 0;
+  let end = text.length;
+  while (start < end && text.charCodeAt(start) <= 0x20) start++;
+  while (end > start && text.charCodeAt(end - 1) <= 0x20) end--;
+  return text.slice(start, end);
+}
+
 export function words(text)
 {
   return listOf(wordsOfText(text));

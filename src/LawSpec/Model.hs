@@ -74,7 +74,12 @@ instance ToJSON Refinement
 instance ToJSON Contract
 instance ToJSON DomainPlan
 
-data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] | RecordLiteral [(String,Literal)] | SetLiteral String [Literal] deriving (Eq, Show, Generic)
+data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] | RecordLiteral [(String,Literal)] | SetLiteral String [Literal]
+  -- An example input built by checked definitions and record updates, such as
+  -- defaults () with code = Present "". It is evaluated when the program is
+  -- compiled and stored as the value it gives; it calls no adapter. An
+  -- expected result is never this. ref:DEC-examples-pin-laws
+  | ComputedLiteral Expr deriving (Eq, Show, Generic)
 instance ToJSON Literal where
   toJSON (DecimalLiteral c e) = toJSON (SDecimal c e)
   toJSON (IntLiteral n) = toJSON (SInteger "BigInt" n)
@@ -84,6 +89,7 @@ instance ToJSON Literal where
   toJSON (ConstructorLiteral name fields) = object ["constructor" .= name, "fields" .= fields]
   toJSON (ListLiteral xs) = object ["list" .= xs]
   toJSON (RecordLiteral fields) = object ["record" .= fields]
+  toJSON (ComputedLiteral expression) = object ["computed" .= expression]
   toJSON (SetLiteral _ items) = object ["set" .= items]
 
 data Expectation = Expectation { actual :: Expr, expected :: Literal } deriving (Eq, Show, Generic)
@@ -625,6 +631,7 @@ literalExpr (ConstructorLiteral name fields) = ConstructLit name (map literalExp
 literalExpr (ListLiteral xs) = ListLit (map literalExpr xs)
 literalExpr (RecordLiteral fields) = RecordLit [(label,literalExpr value) | (label,value) <- fields]
 literalExpr (SetLiteral builder items) = Apply (Var builder) (ListLit (map literalExpr items))
+literalExpr (ComputedLiteral expression) = expression
 
 -- Documentary example labels retain literal notation before name resolution.
 -- Checked builders are an elaboration detail, not part of a table row label.

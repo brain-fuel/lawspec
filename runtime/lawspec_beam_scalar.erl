@@ -8,6 +8,8 @@
     literal/1, literal/2,
     text_split/2,
     text_trim/1,
+    text_is_unicode_whitespace/1,
+    text_trim_ascii_control/1,
     text_words/1,
     text_lines/1,
     wire/2,
@@ -960,6 +962,10 @@ helper(<<"join">>, [Separator, Parts], _, _) when is_binary(Separator), is_list(
 helper(<<"split">>, [Separator, Text], _, _) when is_binary(Separator), is_binary(Text) ->
     text_split(Separator, Text);
 helper(<<"trim">>, [Text], _, _) when is_binary(Text) -> text_trim(Text);
+helper(<<"isUnicodeWhitespace">>, [Text], _, _) when is_binary(Text) ->
+    text_is_unicode_whitespace(Text);
+helper(<<"trimAsciiControl">>, [Text], _, _) when is_binary(Text) ->
+    text_trim_ascii_control(Text);
 helper(<<"words">>, [Text], _, _) when is_binary(Text) -> text_words(Text);
 helper(<<"lines">>, [Text], _, _) when is_binary(Text) -> text_lines(Text);
 helper(Op, [A, B], [TA, TB], _) when Op =:= <<"quot">>; Op =:= <<"rem">>; Op =:= <<"pow">> ->
@@ -997,6 +1003,28 @@ text_end(<<C/utf8, Rest/binary>>, At, End) ->
         false -> text_end(Rest, Next, Next)
     end;
 text_end(<<>>, _, End) ->
+    End.
+
+%% Whether every code point is Unicode White_Space; the empty text is.
+text_is_unicode_whitespace(<<C/utf8, Rest/binary>>) ->
+    text_white_space(C) andalso text_is_unicode_whitespace(Rest);
+text_is_unicode_whitespace(<<>>) ->
+    true.
+
+%% The text without the code points up to U+0020 at its two ends.
+text_trim_ascii_control(<<C/utf8, Rest/binary>>) when C =< 16#20 ->
+    text_trim_ascii_control(Rest);
+text_trim_ascii_control(Text) ->
+    binary:part(Text, 0, text_control_end(Text, 0, 0)).
+
+%% The size in bytes up to the end of the last character above U+0020.
+text_control_end(<<C/utf8, Rest/binary>>, At, End) ->
+    Next = At + byte_size(<<C/utf8>>),
+    case C =< 16#20 of
+        true -> text_control_end(Rest, Next, End);
+        false -> text_control_end(Rest, Next, Next)
+    end;
+text_control_end(<<>>, _, End) ->
     End.
 
 text_words(Text) -> text_words(Text, <<>>, []).

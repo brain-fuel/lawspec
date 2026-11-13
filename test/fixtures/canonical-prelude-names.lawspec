@@ -82,6 +82,9 @@ law railwayNames is
     isRight (Right true of type Either Text Bool) and
     isLeft (Left "declined" of type Either Text Bool) and
     fromEither false (Left "declined" of type Either Text Bool) = false and
+    presentOr (Absent of type Maybe Bool) true = true and
+    fromMaybe false (Present true of type Maybe Bool) = true and
+    map Present (Right 1 of type Either Text Integer) = Right (Present 1) and
     both (Right 1 of type Either Text Integer)
       (Right true of type Either Text Bool) = Right (Pair 1 true) and
     andThen accept accept 1 = Right 1

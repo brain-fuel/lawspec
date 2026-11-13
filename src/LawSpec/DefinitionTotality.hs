@@ -449,7 +449,7 @@ auditCollected context declarations constructors bits unit templates = do
         pure (T.Sequence [value,checkedScale])
       ("length", _, [value]) -> pure (T.Opaque "length" [value])
       -- Sequence helpers are total.
-      _ | name `elem` ["append","slice","take","drop","at","range","octets","bytesOf","utf8","textOf","join","split","trim","words","lines","wrapping","saturating","bounded"] ->
+      _ | name `elem` ["append","slice","take","drop","at","range","octets","bytesOf","utf8","textOf","join","split","trim","words","lines","isUnicodeWhitespace","trimAsciiControl","wrapping","saturating","bounded"] ->
         pure (T.Sequence values)
       ("size", _, [value]) -> pure (T.Opaque "size" [value])
       _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","size","isEmpty","toList"] ->

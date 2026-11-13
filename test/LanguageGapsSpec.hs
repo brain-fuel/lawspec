@@ -237,6 +237,21 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         [ "function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function"
         , "law \"|wrong| is definition : prelude.filter isEven [1, 2] = [1, 2] end definition end law" ]
         `shouldSatisfy` isLeft
+    it "tests Unicode white space and trims ASCII controls, named for what they do" $ do
+      evaluated
+        [ "law \"|host text| is definition :"
+        , "  prelude.isUnicodeWhitespace \" \\t\\n\\133\\160\\12288\" and prelude.isUnicodeWhitespace \"\""
+        , "    and not prelude.isUnicodeWhitespace \" a \" and not prelude.isUnicodeWhitespace \"\\31\""
+        , "    and prelude.trimAsciiControl \"\\0\\31 a\\tb \\n\" = \"a\\tb\" and prelude.trimAsciiControl \" \\t \" = \"\""
+        , "    and prelude.trimAsciiControl \"\\160a\\160\" = \"\\160a\\160\" and prelude.trim \"\\160a\\160\" = \"a\""
+        , "end definition end law" ]
+        `shouldSatisfy` isRight
+      evaluated
+        [ "law \"|blank| is definition : for all (text :: Text) =>"
+        , "  prelude.isUnicodeWhitespace text = (prelude.trim text == \"\") end for all end definition end law" ]
+        `shouldSatisfy` isRight
+      evaluated [ "law \"|wrong| is definition : prelude.trimAsciiControl \"\\160a\" = \"a\" end definition end law" ]
+        `shouldSatisfy` isLeft
     it "joins the pieces of a split back into the text" $
       evaluated
         [ "law \"|inverse| is definition : for all (separator :: Text) (text :: Text) =>"
@@ -383,3 +398,74 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         , "end handler"
         , "\nend unit" ]) >>= planTesting >>= emitPlan "rust")
       concatMap artifactContent files `shouldSatisfy` isInfixOf "pub struct CounterSpec"
+  describe "example inputs built by checked definitions (ref:DEC-examples-pin-laws)" $ do
+    let consumers example = unlines
+          [ "unit gaps.inputs"
+          , "type Consumer is a record{ name of type Text offerCode of type Maybe Text retries of type Integer } end type"
+          , "function usualConsumer (ignored :: Unit) -> Consumer is Consumer record{name = \"ada\", offerCode = Absent, retries = 3} end function"
+          , "function hasOffer (consumer :: Consumer) -> Bool is"
+          , "  first matching case of consumer.offerCode : when Absent then false when Present code then prelude.length code > 0 end case"
+          , "end function"
+          , "native :: Consumer -> Consumer"
+          , "law \"|offers| is"
+          , "  definition : for all (consumer :: Consumer) (limit :: Integer) => consumer.offerCode = Present \"\" implies hasOffer consumer = false end for all end definition"
+          , example
+          , "end law"
+          , "end unit" ]
+        bindingsOf source = [ (C.exampleName example, map snd (C.exampleBindings example))
+                            | Right compiled <- [program source], unit <- C.programUnits compiled
+                            , property <- C.unitProperties unit, example <- C.propertyExamples property ]
+    it "evaluates a call and a record update to the closed value a literal would give" $ do
+      let computed = consumers (unlines
+            [ "  example \"|empty code| :"
+            , "    consumer = usualConsumer () with offerCode = Present \"\""
+            , "    limit = 3"
+            , "    expect hasOffer consumer = false"
+            , "  end example" ])
+          literal = consumers (unlines
+            [ "  example \"|empty code| :"
+            , "    consumer = Consumer record{name = \"ada\", offerCode = Present \"\", retries = 3}"
+            , "    limit = 3"
+            , "    expect hasOffer consumer = false"
+            , "  end example" ])
+      program computed `shouldSatisfy` isRight
+      let placed = C.GeneratedFrom (C.Id "")
+          unplaced expression = C.mapChildren unplaced expression{C.expressionOrigin = placed}
+      map (map unplaced . snd) (bindingsOf computed) `shouldBe` map (map unplaced . snd) (bindingsOf literal)
+      all (all C.isConcrete . snd) (bindingsOf computed) `shouldBe` True
+      (program computed >>= planTesting >>= emitPlan "java") `shouldSatisfy` isRight
+      (program computed >>= planTesting >>= emitPlan "javascript") `shouldSatisfy` isRight
+    it "ends a computed input at the next binding, and takes later bindings in any form" $
+      program (consumers (unlines
+        [ "  example \"|two computed| :"
+        , "    limit = prelude.length [1, 2, 3]"
+        , "    consumer = (usualConsumer ()"
+        , "      with offerCode = Present \"\", retries = 4)"
+        , "    expect hasOffer consumer = false"
+        , "    expect consumer.retries = 4"
+        , "  end example" ])) `shouldSatisfy` isRight
+    it "rejects an input that calls an adapter, reads another input or cannot be typed" $ do
+      let example binding = consumers (unlines
+            [ "  example \"|bad| :", "    limit = 3", "    consumer = " ++ binding, "    expect hasOffer consumer = false", "  end example" ])
+      program (example "native (usualConsumer ())") `shouldSatisfy` failsWith "bad"
+      program (example "usualConsumer () with retries = limit") `shouldSatisfy` failsWith "unknown value: limit"
+      program (example "usualConsumer () with retries = \"three\"") `shouldSatisfy` isLeft
+    it "keeps expected results literal" $
+      program (consumers (unlines
+        [ "  example \"|computed answer| :", "    limit = 3", "    consumer = usualConsumer ()"
+        , "    expect consumer = usualConsumer ()", "  end example" ])) `shouldSatisfy` isLeft
+  describe "failures that name a law's inputs" $
+    it "wraps each Java and JavaScript case so a failure ends with its inputs by name" $ do
+      let source = unlines
+            [ "unit gaps.named"
+            , "function shorter (userId :: Text) (limit :: Integer) -> Bool is prelude.length userId <= limit end function"
+            , "law \"|ids are short| is"
+            , "  definition : for all (userId :: Text) (limit :: Integer) => shorter userId limit = true end for all end definition"
+            , "end law"
+            , "end unit" ]
+          emitted target = either (\ds -> fail (show ds)) (pure . concatMap artifactContent)
+            (program source >>= planTesting >>= emitPlan target)
+      java <- emitted "java"
+      java `shouldSatisfy` isInfixOf "LawSpecRuntime.withInputs(failure, new String[] {\"userId\", \"limit\"}, values)"
+      javascript <- emitted "javascript"
+      javascript `shouldSatisfy` isInfixOf "ls.withInputs(caseFailure, ['userId', 'limit'], [userId, limit])"

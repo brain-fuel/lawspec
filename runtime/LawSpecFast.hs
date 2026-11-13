@@ -159,6 +159,14 @@ split separator text = listOf (if T.null separator then [text] else T.splitOn se
 trim :: T.Text -> T.Text
 trim = T.dropAround (LS.textWhiteSpace . ord)
 
+-- | Whether every code point is Unicode White_Space; the empty text is.
+isUnicodeWhitespace :: T.Text -> Bool
+isUnicodeWhitespace = T.all (LS.textWhiteSpace . ord)
+
+-- | The text without the code points up to U+0020 at its two ends.
+trimAsciiControl :: T.Text -> T.Text
+trimAsciiControl = T.dropAround ((<= 0x20) . ord)
+
 words :: T.Text -> List T.Text
 words text = listOf (filter (not . T.null) (T.split (LS.textWhiteSpace . ord) text))
 

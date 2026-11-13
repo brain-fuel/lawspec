@@ -316,7 +316,7 @@ infer _ (ScalarLit s) = do
   scalarType s
 infer env (ConstructLit name fields) = do
   (parameters, result) <- constructorSignature name
-  unless (length parameters == length fields) (throwC ("wrong constructor arity: " ++ name))
+  unless (length parameters == length fields) (throwC (constructorArity name (length parameters) (length fields)))
   zipWithM_ (checkExpr env) parameters fields
   resolve result
 infer env (RecordLit fields) = do
@@ -340,8 +340,8 @@ infer env (AllElementsExpr value binder predicate) = do
 infer env e@(MapElementsExpr value binder body) = do
   shape <- mappedElement env value
   case shape of
-    Nothing -> infer env (eitherMap e)
-    Just element -> do
+    Left operand -> mapsEither operand (infer env (eitherMap e))
+    Right element -> do
       result <- infer (M.insert binder (Monomorphic element) env) body >>= resolve
       pure (Applied "List" result)
 infer env (FilterElementsExpr value binder predicate) = do
@@ -550,7 +550,7 @@ checkExpr env expected e = do
     (_,RecordLit _) -> throwC "an anonymous record literal requires a structural record type"
     (_,ConstructLit name fields) -> do
       parameters <- constructorParameters t name
-      unless (length parameters == length fields) (throwC ("wrong constructor arity: " ++ name))
+      unless (length parameters == length fields) (throwC (constructorArity name (length parameters) (length fields)))
       zipWithM_ (checkExpr env) parameters fields
     (_,MatchExpr value branches) -> do
       scopes <- matchScopesWithResult env (Just t) value branches
@@ -921,7 +921,8 @@ builtin env n args
       checkExpr env (Named "Text") sep
       checkExpr env (Named "Text") text
       pure (Applied "List" (Named "Text"))
-  | n == "trim", [text] <- args = checkExpr env (Named "Text") text >> pure (Named "Text")
+  | n `elem` ["trim","trimAsciiControl"], [text] <- args = checkExpr env (Named "Text") text >> pure (Named "Text")
+  | n == "isUnicodeWhitespace", [text] <- args = checkExpr env (Named "Text") text >> pure (Named "Bool")
   | n `elem` ["words","lines"], [text] <- args = checkExpr env (Named "Text") text >> pure (Applied "List" (Named "Text"))
   | otherwise = throwC ("unknown helper or wrong arity: prelude." ++ n)
   where
@@ -970,7 +971,7 @@ typedExpressionWithSchemesContext context declarations bits env e = do
       maybe (fieldDesugar context e >>= go context expected) pure direct
     go context expected e@(MapElementsExpr value _ _) = do
       shape <- mappedElement context value
-      maybe (go context expected (eitherMap e)) (const (node context expected e)) shape
+      either (\operand -> mapsEither operand (go context expected (eitherMap e))) (const (node context expected e)) shape
     go context expected e = node context expected e
     node context expected e = do
       let descend = go context
@@ -1115,7 +1116,7 @@ typedExpressionWithSchemesContext context declarations bits env e = do
         MapElementsExpr value binder body -> do
           shape <- mappedElement context value
           case (shape,t) of
-            (Just element,Applied "List" result) -> do
+            (Right element,Applied "List" result) -> do
               mapped <- go (M.insert binder (Monomorphic element) context) (Just result) body
               pure [TypedCase "" [(binder,element)] mapped]
             _ -> throwC "map requires a List or an Either"
@@ -1206,6 +1207,7 @@ fixedSignatures =
   [ ("prelude.octets", [Named "Bytes"]), ("prelude.bytesOf", [Applied "List" (Named "UInt8")])
   , ("prelude.utf8", [Named "Text"]), ("prelude.join", [Named "Text", Applied "List" (Named "Text")])
   , ("prelude.split", [Named "Text", Named "Text"]), ("prelude.trim", [Named "Text"])
+  , ("prelude.isUnicodeWhitespace", [Named "Text"]), ("prelude.trimAsciiControl", [Named "Text"])
   , ("prelude.words", [Named "Text"]), ("prelude.lines", [Named "Text"]) ]
 
 -- | Whether an expression reads or replaces a field (see fieldAccessPrefix).
@@ -1766,12 +1768,53 @@ membershipTypes env value collection = do
   pure selected
 
 -- | The element type when a `map`'s operand is a List.
-mappedElement :: Env -> Expr -> C (Maybe Type)
+-- | A constructor with too few values is usually one meant as a function.
+-- The prelude combinators accept that (LawSpec.Railway); elsewhere checked
+-- definitions are first-order, so the message gives the wrapper to write.
+constructorArity :: String -> Int -> Int -> String
+constructorArity name wanted given =
+  "wrong constructor arity: " ++ name ++ " takes " ++ count wanted ++ ", " ++ show given ++ " given."
+  ++ (if given < wanted
+        then " A constructor is a function only as the argument of a prelude combinator (prelude.map " ++ short ++ " m, m >>= " ++ short
+          ++ "); elsewhere name a one-line definition and pass that: function " ++ wrapper ++ " " ++ unwords binders ++ " -> ... is "
+          ++ unwords (short : map fst arguments) ++ " end function"
+        else "")
+  where
+    short = reverse (takeWhile (/= ':') (reverse name))
+    wrapper = case short of
+      first : rest -> "make" ++ first : rest
+      [] -> "make"
+    arguments = [("value" ++ (if wanted == 1 then "" else show i), ()) | i <- [1 .. wanted]]
+    binders = ["(" ++ argument ++ " of type ...)" | (argument, _) <- arguments]
+    count 1 = "1 value"
+    count n = show n ++ " values"
+
+mappedElement :: Env -> Expr -> C (Either Type Type)
 mappedElement env value = do
   collection <- infer env value >>= resolve
   pure (case baseType collection of
-    Applied "List" element -> Just element
-    _ -> Nothing)
+    Applied "List" element -> Right element
+    operand -> Left operand)
+
+-- | The Either reading of a map whose operand is not a List. When the operand
+-- is known to be something else (a Maybe, a Text), the failure of that reading
+-- says what map applies to instead of naming Either's constructors, which the
+-- author never wrote.
+mapsEither :: Type -> C a -> C a
+mapsEither operand action = StateT $ \s -> case runStateT action s of
+  Left _ | mismatched -> Left ("prelude.map (and f <$> m) applies to a List, mapping each element, or to an Either, mapping its success value; this operand is "
+    ++ article ++ prettyType operand ++ "." ++ advice)
+  result -> result
+  where
+    mismatched = case operand of
+      Variable _ -> False
+      Application "Either" _ -> False
+      _ -> True
+    article = if take 1 (prettyType operand) `elem` ["A","E","I","O","U"] then "an " else "a "
+    advice = case operand of
+      Applied "Maybe" _ -> " For a Maybe, match on it: first matching case of m : when Present value then Present (f value) when Absent then Absent end case;"
+        ++ " or take its value with a default: prelude.presentOr m default"
+      _ -> ""
 
 -- | The map of an Either's success value, as a match: a failure is kept.
 eitherMap :: Expr -> Expr

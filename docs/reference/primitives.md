@@ -73,6 +73,7 @@ domain is a compile error.
 | `prelude.isNegativeZero x` | Float sign bit |
 | `prelude.real z`, `prelude.imag z` | Complex components |
 | `prelude.isPresent x`, `prelude.presentValue x` | Presence inspection |
+| `prelude.presentOr m v`, `prelude.fromMaybe v m` | A `Maybe`'s `Present` value, or the default `v` when it is `Absent` (see [railway combinators](language/expressions-and-arithmetic.md#railway-combinators)) |
 | `prelude.quot a b`, `prelude.rem a b` | Truncating integer division and remainder |
 | `prelude.round value scale` | Round an exact value to `scale` decimal places, ties to even |
 | `prelude.Int8 x`, `prelude.Float64 x`, … | Explicit numeric conversion to the named type |

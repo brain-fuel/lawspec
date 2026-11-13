@@ -469,10 +469,34 @@ quotedOrInfixToken = void namedInfixP
 quoted :: P String
 quoted = sourceNode "quoted-name" Just $ lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
-str = sourceNode "text" (const Nothing) $ lexeme $
-  (try (string "\"\"\"") *> manyTill L.charLiteral
+str = textLiteralWith textChar
+-- Header scanners only find where literals end; the parser proper reports a
+-- bad escape, once.
+scannedStr :: P String
+scannedStr = textLiteralWith L.charLiteral
+textLiteralWith :: P Char -> P String
+textLiteralWith character = sourceNode "text" (const Nothing) $ lexeme $
+  (try (string "\"\"\"") *> manyTill character
     (try (string "\"\"\"") <?> "closing triple quote (\"\"\")"))
-  <|> (try (char '"' *> notFollowedBy (char '|')) *> manyTill L.charLiteral (char '"'))
+  <|> (try (char '"' *> notFollowedBy (char '|')) *> manyTill character (char '"'))
+-- One character of a text literal. A backslash that starts no escape is a
+-- lexical error of its own: it is recorded at the backslash and the literal is
+-- read to its end, so no enclosing alternative reports a different failure at
+-- the start of the expression. Megaparsec's delayed errors
+-- (registerParseError) are that mechanism; a recorded error always fails the
+-- parse.
+textChar :: P Char
+textChar = try L.charLiteral <|> do
+  offset <- getOffset
+  escaped <- char '\\' *> anySingle
+  registerParseError (FancyError offset (S.singleton (ErrorFail (invalidEscape escaped))))
+  pure escaped
+invalidEscape :: Char -> String
+invalidEscape escaped =
+  "invalid escape \\" ++ shown ++ " in a text literal. Write \\\\" ++ shown
+  ++ " for a backslash followed by " ++ shown ++ " (a regex needs \"\\\\" ++ shown ++ "\")."
+  ++ " Valid escapes: \\\\ \\\" \\' \\n \\t \\r \\0, a decimal code point (\\955) and a hexadecimal one (\\x3BB)"
+  where shown = if isControl escaped || isSpace escaped then "<" ++ show (fromEnum escaped) ++ ">" else [escaped]
 parens :: P a -> P a
 parens = between (symbol "(") (symbol ")")
 typeP :: P Type
@@ -723,9 +747,9 @@ scenarioP = blockP "scenario" $ do
     keyword "in"
     model <- ident
     keyword "is"
-    -- channel c :: Protocol, or mailbox m of Type: many senders, one receiver.
+    -- channel c of type Protocol (or c :: Protocol), or mailbox m of Type: many senders, one receiver.
     declared <- many $ choice
-      [ do ((c, p), at) <- withSpan ((,) <$> (keyword "channel" *> ident) <*> (symbol "::" *> ident))
+      [ do ((c, p), at) <- withSpan ((,) <$> (keyword "channel" *> ident) <*> (annotationP *> ident))
            pure (Left (c, p, at))
       , do ((m, t), at) <- withSpan ((,) <$> (keyword "mailbox" *> ident) <*> (keyword "of" *> typeP))
            pure (Right (m, t, at)) ]
@@ -2075,9 +2099,69 @@ resourceP = blockP "resource" $ do
 exampleP :: P Example
 exampleP = sourceNode "example" (Just . exampleName) $ blockP "example" $ do
   keyword "example"; en <- lawNameP; sectionStartP
-  bs <- some ((,) <$> ident <* symbol "=" <*> literalP)
+  bs <- some ((,) <$> ident <* symbol "=" <*> exampleInputP)
   checks <- many expectationP
   closeP "example"; pure (Example en bs checks)
+
+-- An example input: a literal, or an expression that checked definitions and
+-- record updates compute, such as defaults () with code = Present "". The
+-- literal reading is tried first and must reach the next binding, an expect
+-- or the example's end. An expected result stays a literal: an example pins
+-- a law's answers by hand. ref:DEC-examples-pin-laws
+exampleInputP :: P Literal
+exampleInputP = do
+  literal <- observing (try (local (M.delete "diagnostics:recover") (literalP <* lookAhead inputEnd)))
+  case literal of
+    Right value -> pure value
+    -- A constructor no type declares is refused as a literal refuses it,
+    -- with the same advice (Maybe's Nothing is now Absent) and recovery.
+    Left (FancyError _ causes) | not (null [() | ErrorCustom (LocatedFailure _ _) <- S.toList causes]) -> literalP
+    Left _ -> try computedInputP <|> literalP
+  where
+    inputEnd = void (try (ident *> symbol "=" *> notFollowedBy (char '='))) <|> void (keyword "expect") <|> void (keyword "end") <|> eof
+
+-- The expression of a computed example input, read from its own text alone:
+-- application is juxtaposition, so without the cut the next line's binding
+-- would be read as one more argument.
+computedInputP :: P Literal
+computedInputP = sourceNode "computed-input" (const Nothing) $ do
+  input <- getInput
+  let size = computedInputExtent input
+  when (size == 0) (fail "expected an example input: a literal, or an expression of checked definitions")
+  setInput (take size input)
+  value <- updatedExpr <* (eof <?> "the end of this example input; put an input that continues on a line starting with a name and = in parentheses")
+  setInput (drop size input)
+  pure (ComputedLiteral value)
+
+-- How much of the input one computed example input takes: up to the next
+-- line that starts another binding (name =), or the example's expect or end,
+-- outside any brackets.
+computedInputExtent :: String -> Int
+computedInputExtent input = go (0 :: Int) False False (Tokens.sourceTokens input)
+  where
+    -- started: the input has a first token; fresh: a line began since the
+    -- last token that was not white space or a comment.
+    go _ _ _ [] = length input
+    go depth started fresh (token : rest)
+      | kind `elem` [Tokens.TriviaToken, Tokens.CommentToken] = go depth started (fresh || '\n' `elem` text) rest
+      | depth == 0 && started && text == "expect" && kind == Tokens.WordToken = at
+      | depth == 0 && started && text == "end" && nextCode rest == Just "example" = at
+      | depth == 0 && started && kind == Tokens.WordToken && fresh && binds rest = at
+      | text `elem` ["(", "[", "{"] && kind == Tokens.SymbolToken = go (depth + 1) True False rest
+      | text `elem` [")", "]", "}"] && kind == Tokens.SymbolToken = go (max 0 (depth - 1)) True False rest
+      | otherwise = go depth True False rest
+      where
+        kind = Tokens.tokenKind token
+        text = Tokens.tokenText token
+        at = Tokens.tokenOffset token
+    code = filter ((`notElem` [Tokens.TriviaToken, Tokens.CommentToken]) . Tokens.tokenKind)
+    nextCode rest = case code rest of
+      token : _ -> Just (Tokens.tokenText token)
+      [] -> Nothing
+    binds rest = case map Tokens.tokenText (take 2 (code rest)) of
+      ["=", "="] -> False
+      "=" : _ -> True
+      _ -> False
 
 -- table (a, b, expected) is (row ...)+ (expect ...)* end: each row is an
 -- example. A column on the right of an expect's = holds expected values;
@@ -3033,7 +3117,7 @@ headers = headersWithProfile True
 headersWithProfile :: Bool -> String -> M.Map String Header
 headersWithProfile _ source = M.fromList (scan tokens) where
   tokens = either (const []) id $ runReader (runParserT (spaceP *> many token <* eof) "headers" source) (M.singleton "profile:canonical" AliasHeader)
-  token = try phraseNameRaw <|> ("<string>" <$ try str) <|> ("<quoted>" <$ try quotedOrInfixToken)
+  token = try phraseNameRaw <|> ("<string>" <$ try scannedStr) <|> ("<quoted>" <$ try quotedOrInfixToken)
       <|> lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))
       <|> symbol "::" <|> ((:[]) <$> lexeme anySingle)
   -- A named closer must not consume the next declaration as a type header.
@@ -3070,7 +3154,7 @@ constructorOwners extra source = either (const []) id $
     scan = spaceP *> (concat <$> many ((pure . owner <$> try dataTypeP)
       <|> ((\w -> [(wrapperName w, [wrapperName w])]) <$> try wrapperP) <|> ([] <$ token))) <* eof
     owner d = (dataTypeName d, map dataConstructorName (dataTypeConstructors d))
-    token = void (try phraseNameRaw) <|> void (try str) <|> try quotedOrInfixToken <|>
+    token = void (try phraseNameRaw) <|> void (try scannedStr) <|> try quotedOrInfixToken <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
 
 -- | Reuse the declaration parser to discover fixture constructor arities. This
@@ -3094,7 +3178,7 @@ literalHeaders coordinates source initial = case runReader (runParserWithCoordin
     wrapped w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)
       [ConstructorDeclaration (wrapperName w) [("value", wrapperBase w)] (wrapperSpan w) []] (wrapperSpan w) Nothing
     scan = spaceP *> many ((Just <$> try dataTypeP) <|> (Just . wrapped <$> try wrapperP) <|> (Nothing <$ token)) <* eof
-    token = void (try phraseNameRaw) <|> void (try str) <|> try quotedOrInfixToken <|>
+    token = void (try phraseNameRaw) <|> void (try scannedStr) <|> try quotedOrInfixToken <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
 
 -- Harness units (LawSpec.Harness). A harness is the implementation plane of
@@ -3180,7 +3264,7 @@ harnessItemP = forbidden *> choice
       [ "law" <$ keyword "law", "function" <$ keyword "function", "procedure" <$ keyword "procedure"
       , "definition" <$ keyword "definition", "ability" <$ keyword "ability"
       , "handler" <$ keyword "handler", "type" <$ keyword "type", "refinement" <$ keyword "refinement"
-      , "resource" <$ keyword "resource", "signature" <$ try (ident *> symbol "::") ]
+      , "resource" <$ keyword "resource", "signature" <$ try (ident *> annotationP) ]
     -- The declaration is consumed first, so the error is this one.
     forbidden = optional (lookAhead declaration) >>= \found -> case found of
         Nothing -> pure ()

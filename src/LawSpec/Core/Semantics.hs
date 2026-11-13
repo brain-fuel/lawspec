@@ -152,6 +152,14 @@ trimText :: [Int] -> [Int]
 trimText = dropEnd . dropWhile textWhiteSpace
   where dropEnd = reverse . dropWhile textWhiteSpace . reverse
 
+-- | The text without the code points up to U+0020 at its two ends: the C0
+-- controls and the space, which is what Java's String.trim() removes. It is
+-- not trimText: U+0085, U+00A0 and the other Unicode spaces stay, and U+0000
+-- to U+0008, U+000E to U+001F go.
+trimAsciiControlText :: [Int] -> [Int]
+trimAsciiControlText = dropEnd . dropWhile (<= 0x20)
+  where dropEnd = reverse . dropWhile (<= 0x20) . reverse
+
 -- | The runs of a text that hold no white space.
 wordsOfText :: [Int] -> [[Int]]
 wordsOfText text = case dropWhile textWhiteSpace text of

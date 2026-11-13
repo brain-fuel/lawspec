@@ -261,6 +261,8 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     helperType Join [sep, parts] | expressionTypeOf sep == scalarType "Text", expressionTypeOf parts == Constructor "List" [TypeArgument (scalarType "Text")] = Right (scalarType "Text")
     helperType Split [sep, text] | all ((== scalarType "Text") . expressionTypeOf) [sep, text] = Right (Constructor "List" [TypeArgument (scalarType "Text")])
     helperType Trim [text] | expressionTypeOf text == scalarType "Text" = Right (scalarType "Text")
+    helperType TrimAsciiControl [text] | expressionTypeOf text == scalarType "Text" = Right (scalarType "Text")
+    helperType IsUnicodeWhitespace [text] | expressionTypeOf text == scalarType "Text" = Right (scalarType "Bool")
     helperType builtin [text] | builtin `elem` [Words, Lines], expressionTypeOf text == scalarType "Text" = Right (Constructor "List" [TypeArgument (scalarType "Text")])
     helperType b args = Left ("invalid arguments to " ++ builtinName b ++ ": " ++ show (map expressionTypeOf args))
     sequenceType t = t `elem` [scalarType "Text", scalarType "Bytes"] || case t of Constructor "List" [TypeArgument _] -> True; _ -> False

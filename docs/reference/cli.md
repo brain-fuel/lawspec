@@ -299,9 +299,13 @@ Explains a checked law in one of three views. The compiler writes every view
 from the same typed law. Explaining a law changes no obligation and runs no
 adapter or law test.
 
-- `<unit>::<law>` selects the exact owner and name that `check --json`
-  returns. Without it, every law is explained. A selector that matches no law
-  is an error.
+- `<unit>::<law>` selects one law by its unit and name. Without it, every
+  law is explained. A law named by a phrase is selected by the phrase alone
+  (`example.refunds::an eligible flagged refund requires review`) or with its
+  delimiters, as `check --json` returns it (`example.refunds::|an eligible
+  flagged refund requires review|`). Quote the selector for the shell. A
+  selector that matches no law is an error that lists the nearest law names of
+  that unit, or the units that have laws when the unit is unknown.
 - `--view eng` explains the law in plain English. This is the default. Each
   condition gets its own line. An input reads as "this request" after it is
   introduced. A function call reads as "the refund for this request", and a
@@ -328,7 +332,7 @@ For example, with the refund law from
 [examples/rc1/refund-policy.lawspec](../../examples/rc1/refund-policy.lawspec):
 
 ```text
-$ npx lawspec explain 'example.refunds::"|an eligible flagged refund requires review|'
+$ npx lawspec explain 'example.refunds::an eligible flagged refund requires review'
 Law: an eligible flagged refund requires review
 For every request (a RefundRequest):
   If all of these are true:
@@ -337,12 +341,12 @@ For every request (a RefundRequest):
     - this request is flagged
   then the refund for this request must be the refund decision "review required".
 
-$ npx lawspec explain 'example.refunds::"|an eligible flagged refund requires review|' --view math
+$ npx lawspec explain 'example.refunds::an eligible flagged refund requires review' --view math
 Law: an eligible flagged refund requires review
 ∀ request ∈ RefundRequest.
   (request.requestedAmount > 0 ∧ request.requestedAmount ≤ request.capturedAmount ∧ request.flagged) ⇒ refund(request) = ReviewRequired
 
-$ npx lawspec explain 'example.refunds::"|an eligible flagged refund requires review|' --view dev
+$ npx lawspec explain 'example.refunds::an eligible flagged refund requires review' --view dev
 example.refunds::law::"|an eligible flagged refund requires review|
 "|an eligible flagged refund requires review|
 Inputs: request of type RefundRequest

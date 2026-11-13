@@ -646,6 +646,8 @@ cexpr env scope e = case expressionNode e of
   Helper Join [sep, parts] -> twoText "lsfJoin" sep parts
   Helper Split [sep, text] -> twoText "lsfSplit" sep text
   Helper Trim [text] -> one "lsfTrim" text
+  Helper IsUnicodeWhitespace [text] -> one "lsfIsUnicodeWhitespace" text
+  Helper TrimAsciiControl [text] -> one "lsfTrimASCIIControl" text
   Helper Words [text] -> one "lsfWords" text
   Helper Lines [text] -> one "lsfLines" text
   _ -> lift' (Left ("typed Go: unsupported expression " ++ take 80 (show (expressionNode e))))

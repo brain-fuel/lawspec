@@ -419,11 +419,20 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
           sharedAssertion = lawStems !! index ++ "Check"
           assertionNames = map inputId (inputs e) ++
             [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
-          contextName = fst (claimAll (scopeWith assertionNames) ["caseContext"]) !! 0
+          claimed = fst (claimAll (scopeWith assertionNames) ["caseContext", "caseFailure"])
+          contextName = claimed !! 0
+          failureName = claimed !! 1
+          -- A failing case says what it was given: its inputs by their
+          -- source names, added to the failure where the law is checked.
+          namedInputs body
+            | null (inputs e) = body
+            | otherwise = [E.Try body (Just (Just (E.PIdent failureName),
+                [E.Throw (runtime "withInputs" [E.Ident failureName, E.Array (map (E.Str . inputName) (inputs e)),
+                  E.Array (map (E.Ident . inputId) (inputs e))])])) Nothing]
           assertionContext link = E.Binary "+" (E.Ident contextName) (E.Str (labelled "" link))
           assertionFunction = E.FunctionDecl False asyncMode sharedAssertion []
             (map E.param (contextName : "symbols" : assertionNames)) Nothing
-            (assertionWith lawLink assertionContext (assertion e))
+            (namedInputs (assertionWith lawLink assertionContext (assertion e)))
           checkClaim context = E.ExprStmt (awaitIf (E.call sharedAssertion
             (context : E.Ident "symbols" : map E.Ident assertionNames)))
           shown = shownLaw e
@@ -641,9 +650,13 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
     contractWrapper contract =
       let arguments = contractArguments contract
           (resultName,resultType) = contractResult contract
+          -- A violated contract names the values it was checked on: the
+          -- arguments, and the result once there is one.
           require label predicates = E.ExprStmt (runtime "requireContract"
             [conjunction (map render predicates), E.Str (contractName contract ++ " " ++ label ++ ": " ++
-              intercalate " && " (map (prettyExprWith True localName) predicates))])
+              intercalate " && " (map (prettyExprWith True localName) predicates)),
+             E.Array (map E.Str given), E.Array (map E.Ident given)])
+            where given = map fst arguments ++ [resultName | label == "postcondition"]
           invocation = awaited (adapterName u (C.contractDeclaration contract)) (E.call ("impl." ++ adapterName u (C.contractDeclaration contract))
             [nativeInput ty (converted ty (E.Ident n)) | (n,ty) <- arguments])
       in pure [ linkComment (contractName contract) Nothing

@@ -400,7 +400,11 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   -- in decimal, and texts joined by a separator.
   | Append | Slice | At | Range | Octets | BytesOf | Utf8 | TextOf | Join
   -- Text into pieces and without surrounding white space (see textWhiteSpace).
-  | Split | Trim | Words | Lines deriving (Eq, Show, Generic)
+  | Split | Trim | Words | Lines
+  -- Text tests and trims named for exactly what they do: whether every code
+  -- point is Unicode white space (textWhiteSpace), and the text without the
+  -- code points up to U+0020 at its two ends. ref:DEC-text-pieces
+  | IsUnicodeWhitespace | TrimAsciiControl deriving (Eq, Show, Generic)
 -- | What a law asserts: equations, implications and conjunctions, each equation
 -- with the evidence of how its sides are compared.
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition]
@@ -825,6 +829,8 @@ builtinName TextOf = "textOf"
 builtinName Join = "join"
 builtinName Split = "split"
 builtinName Trim = "trim"
+builtinName IsUnicodeWhitespace = "isUnicodeWhitespace"
+builtinName TrimAsciiControl = "trimAsciiControl"
 builtinName Words = "words"
 builtinName Lines = "lines"
 

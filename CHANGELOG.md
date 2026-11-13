@@ -27,6 +27,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   against Windows path and quoting rules, and have not yet been run on
   Windows.
 
+- `lawspec explain` selects a phrase-named law by the phrase alone
+  (`unit::an eligible flagged refund requires review`) as well as with its
+  delimiters. A selector that matches no law lists the nearest law names of
+  that unit, or the units that have laws. The CLI reference showed a selector
+  that never matched; it is corrected.
+- `of type` is accepted wherever `::` annotates a name: a scenario's
+  `channel report of type Report` was the one site that took the symbol only.
+- `prelude.presentOr m v` and `prelude.fromMaybe v m` give a `Maybe`'s
+  `Present` value, or `v` when it is `Absent`, as `fallback` and `fromEither`
+  do for an `Either`. Like them they are rewritten into a match, so every
+  target runs them.
+- `prelude.isUnicodeWhitespace text` (every code point has Unicode's
+  `White_Space` property, the set `trim` and `words` use) and
+  `prelude.trimAsciiControl text` (the text without the code points up to
+  U+0020 at its ends, which is Java's `String.trim()`), on every target. They
+  are named for what they do; the sequences reference says how each relates
+  to Java's `trim()` and `isBlank()`.
+- An example's inputs may be built by checked definitions and record updates:
+  `consumer = usualConsumer () with offerCode = Present ""`. The compiler
+  evaluates the input and stores its value; it may call no adapter. Expected
+  results remain literals (`DEC-examples-pin-laws`, amended).
+- A constructor may be given where a prelude combinator takes a function:
+  `prelude.map Present m`, `m >>= Right`, `value |> Present`.
+
 ### Fixed
 
 - One failing law no longer keeps other laws from running. After a failing
@@ -69,6 +93,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- A backslash that starts no escape in a text or regex literal (`"\s*"`) is
+  reported alone, at the backslash, with the valid escapes and the spelling to
+  use (`"\\s*"`). It was reported after an unrelated "unexpected … expecting"
+  at the start of the expression.
+- `prelude.map` over an operand that is neither a `List` nor an `Either` says
+  what `map` applies to and, for a `Maybe`, what to write instead. It reported
+  `unknown constructor: Either::Left`.
+- "wrong constructor arity" says how many values the constructor takes and,
+  when too few were given, how to pass it as a function.
+- A law with a universal quantifier nested inside its definition
+  (`(for all … end for all) and q`), or the denial of an existential, over a
+  domain with no complete finite cover is decided by bounded sampling and can
+  never pass. `check`, `generate` and `test` now warn
+  (`quantifier-decided-by-sampling`) and say how to hoist it; `explain` says
+  so in every view; the wire law carries `sampledQuantifiers`. Evidence
+  statuses are unchanged.
+- Java, JavaScript and TypeScript failures say more. A failing case ends with
+  the law's inputs by name (`| inputs: userId = "a\uD800"`), so a boundary
+  case is no longer only an index. A side of a law that throws puts the cause
+  in the headline (`… | quantifier-search-incomplete: …`); it was only the
+  exception's cause in Java. A violated adapter contract names the argument
+  values. Text in these messages is a quoted literal with invisible
+  characters escaped, a lone surrogate included.
 - One command compiles once. The advice in `check` and `generate` ran with no
   cache directory, which made the launcher start a new compiler instance and
   compile the project again, and a second time when the command went back to

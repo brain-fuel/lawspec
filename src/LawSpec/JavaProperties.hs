@@ -447,6 +447,8 @@ emitTests Config{..} unit laws = do
     expressionLink a = case originLocation (C.expressionOrigin a) of
       Just l | take 1 (file l) /= "<" -> Just (locationLink l)
       _ -> Nothing
+    stringArray values = D.group (text "new String[] {" <>
+      D.nest 4 (D.softbreak <> D.joinWith (text "," <> D.softline) values) <> D.softbreak <> text "}")
     -- try { ... } finally { ... }, Allman.
     tryFinally inner final = braced (text "try") inner <> D.hardline <> braced (text "finally") final
     -- A law's resources: each case acquires them, then runs, then releases
@@ -475,7 +477,11 @@ emitTests Config{..} unit laws = do
           (rn,rt) = contractResult c
           params = text "Map<String, Object> symbols" : [text ("Value " ++ n) | (n,_) <- args]
           context stage ps = quoted (contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps))
-          require stage ps = statement (runtime "requireContract" [conjunction (map (truth . expr) ps),context stage ps])
+          -- A violated contract names the values it was checked on: the
+          -- arguments, and the result once there is one.
+          require stage ps = statement (runtime "requireContract" ([conjunction (map (truth . expr) ps),context stage ps,
+            stringArray (map quoted given)] ++ map text given))
+            where given = map fst args ++ [rn | stage == "postcondition"]
           invocation = awaitResult (adapterName unit (C.contractDeclaration c)) (call (className ++ "." ++ adapterName unit (C.contractDeclaration c)) [nativeArgument ty (text n) | (n,ty) <- args])
       in braced (call ("private static Value " ++ contractMethod (contractName c)) params)
           (statements [require "precondition" (contractPreconditions c),
@@ -490,6 +496,13 @@ emitTests Config{..} unit laws = do
           checkNames = map inputId (inputs e) ++
             [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
           lawAssertion context = statement (call (member base "Check") [context, text "symbols", E.array (map text checkNames)])
+          -- A failing case says what it was given: its inputs by their
+          -- source names, added to the failure where the law is checked.
+          namedInputs body
+            | null (inputs e) = body
+            | otherwise = braced (text "try") body <> D.hardline <> braced (text "catch (AssertionError failure)")
+                (statement (text "throw " <> runtime "withInputs"
+                  [text "failure", stringArray (map (quoted . inputName) (inputs e)), text "values"]))
       exampleDocs <- mapM (\(suffix,ex) -> pure $ D.lineComment 98 "// " (labelled ("example " ++ displayLabel (exampleName ex))
           (fmap locationLink (exampleLocation ex))) <>
         testFunction (fn ++ "_" ++ suffix) (withSymbols
@@ -517,8 +530,8 @@ emitTests Config{..} unit laws = do
           sharedBoundaryDocs = [declaration | C.harnessSkip h == Nothing, declaration <- coverDeclarations] ++
             concat [[braced (call ("private void " ++ member base "Check")
               [text "String context", text "Map<String, Object> symbols", text "Value[] values"])
-              (statements ([bind n (text ("values[" ++ show i ++ "]")) | (i,n) <- zip [0::Int ..] checkNames] ++
-                [contextualAssertion (const (text "context")) (assertion e)])),
+              (namedInputs (statements ([bind n (text ("values[" ++ show i ++ "]")) | (i,n) <- zip [0::Int ..] checkNames] ++
+                [contextualAssertion (const (text "context")) (assertion e)]))),
              braced (D.group (text "public static Iterable<LawSpecRuntime.FiniteCase>" <> D.nest 4 (D.softline <> call source [])))
               (returned (if testStyle == Style.SpockCases
                 then runtime "selectedFiniteCases" [coverData, quoted (show (Cover.coverCount cover))]
@@ -576,8 +589,16 @@ emitTests Config{..} unit laws = do
               [check,returned (text "true")])]]
       let kinds = ["_" ++ suffix | suffix <- take (length exampleDocs) exampleSuffixes] ++
             ["_property" | not (null property)]
-      pure $ mconcat (map (D.lineComment 98 "// ") (lawCommentLines e)) <>
+      pure $ mconcat (map (D.lineComment 98 "// " . javaCommentLine) (lawCommentLines e)) <>
         separate (searchDocs ++ sharedBoundaryDocs ++ harnessTests base label h kinds extraBodies (exampleDocs ++ boundaryDocs ++ property))
+    -- javac reads Unicode escapes before it reads comments, so the readable
+    -- form of an unprintable character (\u{85}) is a compile error even in a
+    -- comment. JLS 3.3. Show it as \x{85} there.
+    javaCommentLine line = case line of
+      '\\' : '\\' : rest -> '\\' : '\\' : javaCommentLine rest
+      '\\' : 'u' : rest -> '\\' : 'x' : javaCommentLine rest
+      c : rest -> c : javaCommentLine rest
+      [] -> []
     finiteDeclaration name value =
       D.group (text "private static final LawSpecRuntime.FiniteCover" <> D.nest 4 (D.softline <> text name <> text " =")) <>
         D.nest 4 (D.hardline <> value) <> text ";"

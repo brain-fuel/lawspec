@@ -277,29 +277,33 @@ public final class LawSpecRuntime
     }
 
     // Text shows as the string it is, so a failure reads as the law was written.
-    private String shownData()
+    String shownData()
     {
       boolean text =
           type.equals("Text") || type.equals("CodePointText") || type.equals("Utf16Text");
       if (text && data instanceof List<?> units)
       {
-        var shown = new StringBuilder("\"");
+        var points = new ArrayList<Integer>();
         for (Object unit : units)
         {
           if (!(unit instanceof Integer point))
           {
             return String.valueOf(data);
           }
-          if (type.equals("Utf16Text"))
+          int last = points.size() - 1;
+          // A UTF-16 pair shows as its character; a unit without its partner stays a surrogate.
+          if (type.equals("Utf16Text") && last >= 0 && point >= 0xDC00 && point <= 0xDFFF
+              && points.get(last) >= 0xD800 && points.get(last) <= 0xDBFF)
           {
-            shown.append((char) (int) point);
+            char high = (char) (int) points.get(last);
+            points.set(last, Character.toCodePoint(high, (char) (int) point));
           }
           else
           {
-            shown.appendCodePoint(point);
+            points.add(point);
           }
         }
-        return shown.append('"').toString();
+        return shownText(points);
       }
       return data instanceof int[] units ? Arrays.toString(units) : String.valueOf(data);
     }
@@ -307,6 +311,93 @@ public final class LawSpecRuntime
 
   public record Complex(double real, double imaginary)
   {
+  }
+
+  /**
+   * A text as a quoted literal for a failure message. A character that would not be seen is
+   * written as an escape: a quote or backslash, a control, a lone surrogate (\uD800), a format
+   * character, a separator other than the space, or an unassigned code point.
+   */
+  static String shownText(Iterable<Integer> points)
+  {
+    var shown = new StringBuilder("\"");
+    for (int point : points)
+    {
+      int category = point >= 0 && point <= Character.MAX_CODE_POINT
+          ? Character.getType(point) : Character.UNASSIGNED;
+      if (point == '"' || point == '\\')
+      {
+        shown.append('\\').append((char) point);
+      }
+      else if (point == '\n')
+      {
+        shown.append("\\n");
+      }
+      else if (point == '\t')
+      {
+        shown.append("\\t");
+      }
+      else if (point == '\r')
+      {
+        shown.append("\\r");
+      }
+      else if (point == ' ' || (category != Character.CONTROL && category != Character.SURROGATE
+          && category != Character.FORMAT && category != Character.UNASSIGNED
+          && category != Character.PRIVATE_USE && category != Character.SPACE_SEPARATOR
+          && category != Character.LINE_SEPARATOR && category != Character.PARAGRAPH_SEPARATOR))
+      {
+        shown.appendCodePoint(point);
+      }
+      else if (point >= 0 && point <= 0xFFFF)
+      {
+        shown.append(String.format("\\u%04X", point));
+      }
+      else
+      {
+        shown.append(String.format("\\u{%X}", point));
+      }
+    }
+    return shown.append('"').toString();
+  }
+
+  /** A value as a failure message shows it: a text as an escaped literal, other data as written. */
+  public static String shown(Value value)
+  {
+    return value == null ? "null" : value.shownData();
+  }
+
+  /** What a failure inside a law's expression says, for the headline of the test's failure. */
+  static String failureCause(Throwable error)
+  {
+    String message = error.getMessage();
+    boolean own = error.getClass() == IllegalArgumentException.class
+        || error.getClass() == IllegalStateException.class;
+    if (message == null || message.isEmpty())
+    {
+      return error.getClass().getName();
+    }
+    return own ? message : error.getClass().getSimpleName() + ": " + message;
+  }
+
+  /**
+   * A law's failure with the inputs of the failing case by name, so a boundary or generated case
+   * shows what it was given and not only its index. A failure that already carries them is kept.
+   */
+  public static AssertionError withInputs(AssertionError failure, String[] names, Value[] values)
+  {
+    String message = String.valueOf(failure.getMessage());
+    if (names.length == 0 || message.contains(" | inputs: "))
+    {
+      return failure;
+    }
+    var inputs = new StringBuilder(" | inputs: ");
+    for (int i = 0; i < names.length && i < values.length; i++)
+    {
+      inputs.append(i == 0 ? "" : ", ").append(names[i]).append(" = ").append(shown(values[i]));
+    }
+    var described = new AssertionError(message + inputs, failure.getCause());
+    described.setStackTrace(failure.getStackTrace());
+    return described;
   }
 
   /**
@@ -530,7 +621,8 @@ public final class LawSpecRuntime
     }
     catch (RuntimeException error)
     {
-      throw new AssertionError(context, error);
+      // The cause's text is the headline: a build tool's summary shows nothing else.
+      throw new AssertionError(context + " | " + failureCause(error), error);
     }
   }
 
@@ -1705,6 +1797,10 @@ public final class LawSpecRuntime
         return textList(textSplit(codePointsText(args[0]), codePointsText(args[1])));
       case "trim":
         return textValue(textTrim(codePointsText(args[0])));
+      case "isUnicodeWhitespace":
+        return bool(textIsUnicodeWhitespace(codePointsText(args[0])));
+      case "trimAsciiControl":
+        return textValue(textTrimAsciiControl(codePointsText(args[0])));
       case "words":
         return textList(textWords(codePointsText(args[0])));
       case "lines":
@@ -2198,6 +2294,22 @@ public final class LawSpecRuntime
     if (!condition)
     {
       throw new IllegalArgumentException(context);
+    }
+  }
+
+  /** As requireContract, naming the values the contract was checked on. */
+  public static void requireContract(boolean condition, String context, String[] names,
+      Value... values)
+  {
+    if (!condition)
+    {
+      var described = new StringBuilder(context);
+      for (int i = 0; i < names.length && i < values.length; i++)
+      {
+        described.append(i == 0 ? " | " : ", ").append(names[i]).append(" = ")
+            .append(shown(values[i]));
+      }
+      throw new IllegalArgumentException(described.toString());
     }
   }
 
@@ -9552,6 +9664,31 @@ public final class LawSpecRuntime
       end--;
     }
     return new String(points, start, end - start);
+  }
+
+  /** Whether every code point is Unicode White_Space; the empty text is. */
+  public static boolean textIsUnicodeWhitespace(String text)
+  {
+    return text.codePoints().allMatch(LawSpecRuntime::textWhiteSpace);
+  }
+
+  /**
+   * The text without the code points up to U+0020 at its two ends, which is what String.trim()
+   * removes.
+   */
+  public static String textTrimAsciiControl(String text)
+  {
+    int start = 0;
+    int end = text.length();
+    while (start < end && text.charAt(start) <= 0x20)
+    {
+      start++;
+    }
+    while (end > start && text.charAt(end - 1) <= 0x20)
+    {
+      end--;
+    }
+    return text.substring(start, end);
   }
 
   /** The runs of a text that hold no white space. */

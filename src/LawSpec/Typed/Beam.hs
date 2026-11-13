@@ -544,6 +544,8 @@ cexpr env scope e = case expressionNode e of
   Helper Join [sep, parts] -> call2 "lawspec_beam_fast" "join" sep parts
   Helper Split [sep, text] -> call2 "lawspec_beam_fast" "split" sep text
   Helper Trim [text] -> fast1 "trim" text
+  Helper IsUnicodeWhitespace [text] -> fast1 "is_unicode_whitespace" text
+  Helper TrimAsciiControl [text] -> fast1 "trim_ascii_control" text
   Helper Words [text] -> fast1 "words" text
   Helper Lines [text] -> fast1 "lines" text
   _ -> failWith ("unsupported expression " ++ take 80 (show (expressionNode e)))

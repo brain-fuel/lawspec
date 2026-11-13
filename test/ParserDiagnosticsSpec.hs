@@ -108,6 +108,21 @@ test_parserDiagnostics = describe "parser error recovery" $ do
           , "label true", "label @", "end harness", "end unit" ]
         errors = diagnostics source
     map (fmap line . at) errors `shouldBe` map Just [4,5,5,7]
+  it "reports a bad escape in a text or regex literal alone, at the backslash" $ do
+    let unit body = Source "escape.lawspec" (unlines
+          ["unit escapes", "function blank (text :: Text) -> Bool is", body, "end function", "end unit"])
+        regex = diagnostics (unit "  text matches regex \"\\s*\"")
+        plain = diagnostics (unit "  text = \"a\\qb\" or text = \"\"")
+    map (fmap (\location -> (line location,column location)) . at) regex `shouldBe` [Just (3,23)]
+    map (fmap (\location -> (line location,column location)) . at) plain `shouldBe` [Just (3,12)]
+    case regex of
+      [err] -> do
+        message err `shouldSatisfy` isInfixOf "invalid escape \\s in a text literal"
+        message err `shouldSatisfy` isInfixOf "\"\\\\s\""
+        message err `shouldSatisfy` isInfixOf "Valid escapes: \\\\ \\\" \\' \\n \\t \\r \\0"
+        message err `shouldSatisfy` (not . isInfixOf "expecting")
+      other -> expectationFailure (show other)
+    diagnostics (unit "  text matches regex \"\\\\s*\\n\"") `shouldBe` []
   it "terminates on truncated or delimiter-only inputs" $ do
     let inputs = ["unit x\nfunction f (x :: Bool) -> Bool is \"unterminated",
           "unit x\nfunction f (x :: Bool) -> Bool is [,,,",
