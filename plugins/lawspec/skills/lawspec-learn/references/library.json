@@ -2712,6 +2712,33 @@
       "execution": "deferred"
     },
     {
+      "id": "prelude:blake3",
+      "kind": "prelude",
+      "name": "blake3",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "prelude:blake3DeriveKey",
+      "kind": "prelude",
+      "name": "blake3DeriveKey",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "prelude:blake3Keyed",
+      "kind": "prelude",
+      "name": "blake3Keyed",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "prelude:both",
       "kind": "prelude",
       "name": "both",
@@ -3129,24 +3156,6 @@
       "id": "prelude:mapError",
       "kind": "prelude",
       "name": "mapError",
-      "source": "src/LawSpec/PreludeNames.hs",
-      "exampleStatus": "deferred",
-      "checkedExample": null,
-      "execution": "deferred"
-    },
-    {
-      "id": "prelude:maskHash",
-      "kind": "prelude",
-      "name": "maskHash",
-      "source": "src/LawSpec/PreludeNames.hs",
-      "exampleStatus": "deferred",
-      "checkedExample": null,
-      "execution": "deferred"
-    },
-    {
-      "id": "prelude:maskHashBlake3",
-      "kind": "prelude",
-      "name": "maskHashBlake3",
       "source": "src/LawSpec/PreludeNames.hs",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4566,9 +4575,18 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/authoring-advisories.md:115: SDK and MCP",
+      "id": "reference:docs/reference/authoring-advisories.md:105: Migration and explicit exceptions",
       "kind": "reference",
-      "name": "docs/reference/authoring-advisories.md:115: SDK and MCP",
+      "name": "docs/reference/authoring-advisories.md:105: Migration and explicit exceptions",
+      "source": "docs/reference/authoring-advisories.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/authoring-advisories.md:127: SDK and MCP",
+      "kind": "reference",
+      "name": "docs/reference/authoring-advisories.md:127: SDK and MCP",
       "source": "docs/reference/authoring-advisories.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4593,9 +4611,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/authoring-advisories.md:93: Migration and explicit exceptions",
+      "id": "reference:docs/reference/authoring-advisories.md:93: Masks",
       "kind": "reference",
-      "name": "docs/reference/authoring-advisories.md:93: Migration and explicit exceptions",
+      "name": "docs/reference/authoring-advisories.md:93: Masks",
       "source": "docs/reference/authoring-advisories.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4836,45 +4854,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:195: C# over F#",
+      "id": "reference:docs/reference/compatibility.md:222: C# over F#",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:195: C# over F#",
+      "name": "docs/reference/compatibility.md:222: C# over F#",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:214: Groovy over Java",
+      "id": "reference:docs/reference/compatibility.md:241: Groovy over Java",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:214: Groovy over Java",
+      "name": "docs/reference/compatibility.md:241: Groovy over Java",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:223: Clojure over Java",
+      "id": "reference:docs/reference/compatibility.md:250: Clojure over Java",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:223: Clojure over Java",
+      "name": "docs/reference/compatibility.md:250: Clojure over Java",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:231: Versions pinned by `init`",
+      "id": "reference:docs/reference/compatibility.md:258: Versions pinned by `init`",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:231: Versions pinned by `init`",
+      "name": "docs/reference/compatibility.md:258: Versions pinned by `init`",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/compatibility.md:256: What the checks inspect",
+      "id": "reference:docs/reference/compatibility.md:283: What the checks inspect",
       "kind": "reference",
-      "name": "docs/reference/compatibility.md:256: What the checks inspect",
+      "name": "docs/reference/compatibility.md:283: What the checks inspect",
       "source": "docs/reference/compatibility.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7113,45 +7131,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:195: The masks as functions",
+      "id": "reference:docs/reference/language/record-rules.md:197: Which mask to choose",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:195: The masks as functions",
+      "name": "docs/reference/language/record-rules.md:197: Which mask to choose",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:225: Where a masked field is hidden",
+      "id": "reference:docs/reference/language/record-rules.md:223: The masks as functions",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:225: Where a masked field is hidden",
+      "name": "docs/reference/language/record-rules.md:223: The masks as functions",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:259: The hash mask",
+      "id": "reference:docs/reference/language/record-rules.md:267: Where a masked field is hidden",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:259: The hash mask",
+      "name": "docs/reference/language/record-rules.md:267: Where a masked field is hidden",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:344: Logging in Java",
+      "id": "reference:docs/reference/language/record-rules.md:301: The digest mask",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:344: Logging in Java",
+      "name": "docs/reference/language/record-rules.md:301: The digest mask",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/record-rules.md:374: Limits",
+      "id": "reference:docs/reference/language/record-rules.md:366: The hash mask",
       "kind": "reference",
-      "name": "docs/reference/language/record-rules.md:374: Limits",
+      "name": "docs/reference/language/record-rules.md:366: The hash mask",
+      "source": "docs/reference/language/record-rules.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:440: Text and bytes",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:440: Text and bytes",
+      "source": "docs/reference/language/record-rules.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/record-rules.md:448: BLAKE3 on each target",
+      "kind": "reference",
+      "name": "docs/reference/language/record-rules.md:448: BLAKE3 on each target",
       "source": "docs/reference/language/record-rules.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7320,45 +7356,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:107: Modelling a host's trim and blank tests",
+      "id": "reference:docs/reference/language/sequences.md:109: Modelling a host's trim and blank tests",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:107: Modelling a host's trim and blank tests",
+      "name": "docs/reference/language/sequences.md:109: Modelling a host's trim and blank tests",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:139: Mapping and filtering a list",
+      "id": "reference:docs/reference/language/sequences.md:141: Mapping and filtering a list",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:139: Mapping and filtering a list",
+      "name": "docs/reference/language/sequences.md:141: Mapping and filtering a list",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:176: Case folding and substring predicates",
+      "id": "reference:docs/reference/language/sequences.md:178: Case folding and substring predicates",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:176: Case folding and substring predicates",
+      "name": "docs/reference/language/sequences.md:178: Case folding and substring predicates",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:206: Limits",
+      "id": "reference:docs/reference/language/sequences.md:208: Limits",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:206: Limits",
+      "name": "docs/reference/language/sequences.md:208: Limits",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:69: Pieces of a text",
+      "id": "reference:docs/reference/language/sequences.md:71: Pieces of a text",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:69: Pieces of a text",
+      "name": "docs/reference/language/sequences.md:71: Pieces of a text",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

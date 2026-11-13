@@ -244,7 +244,7 @@ and use the converter in `logback-spring.xml`:
 
 with `%maskedMsg` in place of `%msg` in the pattern. `init` does not print
 this block and `doctor` does not check it. A field `shown as hash` needs
-`LawSpecMasks.setHashKey` called with 32 secret bytes before the first log
+`LawSpecMasks.setMaskHashKey` called with 32 secret bytes before the first log
 line, for example from an `ApplicationContextInitializer`.
 
 ## Generate and test

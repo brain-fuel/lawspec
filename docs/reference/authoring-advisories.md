@@ -90,6 +90,18 @@ law it reports vacuous. Both rules are structural: a guard written another way
 (a comparison chain, a helper around the regex on a field) is outside them,
 and no finding does not mean a guard is reached.
 
+## Masks
+
+| Rule | Reports | Suggests |
+| --- | --- | --- |
+| `enumerable-digest` | A field `shown as digest` whose own restriction (a regex, a literal list, a length bound or an equation) allows at most 2^64 values | `shown as hash`, which is keyed, or `shown as hidden` |
+
+A digest takes no key, so whoever can list a field's possible values can
+hash each and compare. Generation gives the same text as a warning; nothing
+is refused. The rule reads only the restriction written on the field, and
+no finding does not mean a digest is safe there: see [which mask to
+choose](language/record-rules.md#which-mask-to-choose). ref:DEC-masking
+
 ## Migration and explicit exceptions
 
 Prefer migration to generated models. If an application must retain its model,

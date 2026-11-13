@@ -49,6 +49,8 @@ end unit
 | `prelude.octets b` | the octets of `Bytes`, a `List UInt8` |
 | `prelude.bytesOf xs` | `Bytes` of a `List UInt8` |
 | `prelude.utf8 t` | the UTF-8 encoding of a text, as `Bytes` |
+| `prelude.hex b` | `Bytes` written as text, two lowercase hexadecimal digits for each octet |
+| `prelude.blake3 b`, `prelude.blake3Keyed key b`, `prelude.blake3DeriveKey context b` | the 32-octet BLAKE3 hash, keyed hash (under a key shown to have 32 octets) and derived key of `Bytes`; see [masking](record-rules.md#the-masks-as-functions) |
 | `prelude.textOf n` | an integer, written in decimal |
 | `prelude.join separator texts` | a list of texts joined, the separator between each two |
 | `prelude.split separator text` | the pieces of a text between occurrences of the separator, a `List Text` |

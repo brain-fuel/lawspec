@@ -178,19 +178,46 @@ lacks them.
 ## Record rules and masking
 
 What each target does for [record rules and masking](language/record-rules.md),
-and whether the acceptance suites `contracts-validation` and
-`contracts-masking` have run there.
+and what the acceptance suites did there when 0.34.0 was prepared.
 
-| | Java | JavaScript | TypeScript | Python | Every other target |
-| --- | --- | --- | --- | --- | --- |
-| Validators, rule ids, `maskedR`, generated laws | run | run | run | run | generated from the same checked definitions; **not run** |
-| Native rendering masked | yes | yes | yes | yes | no; generation warns `target-unsupported` |
-| Failed-test output masked | yes | yes | yes | yes | no |
-| `hash` as a keyed BLAKE3 digest | yes | yes | yes | yes | no; the field is hidden by `maskedR` |
-| Logging hook | wrapper and Logback converter | not needed | not needed | not needed | none |
+| | Java, JavaScript, TypeScript, Python | Every other program target |
+| --- | --- | --- |
+| Validators, rule ids, `maskedR`, generated laws | yes | generated from the same checked definitions; see the runs below |
+| `digest`, `maskDigest`, `maskHash key`, `maskedRWith`, the `blake3` functions | yes | yes |
+| Native rendering masked | yes | no; generation warns `target-unsupported` |
+| Failed-test output masked | yes | not claimed |
+| `hash` under a key the application configures | yes | no; `maskedR` shows `***`, `maskedRWith` takes the key |
+| `rfc822Address` | yes | refused, `target-unsupported` |
+| Logging hook | Java: wrapper and Logback converter; the others need none | none |
 
-"Not run" means what it says: no acceptance suite has compiled or executed
-record rules on those targets, so nothing is claimed for them.
+BLAKE3 by target:
+
+| Target | BLAKE3 | Official vectors, three modes |
+| --- | --- | --- |
+| Go | the module `goforge.dev/blake3sum` v1.0.0 | pass |
+| Java, Kotlin, Scala, Groovy, Clojure | LawSpec's Java runtime | pass on each |
+| JavaScript, TypeScript | LawSpec's JavaScript runtime | pass on each |
+| Python, Prolog | LawSpec's Python runtime | pass on each |
+| Rust | LawSpec's Rust runtime | pass |
+| Haskell | LawSpec's Haskell runtime | pass |
+| F#, C# | LawSpec's .NET runtime | pass on each |
+| Swift | LawSpec's Swift runtime | pass |
+| Erlang, Elixir, Gleam | LawSpec's BEAM runtime | pass on each |
+
+Acceptance runs. "Pass" is the whole suite: the laws, and every mutant
+rejected.
+
+| Suite | Passes | Does not pass |
+| --- | --- | --- |
+| `contracts-digest` (official vectors, digest masks, keyed hash under one key) | all 18 program targets | |
+| `contracts-validation` | Java, JavaScript, TypeScript, Python, Go, Haskell, Scala, Groovy, Clojure, Prolog | Kotlin, Rust, F#, C#: the generated code is not as the target's formatter leaves it. Erlang, Elixir, Gleam: the property generator cannot produce a record under its restrictions. Swift: the run did not finish in 23 minutes and was stopped |
+| `contracts-masking` | Java, JavaScript, TypeScript, Python, Kotlin, Scala, Groovy, Clojure, Prolog | Go, Haskell, Erlang, Elixir, Gleam: the laws pass, and the mutant that needs masked failed-test output is not rejected, as the table above says. Rust, F#, C#, Swift: generated code is not as the formatter leaves it |
+| `contracts-primitives` | Java, JavaScript, TypeScript, Python | every other target: refused for `rfc822Address` |
+
+The check (`lawspec-dev ci`) runs `contracts-digest` on every program
+target and the other three on Java, JavaScript, TypeScript and Python only.
+Where a suite does not pass, record rules and masking blocks are not
+supported on that target beyond what `contracts-digest` covers.
 
 ## C# over F#
 

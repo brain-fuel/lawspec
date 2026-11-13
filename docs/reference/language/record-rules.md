@@ -180,17 +180,45 @@ end law
 end unit
 ```
 
-| Mask | Shows | The mask as a function |
-| --- | --- | --- |
-| `hidden` | `***` | `maskStar` |
-| `last <n>` | `***` and the last `n` characters; `***` alone for a text of `n` characters or fewer | `maskLast` |
-| `email` | the first character, `***` and everything from the last `@`; `***` alone for a text without `@` | `maskEmail` |
-| `hash` | `hash:` and a keyed hash by this version's default algorithm, BLAKE3 ([below](#the-hash-mask)) | `maskHash` |
-| `hash blake3` | the same, with the algorithm named | `maskHashBlake3` |
+| Mask | Shows | Needs a key | The mask as a function |
+| --- | --- | --- | --- |
+| `hidden` | `***` | no | `maskStar` |
+| `last <n>` | `***` and the last `n` characters; `***` alone for a text of `n` characters or fewer | no | `maskLast` |
+| `email` | the first character, `***` and everything from the last `@`; `***` alone for a text without `@` | no | `maskEmail` |
+| `digest` | `digest:` and a hash of the value by this version's default algorithm, BLAKE3 ([below](#the-digest-mask)) | no | `maskDigestIn` |
+| `digest blake3` | the same, with the algorithm named | no | `maskDigestBlake3In` |
+| `hash` | `hash:` and a hash of the value under a secret key, by the default algorithm ([below](#the-hash-mask)) | yes | `maskHash` |
+| `hash blake3` | the same, with the algorithm named | yes | `maskHashBlake3` |
 
 A masking block generates `maskedR :: R -> Text` and `maskedRDraft ::
 RDraft -> Text`, and violation messages show a masked field's value through
-its mask. Only a `Text` field takes `last`, `email` or `hash`.
+its mask. Only a `Text` field takes `last`, `email`, `digest` or `hash`.
+
+### Which mask to choose
+
+| You want | Write | Because |
+| --- | --- | --- |
+| Nothing of the value shown | `hidden` | nothing can be learnt from `***` |
+| The end or the domain recognisable to a person | `last <n>`, `email` | part of the value is shown as it is |
+| Equal values to line up in a log, with no key to manage, for a value nobody can guess | `digest` | works in every rendering and on every target |
+| Equal values to line up, for a value somebody could guess | `hash` | without the key a guess cannot be checked |
+
+**A digest hides a value from a reader. It does not hide it from someone
+who can guess it.** A digest takes no key, so anyone can hash a candidate
+and compare. A long random token is safe behind a digest; a card number, a
+telephone number, a date of birth, a postcode, a name or an email address is
+not, because the candidates can all be tried. For those use `hash`, which
+needs the key to test a guess, or `hidden`.
+
+LawSpec reports the cases it can see. Where the restriction written on a
+digest field allows at most 2^64 values, `lawspec advise` reports the rule
+`enumerable-digest` and generation gives the same text as a warning; nothing
+is refused. The count is the least of what the parts of the restriction
+give: a regex by its shape (`[0-9]{13,19}` allows about 2^63), `v in [...]`
+by its length, `prelude.length v <= n` by the texts of that length, and `v
+== "..."` one. 2^64 is the threshold because searches of that size have been
+carried out in public. No report does not mean the field is safe: LawSpec
+does not know that an unrestricted `Text` holds a surname.
 
 ### The masks as functions
 
@@ -202,20 +230,34 @@ language it is called from.
 | Nothing shown | `prelude.maskStar text` | `maskStar(value)` | `maskStar(value)` | `mask_star(value)` |
 | The last characters | `prelude.maskLast n text` | `maskLast(n, text)` | `maskLast(n, text)` | `mask_last(n, text)` |
 | An address | `prelude.maskEmail text` | `maskEmail(text)` | `maskEmail(text)` | `mask_email(text)` |
-| A hash, default algorithm | `prelude.maskHash key text` | `maskHash(text)` | `maskHash(text)` | `mask_hash(text)` |
-| A hash, BLAKE3 by name | `prelude.maskHashBlake3 key text` | `maskHashBlake3(text)` | `maskHashBlake3(text)` | `mask_hash_blake3(text)` |
-| A hash under a key given with the call | the two above | `maskHashWith(key, text)`, `maskHashBlake3With(key, text)` | `maskHashWith(key, text)`, `maskHashBlake3With(key, text)` | `mask_hash_with(key, text)`, `mask_hash_blake3_with(key, text)` |
+| A digest | `prelude.maskDigest text` | `maskDigest(text)` | `maskDigest(text)` | `mask_digest(text)` |
+| A digest within a context | `prelude.maskDigestIn context text` | `maskDigestIn(context, text)` | `maskDigestIn(context, text)` | `mask_digest_in(context, text)` |
+| A hash under the configured key | | `maskHash(text)` | `maskHash(text)` | `mask_hash(text)` |
+| A hash under a key given with the call | `prelude.maskHash key text` | `maskHashWith(key, text)` | `maskHashWith(key, text)` | `mask_hash_with(key, text)` |
 
-`maskHash` is `maskHashBlake3` in this version: the same function under two
-names. A later version may change which algorithm `maskHash` and `shown as
-hash` mean, and will say so as a breaking change, because the hashes in old
-logs would stop matching new ones. Write `maskHashBlake3` and `shown as hash
-blake3` where hashes must stay comparable across versions.
+Each digest and hash function has a second name that says the algorithm:
+`maskDigestBlake3`, `maskDigestBlake3In`, `maskHashBlake3` and
+`maskHashBlake3With` (`mask_digest_blake3` and so on in Python). In this
+version the two names are one function. A later version may change which
+algorithm the short names, `shown as digest` and `shown as hash` mean, and
+will say so as a breaking change, because the values in old logs would stop
+matching new ones. Write the name with `Blake3`, and `shown as digest
+blake3` or `shown as hash blake3`, where values must stay comparable across
+versions.
 
-`maskStar`, `maskLast` and `maskEmail` are checked LawSpec definitions and
-work on every target. The hash functions are a primitive of the Java,
-JavaScript, TypeScript and Python runtimes; a program that calls
-`prelude.maskHash` on another target is refused with `target-unsupported`.
+Every mask is a checked LawSpec definition and works on every target. A
+runtime function ending `With` takes its key with the call; `maskHash(text)`
+without it exists in the runtimes only, where an application has set a key.
+
+The digests and hashes are built from four functions a specification can
+also call directly:
+
+| Function | Type | Gives |
+| --- | --- | --- |
+| `prelude.blake3 bytes` | `Bytes -> Bytes` | the 32-byte BLAKE3 hash |
+| `prelude.blake3Keyed key bytes` | `Bytes -> Bytes -> Bytes` | the keyed hash; `key` must be shown to have 32 bytes |
+| `prelude.blake3DeriveKey context bytes` | `Text -> Bytes -> Bytes` | BLAKE3's key derivation: 32 bytes from `bytes`, specific to `context` |
+| `prelude.hex bytes` | `Bytes -> Text` | two lowercase hexadecimal digits for each byte |
 
 For each masked field LawSpec generates a law. `R masks <field>`: a marker
 placed in the part of the field the mask hides appears in no rendering and
@@ -228,7 +270,7 @@ text: two drafts that differ only in it render alike.
 | --- | --- | --- | --- | --- |
 | `maskedR`, `maskedRDraft`, violation messages | masked | masked | masked | masked |
 | The record's own text form | `toString()` | `toString()`, `util.inspect` and so `console.log` | `repr()`, `str()` | **not masked** |
-| Output of a failed generated test | `***` | `***` | `***` | **not masked** |
+| Output of a failed generated test | a digest field as its digest, any other masked field as `***` | the same | the same | **not masked** |
 | A logger given the record | masked, through `toString()` | masked | masked | **not masked** |
 | The unmasked text, by an explicit name | `toUnmaskedString()` | `toUnmaskedString()` | `unmasked_repr()` | |
 | Fields, accessors and wire forms | not masked | not masked | not masked | not masked |
@@ -241,28 +283,93 @@ value cannot be read back. JavaScript classes define no `toJSON` for that
 reason.
 
 On a target of the last column, generation warns with `target-unsupported`
-for each record with a masking block. `maskedR` works there; nothing else
-is masked.
+for each record with a masking block. `maskedR` works there, digests and
+all; nothing else is masked.
 
-The output of a failed generated test shows `***` for every masked field,
-whatever its mask, and two records that differ only in masked fields are
-reported as "the values differ only in masked fields". A failure is
-replayed from its seed. Where a target keeps a failure database (Python's
-`LAWSPEC_FAILURES/inputs`, for one), it stores the failing inputs
-themselves, unmasked, so that it can replay them: treat that directory as
-you treat test data.
+The output of a failed generated test shows a digest field as its digest
+and `***` for every other masked field, whatever its mask, and two records
+that differ only in masked fields are reported as "the values differ only
+in masked fields". A failure is replayed from its seed. Where a target
+keeps a failure database (Python's `LAWSPEC_FAILURES/inputs`, for one), it
+stores the failing inputs themselves, unmasked, so that it can replay them:
+treat that directory as you treat test data.
 
 A debugger, a heap dump and reflection read the fields, not the rendering.
 Masking is a default for text people and logs read; it is not access
 control.
+
+### The digest mask
+
+`shown as digest` shows `digest:` and 64 hexadecimal digits: a BLAKE3 hash
+of the value. It takes no key, so it is the same in every rendering: the
+record's own text form, `maskedR`, a violation's message and the output of
+a failed test all show the digest, on every target that renders them
+masked. Equal values of one field show the same digest, so a log can be
+searched for a value without holding it. Read [which mask to
+choose](#which-mask-to-choose) before using it on personal data.
+
+```lawspec
+unit guide.accounts
+
+type Account is a record{
+  owner :: Text,
+  apiToken :: Text}
+end type
+
+masking Account is
+  apiToken shown as digest
+end masking
+
+law "|a text's digest is its BLAKE3 hash| is
+  definition :
+    prelude.maskDigest "abc"
+      = "digest:6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85"
+  end definition
+end law
+
+law "|an account shows its token's digest within the field's context| is
+  definition :
+    for all (account :: Account) =>
+      maskedAccount account
+        = "Account{owner=" ++ account.owner ++ ", apiToken="
+          ++ prelude.maskDigestIn "guide.accounts.Account.apiToken" account.apiToken ++ "}"
+    end for all
+  end definition
+end law
+end unit
+```
+
+There are two digests.
+
+- `maskDigest text` is `digest:` and the hexadecimal BLAKE3-256 hash of the
+  text's UTF-8 bytes, with nothing added. `printf abc | b3sum` prints the
+  same digits.
+- `maskDigestIn context text` is the digest within a context: `digest:` and
+  the hexadecimal of BLAKE3's key derivation (`derive_key`) with the context
+  string `lawspec 0.34 mask <context>` and the text's UTF-8 bytes as the key
+  material. `printf abc | b3sum --derive-key "lawspec 0.34 mask <context>"`
+  prints the same digits.
+
+A field of a masking block uses the second, with the context
+`<unit>.<Record>.<field>`: the `apiToken` above is shown as `maskDigestIn
+"guide.accounts.Account.apiToken"` of its value. A draft uses its record's
+context, so `maskedAccountDraft` shows the same digest. The context keeps
+fields apart: one text in two fields, or in the same field of two records,
+shows two unrelated digests, so a reader cannot tell that an account's
+token is also somebody's order reference. Renaming the unit, the record or
+the field changes the field's digests. The `0.34` in the context string is
+part of the construction and does not follow LawSpec's version.
+
+The context separates fields. It is not a secret and adds no protection
+against guessing: the context is in the generated code.
 
 ### The hash mask
 
 `shown as hash` shows `hash:` and the 64 hexadecimal digits of the keyed
 BLAKE3-256 hash of the text's UTF-8 bytes. `shown as hash blake3` is the
 same with the algorithm named. Equal values show the same hash, so a log
-can be searched for one value without holding it, and the value cannot be
-recovered without the key.
+can be searched for one value without holding it, and without the key a
+guess at the value cannot be checked.
 
 The key is 32 secret bytes. Where it comes from depends on who renders:
 
@@ -279,9 +386,14 @@ The key is 32 secret bytes. Where it comes from depends on who renders:
 A checked definition is pure, so it cannot read a key the application set:
 in a specification the key is an argument. `maskedRWith` and
 `maskedRDraftWith` are generated for every masked record of a program that
-names one of them. Their key is typed `(key :: Bytes where prelude.length
-key = 32)`, so a caller must show that its key has 32 bytes, and under the
-same key they give exactly the record's own text form.
+names one of them, on every target. Their key is typed `(key :: Bytes where
+prelude.length key = 32)`, so a caller must show that its key has 32 bytes,
+and under the same key they give exactly the record's own text form. A name
+ending `With` always means "under the key given here".
+
+Because those names are generated, two records named `Order` and
+`OrderWith` would both need `maskedOrderWith`. A program with both is
+refused, with the two records named; rename one.
 
 ```lawspec
 unit guide.sessions
@@ -315,78 +427,33 @@ secrets:
 
 | Target | Call |
 | --- | --- |
-| Java | `lawspec.runtime.LawSpecMasks.setHashKey(byte[] key)` |
-| JavaScript, TypeScript | `setMaskKey(key: Uint8Array)` of `lawspec_runtime` |
-| Python | `lawspec_runtime.set_mask_key(key: bytes)` |
+| Java | `lawspec.runtime.LawSpecMasks.setMaskHashKey(byte[] key)` |
+| JavaScript, TypeScript | `setMaskHashKey(key: Uint8Array)` of `lawspec_runtime` |
+| Python | `lawspec_runtime.set_mask_hash_key(key: bytes)` |
 
 LawSpec never writes a key into generated code and has no default key. A
 rendering asked for before the key is set throws (`IllegalStateException`,
 `Error`, `RuntimeError`); it never shows the value and never falls back to
-`***`. Set the key before the first log line.
+`***`. Set the key before the first log line. Only those four targets hold
+a configured key; elsewhere use `maskedRWith`.
 
-A text is hashed as its UTF-8 bytes. Half of a surrogate pair, which a Java
-or JavaScript string can hold and UTF-8 cannot, is hashed as U+FFFD on
-every target.
+### Text and bytes
 
-Other targets have no keyed hash. There `maskedR` hides the field, the
-generation warning says so, and `maskedRWith` and `prelude.maskHash` are
-refused.
+A text is hashed as its UTF-8 bytes. Within a specification a text is a
+sequence of Unicode scalar values, so every text has UTF-8 bytes. A Java or
+JavaScript string can also hold half of a surrogate pair, which UTF-8
+cannot; the runtime functions of the table above hash such a half as
+U+FFFD.
 
-The three runtimes' hashes are tested against LawSpec's Haskell port of
-BLAKE3 on texts that cross block, chunk and tree boundaries
-(`test/fixtures/blake3-keyed-text.json`), and `prelude.maskHash key text`
-is tested equal to each runtime's `maskHash(text)` under the same key
-(`acceptance/contracts-primitives/keyed_masking.lawspec`). That port's unkeyed mode is
-tested against BLAKE3's published vectors. The repository holds no copy of
-the published keyed vectors, so the keyed mode is checked against the port
-only.
+### BLAKE3 on each target
 
-### Logging in Java
-
-A record with a masking block renders itself masked, so
-`log.info("placed {}", order)` is already safe. Two more pieces cover what
-`toString()` cannot:
-
-- `lawspec.runtime.LawSpecMasked.of(value)` wraps a logging argument. An
-  array of records is rendered element by element instead of as a type and
-  an address, and nothing is rendered when the level is off. It needs no
-  logging library and is always generated beside a masked record.
-- `lawspec.logging.LawSpecMaskedConverter` is a Logback converter that
-  renders every argument of a message that way. Use it in place of `%msg`.
-
-The converter needs Logback and SLF4J, which a project may not have. So it
-is generated outside the compiled sources, in `lawspec-logback/` beside the
-build file, and a project that has no Logback compiles as before. To enable
-it, add that directory as a source root (in Maven, a
-`build-helper-maven-plugin` `add-source` execution naming `lawspec-logback`)
-and register the converter:
-
-```xml
-<conversionRule conversionWord="maskedMsg"
-    converterClass="lawspec.logging.LawSpecMaskedConverter" />
-<pattern>%d %-5level %logger - %maskedMsg%n</pattern>
-```
-
-`init` and `doctor` neither add nor check this: there is no manifest option
-for it. Log4j 2 has no converter yet; with Log4j 2, rely on `toString()`
-and `LawSpecMasked.of`.
-
-## Limits
-
-- A field whose type is a named refinement, and a record with type
-  parameters, are refused by the validator generator.
-- Native renderings, failed-test output, the keyed hash and the
-  `rfc822Address` format exist on Java, JavaScript, TypeScript and Python
-  only ([above](#where-a-masked-field-is-hidden)). Those four are the
-  targets the `contracts-validation`, `contracts-masking` and
-  `contracts-primitives` suites run on; no other target has run them.
-- A masked field inside a message your own code builds (string
-  concatenation of `order.number()`, say) is not masked: the mask is on the
-  record's rendering, not on the value.
-- JSON Schema output writes `pattern`, `minLength`, `maxLength`, `minItems`,
-  `maxItems`, `enum` and numeric bounds; a rule it cannot express, such as a
-  rule of the whole record, is refused as `target-unsupported`
-  ([artifact targets](../artifact-targets.md)). A masked field is marked
-  `"x-lawspec-masking": "hidden" | "last <n>" | "email" | "hash" | "hash blake3"`.
-  `email` is written exactly, as two `pattern`s and `maxLength`;
-  `rfc822Address` is refused, since no keyword removes comments.
+Every target has BLAKE3 in its three modes (hash, keyed hash, key
+derivation), single-threaded and without SIMD. Go uses the module
+`goforge.dev/blake3sum`, which `lawspec init` adds to `go.mod` and which a
+program that hashes imports through the generated file
+`lawspec_blake3.go`. Every other target's LawSpec runtime carries its own
+implementation, written from the BLAKE3 specification, and adds no
+dependency. Each is checked against BLAKE3's official test vectors, all 35
+inputs in all three modes, by the acceptance suite `contracts-digest`.
+[Compatibility](../compatibility.md#record-rules-and-masking) says where
+that suite has run.

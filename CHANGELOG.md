@@ -40,8 +40,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   primitive of the Java, JavaScript, TypeScript and Python runtimes; other
   targets refuse the format with `target-unsupported`. Both are checked
   against the modules on recorded vectors.
-- Masking: `masking R is <field> shown as hidden | last <n> | email | hash
-  ... end masking` generates `maskedR` and `maskedRDraft`, shows masked
+- Masking: `masking R is <field> shown as hidden | last <n> | email | digest
+  | hash ... end masking` generates `maskedR` and `maskedRDraft`, shows masked
   fields through their masks in violation messages, and adds a law per
   masked field that what the mask hides appears in no rendering and no
   message. On Java, JavaScript, TypeScript and Python a record with a
@@ -49,8 +49,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `repr()`), with the real text behind `toUnmaskedString()` or
   `unmasked_repr()`; the output of a failed generated test shows `***` for
   every masked field; and `hash` shows a keyed BLAKE3-256 digest under a key
-  the application sets at start (`LawSpecMasks.setHashKey`, `setMaskKey`,
-  `set_mask_key`). No key is generated or embedded, and a rendering without
+  the application sets at start (`LawSpecMasks.setMaskHashKey`,
+  `setMaskHashKey`, `set_mask_hash_key`). No key is generated or embedded, and a rendering without
   one throws. Java also gets `LawSpecMasked.of` for logging arguments and a
   Logback converter, generated in `lawspec-logback/` outside the compiled
   sources. Fields, accessors and serialised forms are never masked. Other
@@ -66,9 +66,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `prelude.maskHash key text` with a key refined to 32 bytes, and naming
   `maskedRWith` generates `maskedRWith key r` and `maskedRDraftWith key
   draft`, in which hashed fields show their hashes. The runtimes also have
-  `maskHashWith(key, text)`. Half of a surrogate pair is hashed as U+FFFD
-  on every target. Targets without keyed BLAKE3 refuse the source-level
-  hash with `target-unsupported`.
+  `maskHashWith(key, text)`. Half of a surrogate pair, which a Java or
+  JavaScript string can hold, is hashed as U+FFFD by the runtime functions.
+- `shown as digest` (and `shown as digest blake3`): a mask that needs no
+  key. It shows `digest:` and 64 hexadecimal digits in every rendering
+  (`maskedR`, violation messages, the native renderings, failed-test output
+  and the Java logging hook) and is marked `"digest"` in JSON Schema output.
+  A field's digest is taken within the context `<unit>.<Record>.<field>`
+  (BLAKE3 key derivation with the context string `lawspec 0.34 mask
+  <unit>.<Record>.<field>`), so one value in two fields shows two unrelated
+  digests. As functions: `maskDigest text`, the plain BLAKE3-256 hash of the
+  text's UTF-8 bytes, which `b3sum` reproduces, and `maskDigestIn context
+  text`; `maskDigestBlake3` and `maskDigestBlake3In` name the algorithm. A
+  digest hides a value from a reader and not from someone who can guess it:
+  where a digest field's restriction allows at most 2^64 values, `advise`
+  reports `enumerable-digest` and generation warns with the same text,
+  suggesting `hash` or `hidden`.
+- BLAKE3 on every target, in its three modes: `prelude.blake3`,
+  `prelude.blake3Keyed` (the key shown to have 32 bytes) and
+  `prelude.blake3DeriveKey`, with `prelude.hex` to write bytes as lowercase
+  hexadecimal. The masks `maskDigest`, `maskDigestIn` and `maskHash` are
+  checked definitions over them, so they and `maskedRWith` now run on every
+  target and are no longer refused as `target-unsupported`. Go uses the
+  module `goforge.dev/blake3sum` v1.0.0, which `init` adds to `go.mod` and
+  a program that hashes imports through the generated `lawspec_blake3.go`;
+  an existing Go project needs `go get goforge.dev/blake3sum@v1.0.0`. Every
+  other runtime carries its own single-threaded implementation and adds no
+  dependency. The acceptance suite `contracts-digest` runs BLAKE3's official
+  test vectors (35 inputs, three modes) inside each target's runtime.
+- Two records whose generated names would be the same (`Order` and
+  `OrderWith` both need `maskedOrderWith`) are refused with both named.
+- Erlang, F#, C# and Swift: a long `bytes([...])` literal is laid out as
+  each target's formatter leaves it.
 - Java: a model or scenario failure prints `***` for masked fields, as the
   other failure output already did.
 - Java: a long text concatenation in a typed definition breaks before `+`

@@ -101,29 +101,75 @@ On any other target, pass `maskedOrder(order)` or `maskedOrderDraft(draft)`
 to the logger, not the record; generation warns that the native rendering
 there shows every field.
 
+## 5. Show a value as a digest or a hash
+
+To find every log line about one value without logging the value, show the
+field as a digest or as a hash. Equal values show equal text.
+
+| | `shown as digest` | `shown as hash` |
+| --- | --- | --- |
+| Key | none | 32 secret bytes |
+| Further code | none | set the key when the application starts |
+| Shown by `maskedOrder`, violation messages, failed tests | the digest | `***` |
+| Someone who can guess the value | can confirm the guess | cannot, without the key |
+
+Use `digest` for a value nobody can guess, such as a long random token.
+Use `hash` for anything a person could guess or list: a card number, a
+telephone number, a date, a postcode, a name, an email address. Where a
+digest field's restriction allows few enough values to try them all,
+`lawspec advise` and generation say so (`enumerable-digest`).
+
+A digest needs nothing more than the block:
+
+```lawspec
+unit guide.tokens
+
+type Access is a record{
+  user :: Text,
+  token :: Text}
+end type
+
+masking Access is
+  token shown as digest
+end masking
+
+function logLine (access :: Access) -> Text is
+  "signed in " ++ maskedAccess access
+end function
+end unit
+```
+
 A field `shown as hash` needs a key before the first rendering. Set it when
 the application starts, for example in Java:
 
 ```java
-lawspec.runtime.LawSpecMasks.setHashKey(secrets.maskingKey());
+lawspec.runtime.LawSpecMasks.setMaskHashKey(secrets.maskingKey());
 ```
 
 `secrets.maskingKey()` stands for your own source of 32 secret bytes.
-Without a key the rendering throws.
+Without a key the rendering throws. JavaScript and TypeScript have
+`setMaskHashKey`, Python `set_mask_hash_key`.
 
-`shown as hash` uses this version's default algorithm, BLAKE3. Write `shown
-as hash blake3` if the hashes must still match after a later version
-changes the default.
+`shown as digest` and `shown as hash` use this version's default algorithm,
+BLAKE3. Write `shown as digest blake3` or `shown as hash blake3` if the
+values must still match after a later version changes the default.
 
 ## Call a mask yourself
 
 Each mask is also a function: `maskStar`, `maskLast`, `maskEmail`,
-`maskHash` and `maskHashBlake3`, re-cased for each language (`mask_hash` in
+`maskDigest` and `maskHash`, re-cased for each language (`mask_digest` in
 Python). Use one where your own code builds a message from a field:
 
 ```java
 log.info("retrying payment for card {}", LawSpecMasks.maskLast(4, card.number()));
+log.info("token {} refreshed", LawSpecMasks.maskDigest(token));
 ```
+
+`maskDigest(text)` is the plain BLAKE3 hash of the text, the digits `b3sum`
+prints. A field of a masking block shows `maskDigestIn(context, text)` with
+its own context, so call that with the same context to match a field's
+digest; [the reference](../reference/language/record-rules.md#the-digest-mask)
+gives the construction.
 
 In a specification the hash takes its key as an argument, because a checked
 definition cannot read the key the application set. Name `maskedSessionWith`
