@@ -68,6 +68,8 @@ async function setup(target)
         path.join(repo, 'npm/bin/lawspec.mjs'),
         'init',
         '--no-install',
+        '--name',
+        'lawspec-example',
         '--target',
         target,
         '--config',
