@@ -2,6 +2,7 @@ expect: ***
 forbid: 4111111111111111
 forbid: Ann Lee
 forbid: ann@example.org
+output-unchecked-on: go haskell rust erlang elixir gleam fsharp csharp swift | failed-test output is not masked on this target; see docs/reference/compatibility.md
 @@ examples/specs/masking.lawspec
 <<<<<<<
     for all (card :: Card) => maskedCard card = maskedCardDraft (draftOfCard card) end for all

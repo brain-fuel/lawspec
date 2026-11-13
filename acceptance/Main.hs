@@ -100,7 +100,10 @@ data Generated = Generated { generatedPath :: FilePath, generatedContent :: Stri
 -- to compile; any other must compile and fail its laws.
 data Mutant = Mutant
   { mutantName :: String, mutantExpect :: [[String]], mutantEdits :: [(FilePath, String, String)]
-  , mutantAtCompile :: Bool, mutantAtGeneration :: Bool }
+  , mutantAtCompile :: Bool, mutantAtGeneration :: Bool
+    -- Targets whose failing output is not held to the expectations, and why:
+    -- the mutant must still fail there, and the run says what was left out.
+  , mutantUnchecked :: ([String], String) }
 
 main :: IO ()
 main = do
@@ -526,10 +529,11 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
     when (compileFailure mutantOutput /= mutantAtCompile mutant)
       (die (target ++ ": mutant " ++ mutantName mutant ++
         (if mutantAtCompile mutant then " compiled" else " failed to compile") ++ " (see log)"))
-    forM_ (mutantExpect mutant) $ \alternatives ->
+    let unchecked = target `elem` fst (mutantUnchecked mutant)
+    unless unchecked $ forM_ (mutantExpect mutant) $ \alternatives ->
       unless (expectationMet mutantOutput alternatives)
         (die (target ++ ": mutant " ++ mutantName mutant ++ " failed without " ++ show alternatives))
-    let line = target ++ ": rejected " ++ mutantName mutant
+    let line = rejectedLine target mutant
     putStrLn line
     pure line
   -- Spec mutants edit a spec, so the project is regenerated for each.
@@ -559,13 +563,22 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
         when (mutantCode == ExitSuccess) (die (target ++ ": spec mutant " ++ mutantName mutant ++ " escaped detection"))
         writeGenerated generated
         pure mutantOutput
-    forM_ (mutantExpect mutant) $ \alternatives ->
+    let unchecked = target `elem` fst (mutantUnchecked mutant)
+    unless unchecked $ forM_ (mutantExpect mutant) $ \alternatives ->
       unless (expectationMet output alternatives)
         (die (target ++ ": spec mutant " ++ mutantName mutant ++ " failed without " ++ show alternatives))
-    let line = target ++ ": rejected " ++ mutantName mutant
+    let line = rejectedLine target mutant
     putStrLn line
     pure line
   pure (passed : scheduled ++ rejected ++ specRejected)
+
+-- | A rejected mutant's line; where its output was not held to the
+-- expectations, the line says so and why.
+rejectedLine :: String -> Mutant -> String
+rejectedLine target mutant
+  | target `elem` fst (mutantUnchecked mutant) =
+      target ++ ": rejected " ++ mutantName mutant ++ " (output not checked: " ++ snd (mutantUnchecked mutant) ++ ")"
+  | otherwise = target ++ ": rejected " ++ mutantName mutant
 
 -- | The formatted step: every generated source, the stubs adapters replace
 -- included, must be unchanged by the target's canonical formatter. The
@@ -750,7 +763,7 @@ suiteStubs suite target = do
     let relative = fromMaybe path (stripPrefix (base ++ "/") path)
     source <- maybe (die (path ++ ": no adapter for this stub")) pure (lookup relative adapters)
     (,,) relative <$> readFile' source <*> readFile' path
-  pure [Mutant "stub" [] edits False False | not (null edits)]
+  pure [Mutant "stub" [] edits False False ([], "") | not (null edits)]
 
 -- | The conformance unit checks every shared scalar vector as a law.
 conformance :: BL.ByteString -> (FilePath, String)
@@ -807,11 +820,20 @@ suiteMutantsIn base = do
     let (header, body) = span (not . ("@@ " `isPrefixOf`)) (lines content)
         atCompile = "rejected-at: compile" `elem` header
         atGeneration = "rejected-at: generation" `elem` header
+        declared = [rest | line <- header, Just rest <- [stripPrefix "output-unchecked-on: " line]]
+        unchecked = case declared of
+          rest : _ | (targets, '|' : reason) <- break (== '|') rest -> (words targets, dropWhile (== ' ') reason)
+          _ -> ([], "")
+    unless (null declared || (not (null (fst unchecked)) && not (null (snd unchecked))))
+      (die (base </> name ++ ": output-unchecked-on needs targets, then | and a reason"))
     (expectations, edits) <- either (die . ((base </> name ++ ": ") ++)) pure
-      (parseMutant (unlines (filter (`notElem` ["rejected-at: compile", "rejected-at: generation"]) header ++ body)))
-    pure (Mutant (take (length name - length (".mutant" :: String)) name) expectations edits atCompile atGeneration)
+      (parseMutant (unlines (filter (\line -> line `notElem` ["rejected-at: compile", "rejected-at: generation"] && not ("output-unchecked-on: " `isPrefixOf` line)) header ++ body)))
+    pure (Mutant (take (length name - length (".mutant" :: String)) name) expectations edits atCompile atGeneration unchecked)
 
 -- | rejected-at: compile                                (optional)
+-- output-unchecked-on: <target> <target> | <reason>     (optional: the mutant
+--   must fail on those targets too, but its output is not held to the
+--   expectations there, and the run's line says so with the reason)
 -- expect: <text the failing output must contain>        (optional, repeatable)
 -- expect-any: <alternative> | <alternative>            (optional, repeatable)
 -- forbid: <text the failing output must not contain>   (optional, repeatable)

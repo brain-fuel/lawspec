@@ -429,7 +429,10 @@ dispatch bytes
                       "severity" .= ("warning" :: String),
                       "at" .= Null,
                       "message" .= (emitted ++ ": the masking block of " ++ name ++ " is applied by masked" ++ name ++
-                        " and in violation messages only. This target's native rendering of the record and the output of a failed generated test show every field. Targets that mask those too: " ++
+                        " and in violation messages" ++
+                        (if emitted `elem` Backend.maskedFailureTargets
+                          then ", and the output of a failed generated test is masked. This target's native rendering of the record shows every field. Targets that mask that too: "
+                          else " only. This target's native rendering of the record and the output of a failed generated test show every field. Targets that mask those too: ") ++
                         intercalate ", " Backend.maskedRenderingTargets ++
                         (if hashed then ". A field shown as hash is hidden in this target's native rendering: only those targets hold a configured hash key. masked" ++ name ++ "With shows it under a key the program passes" else ""))
                     ]

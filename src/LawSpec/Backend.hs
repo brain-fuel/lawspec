@@ -166,6 +166,13 @@ domainBounds g = [(C.binaryName op,e) | (op,e) <- generatorBounds g]
 maskedRenderingTargets :: [String]
 maskedRenderingTargets = ["java", "javascript", "python", "typescript"]
 
+-- | The targets whose failed generated tests print a masked record masked:
+-- those above, and the ones whose tests print through the Java or the
+-- Python runtime. On the rest a test framework prints a failing input
+-- through the record's native rendering. ref:DEC-masking
+maskedFailureTargets :: [String]
+maskedFailureTargets = maskedRenderingTargets ++ ["kotlin", "scala", "groovy", "clojure", "prolog"]
+
 -- | The targets whose runtime has the comment pass of the rfc822Address
 -- format, which no other runtime has yet. ref:DEC-email-format
 runtimePrimitiveTargets :: [String]

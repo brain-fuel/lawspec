@@ -1107,11 +1107,16 @@ targetSteps target =
   -- targets that suite has adapters for. ref:DEC-vacuous-outcome
   [ step (target ++ "-vacuity") (acceptance ["vacuity", target]) | target `elem` reachTargets ] ++
   [ step (target ++ "-vacuity-sampled") (acceptance ["vacuity-sampled", target]) | target `elem` ["java", "javascript", "python"] ] ++
-  -- Record rules, masking and the keyed and strict primitives have native
-  -- tests on these four targets only.
+  -- Record rules and masking on every program target. Four targets also
+  -- have native tests of their own renderings; on the targets the masking
+  -- mutants name, failed-test output is not masked and the mutants' output
+  -- is declared unchecked there. ref:DEC-masking
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
-  | target `elem` ["java", "javascript", "typescript", "python"]
-  , suite <- ["contracts-validation", "contracts-masking", "contracts-primitives"] ] ++
+  | suite <- ["contracts-validation", "contracts-masking"] ] ++
+  -- The strict address format has its comment pass on these four targets
+  -- only, so the suite that uses it is refused elsewhere.
+  [ step (target ++ "-contracts-primitives") (acceptance ["contracts-primitives", target])
+  | target `elem` ["java", "javascript", "typescript", "python"] ] ++
   -- BLAKE3's official vectors in all three modes and the digest masks, in
   -- every target's own runtime. ref:DEC-blake3-port
   [ step (target ++ "-contracts-digest") (acceptance ["contracts-digest", target]) ] ++
