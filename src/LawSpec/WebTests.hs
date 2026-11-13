@@ -583,7 +583,7 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
           strategyOf input = [(n, d) | (i, n, d) <- C.harnessDraws harness, i == C.binderId (C.quantifiedBinder input)]
       planned <- mapM (\(index,plan) -> case strategyOf (domainInput plan) of
         (strategy, draw) : _ -> do
-          (helpers,arbitrary) <- sharedArbitrary e index plan draw
+          (helpers,arbitrary) <- sharedArbitrary strategy e index plan draw
           pure ((Just strategy,arbitrary),helpers)
         [] -> (\a -> ((Nothing, a),[])) <$> contextStrategy e plan)
         (zip [0 :: Int ..] (generationPlan e))
@@ -605,7 +605,7 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
             , runtime "seeded" [object [("numRuns", E.num (toInteger (cases (generation e))))]] ])) ]))
     -- Shared code builds a fresh arbitrary in the current symbol context.
     -- Dependent children remain inside chain/filter callbacks.
-    sharedArbitrary e index requirement draw = do
+    sharedArbitrary strategy e index requirement draw = do
       graph <- literalChecked (Draws.planDraw requirement
         (map generatorBinder (take index (generationPlan e))) draw)
       let helperName number = "_draw_" ++ inputId (domainInput requirement) ++ "_" ++ show index ++ "_" ++ show number
@@ -623,8 +623,12 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
                   (E.index (E.Array [lambda [] (render value) | value <- values]) (E.Ident "_choice")) [] [] False)])
               Draws.FrequencyDraw alternatives -> pure (E.call "fc.oneof"
                 [object [("arbitrary",call child),("weight",E.num weight)] | (weight,child) <- alternatives])
-              Draws.FilterDraw child binder predicate _ -> pure (E.method (call child) "filter"
-                [lambda [E.param (localName (C.binderId binder))] (render predicate)])
+              -- fast-check's filter never gives up: such that's discard
+              -- limit is kept by the runtime's accepting.
+              Draws.FilterDraw child binder predicate limit -> pure (E.method (call child) "filter"
+                [runtime "accepting" [E.num (toInteger limit + 1), lambda [E.param (localName (C.binderId binder))] (render predicate),
+                  E.Str ("the strategy " ++ strategy ++ " discarded more than " ++ show limit ++
+                    " values; draw closer to what `such that` keeps, or allow more discards")]])
               Draws.BindDraw binder from rest -> pure (E.method (call from) "chain"
                 [lambda [E.param (localName (C.binderId binder))] (call rest)])
             pure (E.FunctionDecl False False (helperName (Draws.drawNumber node)) []

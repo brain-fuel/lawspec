@@ -1374,8 +1374,10 @@ export function generateTuple(domains, seed, attempts, prefix = [])
 }
 // A refinement as a fast-check filter that gives up. fast-check's filter
 // draws until a value passes, so a refinement random values never meet would
-// run forever; after `attempts` rejections in a row this throws instead.
-export function accepting(attempts, accept)
+// run forever; after `attempts` rejections in a row this throws instead, with
+// `exhausted` as the message when the caller has a better one (a strategy's
+// `such that`).
+export function accepting(attempts, accept, exhausted)
 {
   let rejected = 0;
   return value =>
@@ -1390,8 +1392,9 @@ export function accepting(attempts, accept)
     {
       rejected = 0;
       throw new Error(
-        `refinement-generation-exhausted after ${attempts} attempts; ` +
-          'no generated value satisfied the refinement',
+        exhausted ??
+          `refinement-generation-exhausted after ${attempts} attempts; ` +
+            'no generated value satisfied the refinement',
       );
     }
     return false;
