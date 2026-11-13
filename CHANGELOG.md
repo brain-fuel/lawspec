@@ -110,6 +110,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A JavaScript or TypeScript property test over a refined record or data
+  input no longer runs forever when random values do not meet the refinement.
+  fast-check's `filter` never gives up; the generated filter now stops after
+  `maxAttempts` rejections in a row with `refinement-generation-exhausted`.
+  An input refined by membership (`stage in stagesOf kind`) is drawn from the
+  list's items on every target when only the `property` layer is selected,
+  instead of being sampled from its type and filtered.
 - One failing law no longer keeps other laws from running. After a failing
   `lawspec test`, every law of the failing native invocation, passing or not,
   was written to the failure database with that run's seed; the next run

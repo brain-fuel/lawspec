@@ -123,3 +123,22 @@ test('reached, failed and unmeasured laws keep their outcome', () =>
     [],
   );
 });
+
+// fast-check's filter never gives up, so a refinement no random value meets
+// made a generated property test run forever. The runtime's accepting is the
+// filter's predicate and stops it.
+test('a refinement filter gives up after its attempts', async () =>
+{
+  const {accepting} = await import('../../runtime/lawspec_runtime.mjs');
+  const never = accepting(3, () => false);
+  assert.equal(never(1), false);
+  assert.equal(never(2), false);
+  assert.throws(
+    () => never(3),
+    /refinement-generation-exhausted after 3 attempts/,
+  );
+  // An accepted value starts the count again.
+  const even = accepting(2, value => value % 2 === 0);
+  for (const value of [1, 2, 3, 4, 5, 6])
+    assert.equal(even(value), value % 2 === 0);
+});

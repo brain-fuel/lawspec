@@ -1,0 +1,6 @@
+@@ src/example/vacuity.py
+<<<<<<<
+return value0.upper()
+=======
+return value0 + "!"
+>>>>>>>

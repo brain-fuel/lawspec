@@ -854,7 +854,10 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
           mapped = E.method tuple "map" [lambda [E.param "_values"] caseValue]
           pattern = E.Param (E.PObject [("_values", Just (E.PArray [E.PIdent (inputId i) | i <- inputs e])), ("symbols", Nothing)]) Nothing Nothing False
           condition = E.Arrow False [pattern] Nothing (E.ExpressionBody predicate)
-          filtered = E.method mapped "filter" [condition]
+          -- fast-check's filter draws until a value passes and never gives
+          -- up; the runtime's accepting stops it after maxAttempts
+          -- consecutive rejections, as refinement-generation-exhausted.
+          filtered = E.method mapped "filter" [runtime "accepting" [E.num (toInteger (maxAttempts cfg)), condition]]
       in pure (propertyInvocation label [filtered] [pattern] (installs e ++ body)
           [object [("numRuns",E.num (toInteger (cases cfg))),("maxSkipsPerRun",E.num (toInteger (maxAttempts cfg)))]])
     refinedProperty label e body = do

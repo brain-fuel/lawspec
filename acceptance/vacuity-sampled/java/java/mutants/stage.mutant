@@ -1,0 +1,6 @@
+@@ src/main/java/example/Vacuity.java
+<<<<<<<
+return value0.token();
+=======
+return value0.token().equals("D") ? "d" : value0.token();
+>>>>>>>

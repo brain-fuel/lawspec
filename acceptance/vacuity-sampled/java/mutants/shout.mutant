@@ -1,0 +1,6 @@
+@@ src/main/java/example/Vacuity.java
+<<<<<<<
+return value0.toUpperCase(java.util.Locale.ROOT);
+=======
+return value0 + "!";
+>>>>>>>

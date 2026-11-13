@@ -1,0 +1,8 @@
+@@ src/example/vacuity.py
+<<<<<<<
+def keep(value0: str) -> str:
+    return value0
+=======
+def keep(value0: str) -> str:
+    return "" if value0 == "south" else value0
+>>>>>>>

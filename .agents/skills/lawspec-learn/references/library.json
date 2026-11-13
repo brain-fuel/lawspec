@@ -7932,63 +7932,63 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:285: Refined definitions",
+      "id": "reference:docs/reference/refinements.md:287: Refined definitions",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:285: Refined definitions",
+      "name": "docs/reference/refinements.md:287: Refined definitions",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:318: Results of helpers",
+      "id": "reference:docs/reference/refinements.md:320: Results of helpers",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:318: Results of helpers",
+      "name": "docs/reference/refinements.md:320: Results of helpers",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:343: Sum payloads",
+      "id": "reference:docs/reference/refinements.md:345: Sum payloads",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:343: Sum payloads",
+      "name": "docs/reference/refinements.md:345: Sum payloads",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:353: List payloads",
+      "id": "reference:docs/reference/refinements.md:355: List payloads",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:353: List payloads",
+      "name": "docs/reference/refinements.md:355: List payloads",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:382: Whole-value refinements on products",
+      "id": "reference:docs/reference/refinements.md:384: Whole-value refinements on products",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:382: Whole-value refinements on products",
+      "name": "docs/reference/refinements.md:384: Whole-value refinements on products",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:404: Named data payloads",
+      "id": "reference:docs/reference/refinements.md:406: Named data payloads",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:404: Named data payloads",
+      "name": "docs/reference/refinements.md:406: Named data payloads",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:452: Constructor field contracts",
+      "id": "reference:docs/reference/refinements.md:454: Constructor field contracts",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:452: Constructor field contracts",
+      "name": "docs/reference/refinements.md:454: Constructor field contracts",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -8004,9 +8004,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/refinements.md:481: Target generation limits",
+      "id": "reference:docs/reference/refinements.md:483: Target generation limits",
       "kind": "reference",
-      "name": "docs/reference/refinements.md:481: Target generation limits",
+      "name": "docs/reference/refinements.md:483: Target generation limits",
       "source": "docs/reference/refinements.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

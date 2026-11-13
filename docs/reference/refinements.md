@@ -240,8 +240,10 @@ written out, `(key :: Text where key in ["a", "b", "c"])`, or computed from
 the inputs before it, `(kind :: Kind) (stage :: Stage where stage in stagesOf
 kind)`, where `stagesOf` is a mapping or a function. With every other input
 finite and the product within `exhaustiveLimit`, the law is checked on every
-tuple instead of sampled. Each item is still checked against the whole
-refinement. Nothing of the kind is inferred from a guard, from `or`, or for
+tuple instead of sampled, also when only the `property` layer is selected:
+drawing from a membership domain means drawing its items, which a random value
+of the type practically never equals. Each item is still checked against the
+whole refinement. Nothing of the kind is inferred from a guard, from `or`, or for
 floating-point items, and a list that calls an adapter is left to sampling.
 
 **Tests count them.** At every guard of a law's claim (each `implies` reached
