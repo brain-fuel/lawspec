@@ -69,7 +69,7 @@ runtimeFiles =
   , ("prolog", "lawspec_prolog.pl"), ("prolog-python", "lawspec_prolog.py"), ("prolog-tests", "lawspec_prolog_tests.py")
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
   , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs"), ("web-fast", "lawspec_fast.mjs")
-  , ("java", "LawSpecRuntime.java"), ("java-fast", "LawSpecFast.java"), ("java-schema", "LawSpecSchema.java")
+  , ("java", "LawSpecRuntime.java"), ("java-fast", "LawSpecFast.java"), ("java-schema", "LawSpecSchema.java"), ("java-masks", "LawSpecMasks.java"), ("java-masked", "LawSpecMasked.java"), ("java-masked-logback", "LawSpecMaskedConverter.java")
   -- Generated actors on Apache Pekko (:actors {:runtime :pekko}).
   , ("java-pekko", "pekko/LawSpecPekko.java"), ("java-pekko-supervisor", "pekko/LawSpecPekkoSupervisor.java")
   , ("java-pekko-crash", "pekko/LawSpecCrashInterceptor.java")

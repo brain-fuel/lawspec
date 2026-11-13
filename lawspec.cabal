@@ -73,6 +73,9 @@ extra-source-files:
     runtime/LawSpecDataStrategies.java
     runtime/LawSpecFast.java
     runtime/LawSpecHarness.java
+    runtime/LawSpecMasked.java
+    runtime/LawSpecMaskedConverter.java
+    runtime/LawSpecMasks.java
     runtime/LawSpecNetwork.java
     runtime/LawSpecRuntime.java
     runtime/LawSpecSchema.java
