@@ -134,6 +134,30 @@ class DataValue:
         return f"DataValue(tag={hidden.tag!r}, fields={hidden.fields!r})"
 
 
+def mask_last(count, value):
+    """Three stars and the last characters; a text no longer than that is
+    not shown at all. As rulesMaskLast of lawspec.rules."""
+    text = str(value)
+    return "***" if len(text) <= count else "***" + text[len(text) - count :]
+
+
+def mask_email(value):
+    """The first character before the first at sign, three stars, and what
+    follows the last at sign; a text without one is not shown at all. As
+    rulesMaskEmail of lawspec.rules."""
+    text = str(value)
+    if "@" not in text:
+        return "***"
+    return text.split("@")[0][:1] + "***@" + text.rsplit("@", 1)[1]
+
+
+def plain(value):
+    """A field that is not masked, as the checked renderer writes it."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
 def concealed(v):
     """A value with every masked field replaced by a marker that prints as
     ***."""

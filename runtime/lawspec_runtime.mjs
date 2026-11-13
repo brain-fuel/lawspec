@@ -213,6 +213,32 @@ export function maskFields(tag, positions)
   MASKED_FIELDS.set(tag, new Set(positions));
 }
 
+/**
+ * Three stars and the last characters; a text no longer than that is not
+ * shown at all. As rulesMaskLast of lawspec.rules.
+ */
+export function maskLast(count, value)
+{
+  const points = Array.from(String(value));
+  return points.length <= count
+    ? '***'
+    : '***' + points.slice(points.length - count).join('');
+}
+
+/**
+ * The first character before the first at sign, three stars, and what
+ * follows the last at sign; a text without one is not shown at all. As
+ * rulesMaskEmail of lawspec.rules.
+ */
+export function maskEmail(value)
+{
+  const text = String(value);
+  const first = text.indexOf('@');
+  if (first < 0) return '***';
+  const name = Array.from(text.slice(0, first));
+  return (name[0] ?? '') + '***@' + text.slice(text.lastIndexOf('@') + 1);
+}
+
 /** A value with every masked field replaced by a marker that prints as ***. */
 export function concealed(v)
 {
