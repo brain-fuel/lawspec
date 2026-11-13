@@ -64,6 +64,50 @@ test_artifactTargets = describe "artifact targets" $ do
       contents "variables.tf" files `shouldSatisfy` isInfixOf
         "error_message = \"The value of settings.port must be a whole number from 0 to 65535 (UInt16).\""
       contents "configuration.tfvars.json" files `shouldSatisfy` isInfixOf "{\n  \"settings\": {\n    \"port\": 8080,"
+  it "writes a record's rules as JSON Schema keywords" $ do
+    let ruled = unlines
+          [ "unit configuration"
+          , "type Account is a record{"
+          , "  code :: (v :: Text where v matches regex \"[A-Z]{2}.[0-9]+\" && prelude.length v <= 8 && 4 <= prelude.length v),"
+          , "  id :: (v :: Text where v matches format uuid),"
+          , "  plan :: (v :: Text where v in [\"free\", \"pro\"]),"
+          , "  seats :: (v :: Int32 where 1 <= v && v < 100)}"
+          , "end type"
+          -- A length is proved from a condition, not from a literal.
+          , "function coded (code :: Text) -> Maybe Account is"
+          , "  if code matches regex \"[A-Z]{2}.[0-9]+\" then"
+          , "    if prelude.length code <= 8 then"
+          , "      if 4 <= prelude.length code then"
+          , "        Present (Account record{code = code, id = \"01234567-89ab-cdef-0123-456789ABCDEF\", plan = \"pro\", seats = 3})"
+          , "      else Absent end if"
+          , "    else Absent end if"
+          , "  else Absent end if"
+          , "end function"
+          , "function account (unused :: Unit) -> Maybe Account is coded \"GB-12\" end function"
+          , "end unit" ]
+    case emit "yaml" ruled of
+      Left message -> expectationFailure message
+      Right files -> do
+        let schema = contents "configuration.schema.json" files
+        -- Anchored, and the dialect's `.` spelled out for ECMA-262.
+        schema `shouldSatisfy` isInfixOf "\"pattern\": \"^(?:[A-Z]{2}[^\\\\n][0-9]+)$\""
+        schema `shouldSatisfy` isInfixOf "\"maxLength\": 8"
+        schema `shouldSatisfy` isInfixOf "\"minLength\": 4"
+        schema `shouldSatisfy` isInfixOf "^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
+        schema `shouldSatisfy` isInfixOf "\"enum\": [\n"
+        schema `shouldSatisfy` isInfixOf "\"exclusiveMaximum\": 100"
+        decode (B.pack schema) `shouldSatisfy` (\value -> case value of Just (Object _) -> True; _ -> False)
+  it "refuses a rule JSON Schema cannot express, naming the target" $ do
+    let crossed = unlines
+          [ "unit configuration"
+          , "type Range is a record{low :: Int32, high :: (v :: Int32 where low <= v)} end type"
+          , "function range (unused :: Unit) -> Range is Range record{low = 1, high = 2} end function"
+          , "end unit" ]
+    case emit "yaml" crossed of
+      Left message -> do
+        message `shouldSatisfy` isInfixOf "target-unsupported"
+        message `shouldSatisfy` isInfixOf "configuration schema cannot express constructor predicate"
+      Right _ -> expectationFailure "expected the cross-field rule to be refused"
   it "rejects loss of unsupported scalar semantics" $
     emit "yaml" (unlines ["unit unsupported", "value :: Unit -> Rational", "end unit"]) `shouldSatisfy` isLeft
   it "restricts HCL to entry reachability while retaining type-only input units" $ do
