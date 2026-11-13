@@ -1,0 +1,10 @@
+expect-any: *** | first difference at field 4 of CardDraft
+forbid: 4111111111111111
+forbid: Ann Lee
+forbid: ann@example.org
+@@ examples/specs/masking.lawspec
+<<<<<<<
+    maskedCardDraft (sample ()) = "Card{holder=***, number=***1111, contact=a***@example.org, limit=900, pin=***}"
+=======
+    for all (n :: Int32) => (sample () with limit = n) = (sample () with holder = "Bob") end for all
+>>>>>>>

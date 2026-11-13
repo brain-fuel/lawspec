@@ -21,6 +21,7 @@ import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.Core.Definitions (prepareDefinitions)
 import LawSpec.Core.DefinitionContracts (validateEmissionDefinitions)
 import LawSpec.Core.Types (TypeRegistry, makeRegistry, lookupData, constructorFieldsFor)
+import LawSpec.Core.Vacuity (membership)
 import qualified LawSpec.Core.Value as V
 import LawSpec.Code.Literal (literalFor, printable)
 import LawSpec.Naming (Casing(..), cased, claim, nameWords, scopeWith)
@@ -383,7 +384,19 @@ shape registry bits ref ty@(C.Constructor name arguments)
           (Left ("existential or refined configuration constructor: " ++ C.constructorName constructor))
         fields <- constructorFieldsFor registry ty (C.constructorId constructor)
         restrictions <- mapM (schemaRestriction fields) (C.constructorPredicates constructor)
-        let body = objectSchema [(C.binderName b,ref (C.binderType b)) | b <- fields]
+        -- x-lawspec-masking names how each masked field is shown to people.
+        -- It is an annotation: a validator ignores it, and the schema still
+        -- describes the unmasked wire form. ref:DEC-masking
+        let masking = [ (field, JString (case mask of
+                          C.MaskHidden -> "hidden"
+                          C.MaskLast count -> "last " ++ show count
+                          C.MaskEmail -> "email"
+                          C.MaskHash -> "hash"))
+                      | (field, mask) <- C.dataMasking declaration ]
+            annotated schema = case schema of
+              JObject members | not (null masking) -> JObject (members ++ [("x-lawspec-masking", JObject masking)])
+              other -> other
+            body = annotated (objectSchema [(C.binderName b,ref (C.binderType b)) | b <- fields])
             restricted = if null restrictions then body else JObject [("allOf", JArray (body : restrictions))]
             tagged = objectSchema [("tag",JObject [("const", JString (C.idText (C.constructorId constructor)))]),("fields",restricted)]
         pure (if length (C.dataConstructors declaration) == 1 then restricted else tagged, map C.binderType fields)
@@ -405,27 +418,93 @@ integerSchema bits name = JObject $ [("type", JString "integer")] ++
     Nothing | name == "BigUInt" -> [("minimum", JInteger 0)]
     _ -> []
 
--- JSON Schema has numeric bounds but no general cross-field arithmetic.
--- Refuse any predicate outside that vocabulary instead of weakening the type.
+-- JSON Schema has bounds, lengths, patterns and enumerations of one property,
+-- but no general cross-field arithmetic. Refuse any predicate outside that
+-- vocabulary instead of weakening the type: the refusal is the target's
+-- `target-unsupported` diagnostic, and it shows the predicate.
+--
+--   n <= v, v < n, v = n          minimum, exclusiveMaximum, const, ...
+--   prelude.length v <= n         maxLength (a Text, counted in characters as
+--                                 JSON Schema counts them) or maxItems (a List)
+--   v matches regex "p"           pattern, anchored: a LawSpec regex matches a
+--   v matches format email        whole text, a JSON Schema pattern any part
+--   v in ["a", "b"]               enum
+--
+-- A pattern is written for ECMA-262, the dialect JSON Schema names, in which
+-- the portable dialect's patterns mean the same once `.` is spelled out
+-- (LawSpec.Regex). A validator that does not match in Unicode mode, which
+-- the JSON Schema specification only recommends, counts a character outside
+-- the Basic Multilingual Plane as two. ref:DEC-record-rules
 schemaRestriction :: [C.Binder] -> C.Expr -> Either String Json
 schemaRestriction fields expression = case C.expressionNode expression of
   C.ShortCircuit C.And a b -> (\xs -> JObject [("allOf", JArray xs)]) <$> mapM (schemaRestriction fields) [a,b]
-  C.Binary op _ a b -> case (C.expressionNode a,C.expressionNode b) of
-    (C.Local identity,C.Constant (SInteger _ value)) -> restriction identity op value
-    (C.Constant (SInteger _ value),C.Local identity) -> restriction identity (reverseComparison op) value
+  _ | Just (subject, items) <- membership expression, Just binder <- fieldOf subject
+    , Just values <- mapM constant items -> property binder [("enum", JArray values)]
+  C.Helper C.RegexMatches [pattern, subject]
+    | C.Constant (SSequence "Text" points) <- C.expressionNode (bare pattern), Just binder <- fieldOf subject ->
+        property binder [("pattern", JString ("^(?:" ++ ecmaPattern (map chr points) ++ ")$"))]
+  C.Binary op _ a b -> case (operand a, operand b) of
+    (Just (Left (binder, measured)), Just (Right value)) -> restriction binder measured op value
+    (Just (Right value), Just (Left (binder, measured))) -> restriction binder measured (reverseComparison op) value
     _ -> unsupported
   _ -> unsupported
   where
     unsupported = Left ("configuration schema cannot express constructor predicate: " ++ show expression)
-    restriction identity op value = do
-      field <- maybe (Left "schema predicate refers to a non-field binder") Right
-        (lookup identity [(C.binderId b,C.binderName b) | b <- fields])
-      keyword <- case op of
-        C.Greater -> pure "exclusiveMinimum"; C.GreaterEqual -> pure "minimum"
-        C.Less -> pure "exclusiveMaximum"; C.LessEqual -> pure "maximum"
-        C.Equal -> pure "const"
+    bare e = case C.expressionNode e of
+      C.Convert _ _ inner -> bare inner
+      _ -> e
+    fieldOf e = case C.expressionNode (bare e) of
+      C.Local identity -> lookup identity [(C.binderId b, b) | b <- fields]
+      _ -> Nothing
+    constant e = case C.expressionNode (bare e) of
+      C.Constant (SInteger _ value) -> Just (JInteger value)
+      C.Constant (SSequence "Text" points) -> Just (JString (map chr points))
+      C.Constant (SBool value) -> Just (JBool value)
+      _ -> Nothing
+    -- A field or its length on one side, an integer on the other.
+    operand e = case C.expressionNode (bare e) of
+      C.Constant (SInteger _ value) -> Just (Right value)
+      C.Helper C.Length [inner] -> (\binder -> Left (binder, True)) <$> fieldOf inner
+      _ -> (\binder -> Left (binder, False)) <$> fieldOf e
+    property binder keywords = pure (JObject [("properties", JObject [(C.binderName binder, JObject keywords)])])
+    restriction binder measured op value = do
+      keyword <- case (measured, C.binderType binder, op) of
+        (False, _, C.Greater) -> pure [("exclusiveMinimum", value)]
+        (False, _, C.GreaterEqual) -> pure [("minimum", value)]
+        (False, _, C.Less) -> pure [("exclusiveMaximum", value)]
+        (False, _, C.LessEqual) -> pure [("maximum", value)]
+        (False, _, C.Equal) -> pure [("const", value)]
+        (True, ty, _) | Just (least, most) <- lengthWords ty -> case op of
+          C.GreaterEqual -> pure [(least, value)]
+          C.Greater -> pure [(least, value + 1)]
+          C.LessEqual -> pure [(most, value)]
+          C.Less -> pure [(most, value - 1)]
+          C.Equal -> pure [(least, value), (most, value)]
+          _ -> Left "configuration schema comparison is unsupported"
         _ -> Left "configuration schema comparison is unsupported"
-      pure (JObject [("properties", JObject [(field, JObject [(keyword, JInteger value)])])])
+      property binder [(name, JInteger number) | (name, number) <- keyword]
+    lengthWords ty = case ty of
+      C.Constructor "Text" [] -> Just ("minLength", "maxLength")
+      C.Constructor "List" _ -> Just ("minItems", "maxItems")
+      _ -> Nothing
+
+-- | A portable pattern for ECMA-262. The two dialects differ in one thing a
+-- pattern may write: `.` is any character but a line feed in the portable
+-- dialect, and ECMAScript's also excludes \r, U+2028 and U+2029.
+ecmaPattern :: String -> String
+ecmaPattern = outside
+  where
+    outside text = case text of
+      '\\' : c : rest -> '\\' : c : outside rest
+      '[' : rest -> '[' : inside rest
+      '.' : rest -> "[^\\n]" ++ outside rest
+      c : rest -> c : outside rest
+      [] -> []
+    inside text = case text of
+      '\\' : c : rest -> '\\' : c : inside rest
+      ']' : rest -> ']' : outside rest
+      c : rest -> c : inside rest
+      [] -> []
 
 reverseComparison :: C.BinaryOp -> C.BinaryOp
 reverseComparison op = case op of

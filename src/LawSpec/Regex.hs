@@ -206,8 +206,8 @@ regexMatchesText pattern text = (`regexMatches` text) <$> parseRegex pattern
 regexSamples :: Int -> Regex -> [String]
 regexSamples count regex = nub (shortest regex : [sample (seed * 7919 + 17) | seed <- [1 .. count]])
   where
-    shortest r = fst (generate (\_ -> 0) r 0)
-    sample seed = fst (generate (\step -> mix (toInteger seed * 1000003 + toInteger step)) regex (0 :: Int))
+    shortest r = fst (generate (\_ -> 0) (0 :: Int) r 0)
+    sample seed = fst (generate (\step -> mix (toInteger seed * 1000003 + toInteger step)) (0 :: Int) regex (0 :: Int))
     -- SplitMix64's finalizer, so neighbouring steps choose unrelatedly. On
     -- Integers: Int is 32 bits in the WASM build.
     mix :: Integer -> Int
@@ -220,20 +220,32 @@ regexSamples count regex = nub (shortest regex : [sample (seed * 7919 + 17) | se
     -- the same samples.
     xorI :: Integer -> Integer -> Integer
     xorI a b = (a `mod` 2 ^ (64 :: Int)) `xor` (b `mod` 2 ^ (64 :: Int))
-    -- Each choice draws from the stream at the next step.
-    generate choose r step = case r of
+    -- Each choice draws from the stream at the next step. A repetition
+    -- inside a repetition repeats less, so a sample of a nested pattern (the
+    -- email format's is four deep) stays a line long, not a page.
+    generate choose depth r step = case r of
       Characters negated items ->
         let candidates = [c | c <- allowed negated items]
-            pick = if null candidates then 'a' else toEnum (candidates !! (choose step `mod` length candidates))
+            -- A class with no member among the usual characters (\r, say)
+            -- gives its first member, so a sample always matches.
+            outside = take 1 [c | c <- [0 .. 1114111], member negated items c]
+            pick = case (candidates, outside) of
+              ([], c : _) -> toEnum c
+              ([], []) -> 'a'
+              _ -> toEnum (candidates !! (choose step `mod` length candidates))
         in ([pick], step + 1)
-      Sequence parts -> foldl (\(acc, s) part -> let (t, s') = generate choose part s in (acc ++ t, s')) ("", step) parts
+      Sequence parts -> foldl (\(acc, s) part -> let (t, s') = generate choose depth part s in (acc ++ t, s')) ("", step) parts
       Alternatives options -> case options of
         [] -> ("", step)
-        _ -> generate choose (options !! (choose step `mod` length options)) (step + 1)
+        _ -> generate choose depth (options !! (choose step `mod` length options)) (step + 1)
       Repeat inner low high ->
-        let top = maybe (low + 6) (min (low + 6)) high
+        let extra = case depth of
+              0 -> 6
+              1 -> 2
+              _ -> 1
+            top = maybe (low + extra) (min (low + extra)) high
             times = low + (choose step `mod` (top - low + 1))
-        in foldl (\(acc, s) _ -> let (t, s') = generate choose inner s in (acc ++ t, s')) ("", step + 1) [1 .. times]
+        in foldl (\(acc, s) _ -> let (t, s') = generate choose (depth + 1) inner s in (acc ++ t, s')) ("", step + 1) [1 .. times]
     -- The characters a class allows, among printable ASCII and a few others.
     allowed negated items = [c | c <- universe, member negated items c]
     universe = [32 .. 126] ++ [233, 955, 8364]

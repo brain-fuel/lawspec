@@ -978,6 +978,9 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
             then artifactPath a -- Native build assets belong to the application root, beside ebin's priv.
             -- The .NET runtime projects stay beside the solution, whatever the layout.
             else if (target `elem` DotNet.dotnetTargets || target == "swift") && "lawspec/" `isPrefixOf` artifactPath a then artifactPath a
+            -- Optional sources that need a logging library stay outside the
+            -- compiled source directory, beside the build file.
+            else if "lawspec-logback/" `isPrefixOf` artifactPath a then artifactPath a
             else if artifactPlacement a == "source" then move (sourceBase a) (sourceDirectoryFor a) (artifactPath a)
             -- Test resources (JUnit's configuration) stay where the build finds them.
             else if "src/test/resources/" `isPrefixOf` artifactPath a then artifactPath a

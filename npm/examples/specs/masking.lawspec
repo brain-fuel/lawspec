@@ -1,0 +1,62 @@
+unit example.masking
+
+-- A masking block says how a record's fields are shown wherever a value is
+-- rendered for people: in maskedCard, in violation messages and in LawSpec's
+-- own failure output. LawSpec generates a law for each masked field: what
+-- its mask hides shows in no rendering and no message.
+
+type Card is a record{
+  holder :: (v :: Text where prelude.length v >= 1),
+  number :: (v :: Text where v matches regex "[0-9]{13,19}"),
+  contact :: (v :: Text where v matches format email),
+  limit :: (v :: Int32 where 0 <= v && v <= 50000),
+  pin :: Int32}
+end type
+
+masking Card is
+  holder shown as hidden
+  number shown as last 4
+  contact shown as email
+  pin shown as hidden
+end masking
+
+function sample (u :: Unit) -> CardDraft is
+  CardDraft record{holder = "Ann Lee", number = "4111111111111111", contact = "ann@example.org", limit = 900, pin = 1234}
+end function
+
+law "|a card is shown masked| is
+  definition :
+    maskedCardDraft (sample ()) = "Card{holder=***, number=***1111, contact=a***@example.org, limit=900, pin=***}"
+  end definition
+end law
+
+law "|a violation shows the masked value| is
+  definition :
+    violationsOfCard (sample () with number = "4111-1111") = [Violation record{rule = "number.pattern", field = Present "number", message = "number must match the regex \"[0-9]{13,19}\", but was ***1111"}]
+  end definition
+end law
+
+-- `hash` shows a keyed BLAKE3 digest in a target's native rendering, where
+-- the application has set a key. maskedSession is a pure definition and has
+-- no key, so it hides the field.
+type Session is a record{
+  user :: Text,
+  token :: (v :: Text where prelude.length v >= 8)}
+end type
+
+masking Session is
+  token shown as hash
+end masking
+
+law "|a hashed field is hidden where there is no key| is
+  definition :
+    maskedSessionDraft (SessionDraft record{user = "ann", token = "tok-12345678"}) = "Session{user=ann, token=***}"
+  end definition
+end law
+
+law "|a valid card is shown as its draft is| is
+  definition :
+    for all (card :: Card) => maskedCard card = maskedCardDraft (draftOfCard card) end for all
+  end definition
+end law
+end unit

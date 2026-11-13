@@ -105,10 +105,28 @@ data DataDeclaration = MkDataDeclaration
   -- Closed structural products keep their canonical descriptor separately
   -- from nominal declarations and dependency/cache fingerprints.
   , dataStructural :: Maybe StructuralRecord
+  -- The fields a masking block says to show masked, by name, for the record
+  -- and for its generated draft. Targets read it to mask what they render
+  -- for people: failure output and native renderings. The checked renderer
+  -- (maskedR) is an ordinary definition and does not depend on it.
+  -- ref:DEC-masking
+  , dataMasks :: Masking
   } deriving (Eq, Show, Generic)
+
+-- | A record's masked fields. Its own type so that a record without a
+-- masking block keeps the identity it had (LawSpec.Core.Identity).
+newtype Masking = Masking [(String, Mask)]
+  deriving (Eq, Show, Generic)
+
+dataMasking :: DataDeclaration -> [(String, Mask)]
+dataMasking declaration = let Masking fields = dataMasks declaration in fields
+
+-- | How a masked field is shown.
+data Mask = MaskHidden | MaskLast Integer | MaskEmail | MaskHash
+  deriving (Eq, Show, Generic)
 pattern DataDeclaration :: Id -> String -> [Id] -> [DataConstructor] -> Origin -> Maybe FamilyIndex -> DataDeclaration
-pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _ _ _
-  where DataDeclaration identity name parameters constructors origin index = MkDataDeclaration identity name parameters constructors origin index False Nothing Nothing
+pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _ _ _ _
+  where DataDeclaration identity name parameters constructors origin index = MkDataDeclaration identity name parameters constructors origin index False Nothing Nothing (Masking [])
 {-# COMPLETE DataDeclaration #-}
 -- Predicate indexes refer to the constructor's authoritative typed terms.
 -- Grouping retains the field each restriction belongs to without duplicating

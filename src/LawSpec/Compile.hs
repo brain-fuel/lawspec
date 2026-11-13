@@ -42,6 +42,7 @@ import LawSpec.Resources (resourcesUnit, resourcesAlias, resourcesTypes, usesRes
 import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
 import LawSpec.Network (networkUnit, networkSource)
 import LawSpec.Calendar (calendarUnit, calendarSource)
+import LawSpec.ContractRules (rulesUnit, rulesAlias, rulesTypes, rulesSource, programUsesRules)
 import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock, clockSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
@@ -382,6 +383,9 @@ sourceParsingContext selected sources =
       matchers = any (providerUses usesMatchers) [text | Source _ text <- sources]
       textDemand text = caseFoldDemand text (preludeDependencyText text)
       textFolding = any textDemand [text | Source _ text <- sources]
+      -- Programs that validate or mask a record get the rules unit: Violation
+      -- and the masks, as checked definitions (LawSpec.ContractRules).
+      rules = programUsesRules [text | Source _ text <- sources]
       -- Programs that name a built-in resource get the resources unit.
       resources = any usesResources [text | Source _ text <- sources]
       -- Built-in resources acquire and release through lawspec.host's
@@ -401,12 +405,16 @@ sourceParsingContext selected sources =
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | providerPresent] ++
         [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "") ++ "end unit\n") | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
         [Source "<lawspec.matchers>" matchersSource | matchers] ++
+        [Source ("<" ++ rulesUnit ++ ">") rulesSource | rules] ++
         [Source "<lawspec.text>" caseFoldSource | textFolding] ++
         [Source "<lawspec.resources>" resourcesSource | resources] ++
         abilityUnits
       implicit = [(timeUnit, timeAlias, timeTypes, providerUses usesTime) | time] ++
         [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience] ++
         [(matchersUnit, matchersAlias, matchersTypes, providerUses usesMatchers) | matchers] ++
+        -- Every unit: a record's validator is generated where the record is
+        -- declared, for whichever unit asks.
+        [(rulesUnit, rulesAlias, rulesTypes, const True) | rules] ++
         [(caseFoldUnit, caseFoldAlias, [], textDemand) | textFolding] ++
         [(resourcesUnit, resourcesAlias, resourcesTypes, usesResources) | resources] ++
         -- A unit that names a built-in resource imports lawspec.host, whose
@@ -426,7 +434,7 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
   -- Reserved Core identities belong to compiler-provided versioned sources.
   -- A user unit must not manufacture one when its built-in is not injected.
   when canonical $ forM_ sources $ \source -> case sourceUnit source of
-    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : caseFoldUnit : resourcesUnit : networkUnit : calendarUnit : builtinUnits) ->
+    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : rulesUnit : caseFoldUnit : resourcesUnit : networkUnit : calendarUnit : builtinUnits) ->
       Left [Diagnostic "reserved-unit" ("the unit " ++ name ++ " is reserved for compiler-provided definitions") Nothing]
     _ -> pure ()
   -- Programs that use a collection get the built-in collections unit.

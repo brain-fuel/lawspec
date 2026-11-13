@@ -151,7 +151,17 @@ dataDeclarationHeaders units = do
       let index = fmap (\i -> i { familyIndexConstructors =
             [(C.idText identity ++ "::" ++ tag, c) | (tag, c) <- familyIndexConstructors i] }) (S.dataTypeIndex d)
       pure (C.MkDataDeclaration identity name (map parameter (S.dataTypeParameters d)) constructors (C.SourceSpan (S.dataTypeSpan d)) index
-        (name `elem` S.handles u) Nothing Nothing)
+        (name `elem` S.handles u) Nothing Nothing (C.Masking (masking u name)))
+    -- A masking block covers the record and the draft generated from it.
+    masking u name =
+      [ (field, case mask of
+          S.MaskHidden -> C.MaskHidden
+          S.MaskLast count -> C.MaskLast count
+          S.MaskEmail -> C.MaskEmail
+          S.MaskHash -> C.MaskHash)
+      | contract <- S.recordContracts u
+      , name `elem` [S.contractRecord contract, S.contractRecord contract ++ "Draft"]
+      , (field, mask) <- S.contractMasks contract ]
     typeIdentity u name = C.Id (S.unitName u ++ "::type::" ++ name)
     contextual range = either (Left . pure . (\message -> Diagnostic "data-type" message (Just (spanStart range)))) Right
 

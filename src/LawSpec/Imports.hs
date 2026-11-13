@@ -16,6 +16,7 @@ import LawSpec.Indexed (naturalRefinementName)
 import LawSpec.Collections (collectionsUnit, canonicalCollectionTypes, canonicalCollectionValues, internalConstructor, boundedArithmeticDefinitions)
 import LawSpec.Time (timeUnit, durationDefinitions)
 import LawSpec.Matchers (matchersUnit)
+import LawSpec.ContractRules (rulesUnit)
 import LawSpec.Resources (resourcesUnit)
 import LawSpec.Resilience (resilienceUnit, resilienceDefinitions)
 import LawSpec.Builtins (instantDefinitions)
@@ -347,7 +348,7 @@ importScope u i exports = do
         map refinementName (refinements u) ++ map fst (functions u) ++ map lawName (laws u)
   -- The implicit collections import leaves out what the unit declares, and
   -- the containers' constructors, which keep their items canonical.
-  let implicit = importUnit i `elem` [collectionsUnit, timeUnit, resilienceUnit, matchersUnit, resourcesUnit]
+  let implicit = importUnit i `elem` [collectionsUnit, timeUnit, resilienceUnit, matchersUnit, rulesUnit, resourcesUnit]
       hidden = [c | Just c <- map internalConstructor (importItems i)]
   listed <- forM [item | item <- importItems i, not (implicit && unquote item `S.member` local)] $ \item -> do
     when (unquote item `S.member` local)

@@ -13,6 +13,7 @@ import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub)
 import Numeric (showHex)
+import qualified LawSpec.Backend as Backend
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as Schema
 import LawSpec.RuntimeSources (runtimeSource)
@@ -199,7 +200,15 @@ emitJavaDataWithProfile bits layout declarations = do
      Artifact "src/main/java/lawspec/runtime/LawSpecDataSchema.java"
       schema "generated" "source",
      Artifact "src/main/java/lawspec/runtime/LawSpecSchema.java"
-      (runtimeSource "java-schema") "generated" "source"])
+      (runtimeSource "java-schema") "generated" "source"] ++
+    -- A record with a masking block renders itself through the masks.
+    -- The Logback converter needs Logback, so it is generated beside the
+    -- compiled sources, not among them: a project without Logback compiles.
+    concat [ [ Artifact "src/main/java/lawspec/runtime/LawSpecMasks.java" (runtimeSource "java-masks") "generated" "source"
+             , Artifact "src/main/java/lawspec/runtime/LawSpecMasked.java" (runtimeSource "java-masked") "generated" "source"
+             , Artifact "lawspec-logback/lawspec/logging/LawSpecMaskedConverter.java"
+                 (runtimeSource "java-masked-logback") "generated" "source" ]
+           | any (not . null . C.dataMasking) declarations ])
   where
     -- A product is a record; a sum is a sealed interface of records, one per
     -- constructor, so adapters use accessors and exhaustive switches instead
@@ -220,7 +229,8 @@ emitJavaDataWithProfile bits layout declarations = do
         -- exposed; the private constructor prevents manufacturing inhabitants.
         [] -> pure (D.group (D.text "public final class " <> applied name args) <> D.hardline <>
           D.block 2 (D.text ("private " ++ name ++ "() {}")))
-        [only] | isProduct declaration -> record names parameters ("public record " ++ name) args Nothing only
+        [only] | isProduct declaration ->
+          record (maskedRendering name declaration only) names parameters ("public record " ++ name) args Nothing only
         _ -> do
           mapM_ (identifier . caseOf) variants
           body <- D.joinWith (D.hardline <> D.hardline) <$> mapM (\v -> do
@@ -235,13 +245,13 @@ emitJavaDataWithProfile bits layout declarations = do
                 own = if null equations && null existentials then args
                   else [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
             implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
-            record names scope ("record " ++ caseOf v) own (Just (applied name implemented))
+            record Nothing names scope ("record " ++ caseOf v) own (Just (applied name implemented))
               v{C.constructorFields=[field{C.binderType=nativeConstructorFieldType declaration v (C.binderType field)} | field<-C.constructorFields v]}) variants
           let header = D.text "public sealed interface " <> applied name args <>
                 D.nest 4 (D.softline <> D.text "permits " <> D.nest 4 (D.commaSep [D.text (name ++ "." ++ caseOf v) | v <- variants]))
           pure (D.group header <> D.hardline <> D.block 2 body)
       pure (file source)
-    record names scope keywordName args implements value = do
+    record members names scope keywordName args implements value = do
       let free = concat [freeExistentials d value | d <- declarations, C.constructorId value `elem` map C.constructorId (C.dataConstructors d)]
           parameters = scope ++ [(e, "Object") | e <- free]
           witnesses = [D.text ("String " ++ Schema.witnessFieldName (length free) k) | k <- [0 .. length free - 1]]
@@ -254,8 +264,36 @@ emitJavaDataWithProfile bits layout declarations = do
         pure (D.group (ty <> D.nest 4 (D.softline <> D.text (C.binderName field))))) (C.constructorFields value)
       pure (D.group (D.text keywordName <> (if null args then mempty else applied "" args) <> D.text "(" <>
         D.nest 4 (D.softbreak <> D.group (D.commaSep components)) <> D.text ")" <>
-        maybe mempty (\owner -> D.nest 4 (D.softline <> D.text "implements " <> owner)) implements) <> D.text " {}")
+        maybe mempty (\owner -> D.nest 4 (D.softline <> D.text "implements " <> owner)) implements) <>
+        maybe (D.text " {}") (\body -> D.hardline <> D.block 2 body) members)
     objectMethods = ["hashCode", "toString", "equals", "getClass", "notify", "notifyAll", "wait", "clone", "finalize"]
+    -- A record with a masking block shows itself as the block allows:
+    -- toString() is what a logger, a debugger and string concatenation call.
+    -- The unmasked rendering has a name nobody writes by accident. The text
+    -- is maskedR's (LawSpec.ContractRules): the name, braces, field=value.
+    -- ref:DEC-masking
+    maskedRendering name declaration constructor
+      | null masks = Nothing
+      | otherwise = Just (D.joinWith (D.hardline <> D.hardline)
+          [ D.text "/** This record as its masking block shows it. */" <> D.hardline <>
+            D.text "@Override" <> D.hardline <> D.text "public String toString()" <> D.hardline <>
+            D.block 2 (concatenation (zipWith (shown True) [0 :: Int ..] fields) "}")
+          , D.text "/** Every field as it is, the masked ones too: never for a log or a message. */" <> D.hardline <>
+            D.text "public String toUnmaskedString()" <> D.hardline <>
+            D.block 2 (concatenation (zipWith (shown False) [0 :: Int ..] fields) "}") ])
+      where
+        masks = C.dataMasking declaration
+        fields = map C.binderName (C.constructorFields constructor)
+        concatenation parts closing = D.text "return " <> D.nest 4 (D.joinWith D.hardline
+          (zipWith (\index part -> (if index == (0 :: Int) then mempty else D.text "+ ") <> part) [0 ..]
+            (parts ++ [E.quoted closing]))) <> D.text ";"
+        label index field = E.quoted ((if index == 0 then name ++ "{" else ", ") ++ field ++ "=")
+        shown masked index field = case if masked then lookup field masks else Nothing of
+          Just C.MaskHidden -> E.quoted ((if index == 0 then name ++ "{" else ", ") ++ field ++ "=***")
+          Just (C.MaskLast count) -> label index field <> D.text (" + lawspec.runtime.LawSpecMasks.last(" ++ show count ++ ", " ++ field ++ ")")
+          Just C.MaskEmail -> label index field <> D.text (" + lawspec.runtime.LawSpecMasks.email(" ++ field ++ ")")
+          Just C.MaskHash -> label index field <> D.text (" + lawspec.runtime.LawSpecMasks.hash(" ++ field ++ ")")
+          Nothing -> label index field <> D.text (" + " ++ field)
 
 -- | The class that holds one constructor's values: the record itself for a
 -- product, or the sum's nested record.
@@ -312,7 +350,7 @@ emitJavaSchema bits layout declarations = do
         ["LawSpecSchema schema", "List<LawSpecSchema.TypeRef> types", "List<Value> fields",
          "int bits", "java.util.Map<String, Object> symbols"]))) <> D.text ")" <> D.hardline <>
       D.block 2 (D.text "return " <> E.call "LawSpecRuntime.truth" [body] <> D.text ";"))
-  pure (renderSchemaWith (handlesOf declarations) layout callbacks bindings schemas)
+  pure (renderSchemaWith (handlesOf declarations) [(C.idText tag, positions) | (tag, positions) <- Backend.maskedPositions declarations] layout callbacks bindings schemas)
   where
     nestedIds term = (case C.expressionNode term of
       C.Let binder _ _ -> [C.binderId binder]
@@ -330,10 +368,14 @@ emitJavaSchema bits layout declarations = do
       (E.quoted name : map renderReference args)
 
 renderSchema :: D.Layout -> [D.Doc] -> [(String,String)] -> [Schema.DataSchema] -> String
-renderSchema = renderSchemaWith []
+renderSchema = renderSchemaWith [] []
 
-renderSchemaWith :: Handles -> D.Layout -> [D.Doc] -> [(String,String)] -> [Schema.DataSchema] -> String
-renderSchemaWith handles layout callbacks bindings schemas = D.render layout $
+-- | The masks are each masked record's constructor tag and the positions of
+-- its hidden fields: registered when the class loads, before any value of
+-- the schema exists, so the runtime hides them in what it prints.
+-- ref:DEC-masking
+renderSchemaWith :: Handles -> [(String,[Int])] -> D.Layout -> [D.Doc] -> [(String,String)] -> [Schema.DataSchema] -> String
+renderSchemaWith handles masks layout callbacks bindings schemas = D.render layout $
   D.text "// Generated by LawSpec. Do not edit." <> D.hardline <> D.hardline <>
   D.text "package lawspec.runtime;" <> D.hardline <> D.hardline <>
   D.joinWith D.hardline (map D.text
@@ -347,6 +389,9 @@ renderSchemaWith handles layout callbacks bindings schemas = D.render layout $
   D.hardline <> D.hardline <> D.text "public final class LawSpecDataSchema" <> D.hardline <>
   D.block 2 (D.text "private LawSpecDataSchema() {}" <> D.hardline <> D.hardline <>
     mconcat [callback <> D.hardline <> D.hardline | callback <- callbacks] <>
+    (if null masks then mempty else D.text "static" <> D.hardline <> D.block 2 (D.joinWith D.hardline
+      [ call "LawSpecRuntime.maskFields" (E.quoted tag : map (D.text . show) positions) <> D.text ";"
+      | (tag, positions) <- masks ]) <> D.hardline <> D.hardline) <>
     D.text "public static LawSpecSchema create()" <> D.hardline <> D.block 2
       (D.text "return " <> call "new LawSpecSchema" [list (map definition schemas)] <> D.text ";")) <>
   D.hardline

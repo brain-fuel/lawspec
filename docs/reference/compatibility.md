@@ -175,6 +175,23 @@ Swift crypto projects need macOS 26, whose CryptoKit provides ML-KEM-768 and
 ML-DSA-65. The runtime implements SHAKE256 and SLH-DSA itself, since CryptoKit
 lacks them.
 
+## Record rules and masking
+
+What each target does for [record rules and masking](language/record-rules.md),
+and whether the acceptance suites `contracts-validation` and
+`contracts-masking` have run there.
+
+| | Java | JavaScript | TypeScript | Python | Every other target |
+| --- | --- | --- | --- | --- | --- |
+| Validators, rule ids, `maskedR`, generated laws | run | run | run | run | generated from the same checked definitions; **not run** |
+| Native rendering masked | yes | yes | yes | yes | no; generation warns `target-unsupported` |
+| Failed-test output masked | yes | yes | yes | yes | no |
+| `hash` as a keyed BLAKE3 digest | yes | yes | yes | yes | no; the field is hidden by `maskedR` |
+| Logging hook | wrapper and Logback converter | not needed | not needed | not needed | none |
+
+"Not run" means what it says: no acceptance suite has compiled or executed
+record rules on those targets, so nothing is claimed for them.
+
 ## C# over F#
 
 The C# target compiles the program's model (data types, codecs, ability

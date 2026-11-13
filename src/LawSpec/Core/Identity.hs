@@ -309,6 +309,10 @@ instance Encode DataDeclaration where
     enc resolver [ranks M.! constructorId constructor | constructor <- dataConstructors declaration]
 instance Encode DataConstructor
 instance Encode StructuralRecord
+-- No masking block encodes as nothing, so adding the field changed no
+-- identity; a block is part of what a record generates.
+instance Encode Masking where
+  enc _ (Masking fields) = if null fields then pure () else tag "masking" >> emit (BB.string7 (show fields))
 instance Encode Expr
 instance Encode CoreValue.Value
 instance Encode Node
@@ -548,6 +552,7 @@ instance Collect Contract
 instance Collect DataDeclaration
 instance Collect DataConstructor
 instance Collect StructuralRecord
+instance Collect Masking where collect _ = id
 instance Collect Expr
 instance Collect Node
 instance Collect MatchCase

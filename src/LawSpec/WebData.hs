@@ -88,6 +88,10 @@ emitWebDataWithProfile ts bits layout declarations = do
                , E.ImportDecl False (E.ImportNamespace "schema") ("./lawspec_schema." ++ importExtension) ]
       factory = E.FunctionDecl True False "makeSchema" [] [] Nothing
         (concatMap (\c -> [c, E.Blank]) callbacks ++
+         -- What a masking block hides is hidden in everything the runtime
+         -- prints about a failure. ref:DEC-masking
+         [ E.ExprStmt (E.call "ls.maskFields" [E.Str (C.idText tag), E.Array (map (E.Num . show) positions)])
+         | (tag, positions) <- Backend.maskedPositions declarations ] ++
          [E.ret (E.new' "schema.Schema"
           [E.Array metadata, E.Array (map (E.Str . primitiveName) primitives),
            E.Object [E.Prop (E.KName k) (E.Ident v) | (k, v) <- [("absent","Absent"),("present","Present"),("left","Left"),("right","Right"),("presence","Presence")]]])])
@@ -118,7 +122,14 @@ emitWebDataWithProfile ts bits layout declarations = do
       else E.Comment (["/**"] ++
         [" * @template " ++ intercalate ", " parameters | not (null parameters)] ++
         [" * @typedef {" ++ intercalate " | " (map E.printType variants) ++ "} " ++ name, " */"])
-    nativeClass name parameters fields =
+    nativeClass name parameters fields = maskedClass [] name parameters fields
+    -- A record with a masking block shows itself as the block allows.
+    -- toString is what a template literal, String() and concatenation call;
+    -- the inspect method is what console.log and util.inspect call in Node.
+    -- JSON.stringify is left alone: it is the record's wire form, and a
+    -- toJSON would change what a program sends. The text is maskedR's
+    -- (LawSpec.ContractRules). ref:DEC-masking
+    maskedClass masks name parameters fields =
       [E.Comment ["/** @template " ++ intercalate ", " parameters ++ " */"] | not ts, not (null parameters)] ++
       [E.ClassDecl True name (if ts then parameters else []) Nothing []
         ([E.Field ["declare", "private", "readonly"] "_lawspecBrand" (Just (E.TKeyword "void")) Nothing | ts] ++
@@ -127,13 +138,33 @@ emitWebDataWithProfile ts bits layout declarations = do
          [E.Method False False "method" "constructor"
            [(E.param argument) { E.paramType = if ts then Just ty else Nothing } | (argument,(_,ty)) <- zip arguments fields] Nothing
            ([E.ExprStmt (E.Assign "=" (E.member E.This field) (E.Ident argument)) | (argument,(field,_)) <- zip arguments fields] ++
-            [E.ExprStmt (E.call "Object.freeze" [E.This])])])]
+            [E.ExprStmt (E.call "Object.freeze" [E.This])])] ++
+         concat [ [ E.MemberBlank
+                  , E.Method False False "method" "toString" [] (if ts then Just (E.TKeyword "string") else Nothing)
+                      [E.ret (rendering True)]
+                  , E.MemberBlank
+                  , E.MemberComment ["/** Every field as it is, the masked ones too: never for a log. */"]
+                  , E.Method False False "method" "toUnmaskedString" [] (if ts then Just (E.TKeyword "string") else Nothing)
+                      [E.ret (rendering False)]
+                  , E.MemberBlank
+                  , E.Method False False "method" "[Symbol.for('nodejs.util.inspect.custom')]" []
+                      (if ts then Just (E.TKeyword "string") else Nothing) [E.ret (E.call "this.toString" [])] ]
+                | not (null masks) ])]
       where
         -- A constructor's parameter takes its field's name where that is a
         -- plain identifier (publicKey, value), and its position otherwise.
         arguments = [if plain field then field else "value" ++ show i | (i,(field,_)) <- zip [0::Int ..] fields]
         plain field = not (null field) && all (\c -> isAscii c && (isAlphaNum c || c == '_')) field && not (any isDigit (take 1 field)) &&
           field `notElem` (["arguments", "eval", "constructor", "__proto__"] ++ targetKeywords "typescript" ++ parameters)
+        rendering masked = foldl1 (E.Binary "+") (concat (zipWith (piece masked) [0 :: Int ..] (map fst fields)) ++ [E.Str "}"])
+        piece masked index field =
+          let lead = (if index == 0 then name ++ "{" else ", ") ++ field ++ "=" in
+          case if masked then lookup field masks else Nothing of
+            Just (C.MaskLast count) -> [E.Str lead, E.call "ls.maskLast" [E.Num (show count), E.member E.This field]]
+            Just C.MaskEmail -> [E.Str lead, E.call "ls.maskEmail" [E.member E.This field]]
+            Just C.MaskHash -> [E.Str lead, E.call "ls.maskHash" [E.member E.This field]]
+            Just _ -> [E.Str (lead ++ "***")]
+            Nothing -> [E.Str lead, E.call "String" [E.member E.This field]]
     key name = if name `elem` ["constructor","__proto__"] then "[" ++ q name ++ "]" else name
     builtins =
       [alias "Maybe" ["T"] [E.TRef "Absent" [E.TRef "T" []], E.TRef "Present" [E.TRef "T" []]]] ++
@@ -181,7 +212,8 @@ emitWebDataWithProfile ts bits layout declarations = do
             pure (maybe "never" id (lookup p parameters), E.printType pattern)) equations
           pure (E.TRaw ("([" ++ intercalate ", " (map fst patterns) ++ "] extends [" ++ intercalate ", " (map snd patterns) ++
             "] ? " ++ E.printType (application native [E.TRef a [] | a <- classArgs]) ++ " : never)"))
-        pure (member,linkComment (name ++ (if isProduct declaration then "" else "." ++ C.constructorName constructor)) (sourceLink (C.dataOrigin declaration)) : nativeClass native classArgs fields')
+        pure (member,linkComment (name ++ (if isProduct declaration then "" else "." ++ C.constructorName constructor)) (sourceLink (C.dataOrigin declaration)) :
+          maskedClass (if isProduct declaration then C.dataMasking declaration else []) native classArgs fields')
       -- A product's class is the type itself; only sums need a union alias.
       pure ([stmt | not (isProduct declaration), stmt <- [linkComment name (sourceLink (C.dataOrigin declaration)),
                alias name args (if null variants then [E.TKeyword "never"] else map fst variants)]] ++ concatMap snd variants)

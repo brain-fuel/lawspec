@@ -149,6 +149,9 @@
         "path": "how-to/spring-boot.md"
       },
       {
+        "path": "how-to/validate-and-mask-records.md"
+      },
+      {
         "path": "how-to/contribute.md"
       },
       {
@@ -304,6 +307,9 @@
           },
           {
             "path": "reference/language/calendar.md"
+          },
+          {
+            "path": "reference/language/record-rules.md"
           },
           {
             "path": "reference/language/evidence-and-discharge.md"

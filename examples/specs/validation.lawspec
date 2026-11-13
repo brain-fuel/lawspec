@@ -1,0 +1,57 @@
+unit example.validation
+
+-- A record's rules are the restrictions its fields carry and its named
+-- rules. Each has a stable id: the field and the kind of restriction
+-- (age.min), the name `as` gives it (number.digits), or a rule's own name
+-- (vatForPro). LawSpec generates SignupDraft, validateSignup and
+-- violationsOfSignup because this unit names them.
+
+function validName (name :: Text) -> Bool is name matches regex "[A-Za-z][A-Za-z '-]{0,63}"
+end function
+
+type Signup is a record{
+  name :: (v :: Text where validName v),
+  email :: (v :: Text where v matches format email),
+  age :: (v :: Int32 where 18 <= v && v <= 120),
+  plan :: (v :: Text where v in ["free", "pro"]),
+  code :: (v :: Text where v matches regex "[A-Z]{2}[0-9]{2,8}" as shape && prelude.length v <= 6),
+  vatId :: Text}
+  rule vatForPro is plan != "pro" || vatId != ""
+end type
+
+function ann (u :: Unit) -> SignupDraft is
+  SignupDraft record{name = "Ann Lee", email = "ann@example.org", age = 30, plan = "pro", code = "GB1234", vatId = "GB123456"}
+end function
+
+law "|a valid draft passes| is
+  definition :
+    violationsOfSignup (ann ()) = []
+    and validateSignup (ann ()) = Right (Signup record{name = "Ann Lee", email = "ann@example.org", age = 30, plan = "pro", code = "GB1234", vatId = "GB123456"})
+  end definition
+end law
+
+law "|each broken rule is named| is
+  definition :
+    validateSignup (ann () with name = "4nn") fails with name.validName
+    and validateSignup (ann () with email = "ann.example.org") fails with email.email
+    and validateSignup (ann () with age = 17) fails with age.min
+    and validateSignup (ann () with age = 121) fails with age.max
+    and validateSignup (ann () with plan = "gold") fails with plan.oneOf
+    and validateSignup (ann () with code = "gb1234") fails with code.shape
+    and validateSignup (ann () with code = "GB12345") fails with code.maxLength
+    and validateSignup (ann () with vatId = "") fails with vatForPro
+  end definition
+end law
+
+law "|every broken rule is reported, in order| is
+  definition :
+    prelude.violatedRules (violationsOfSignup (ann () with age = 17, plan = "gold", email = "")) = ["email.email", "age.min", "plan.oneOf"]
+  end definition
+end law
+
+law "|a violation says what is wrong| is
+  definition :
+    violationsOfSignup (ann () with age = 17) = [Violation record{rule = "age.min", field = Present "age", message = "age must be at least 18, but was 17"}]
+  end definition
+end law
+end unit

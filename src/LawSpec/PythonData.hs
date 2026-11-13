@@ -8,6 +8,7 @@ import qualified LawSpec.Typed.EmissionContext as EmissionContext
 import LawSpec.Time (isDurationType)
 import Control.Monad (unless, forM)
 import qualified LawSpec.Core as C
+import qualified LawSpec.Backend as Backend
 import qualified LawSpec.Core.Schema as S
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
@@ -74,6 +75,12 @@ emitPythonDataWithProfile bits layout declarations = do
          "import lawspec_runtime as ls", "import lawspec_schema as _schema"]
       factory = suite (D.text "def make_schema()")
         (D.joinWith (D.hardline <> D.hardline) (callbacks ++
+          -- What a masking block hides is hidden in everything the runtime
+          -- prints about a failure. ref:DEC-masking
+          [ D.joinWith D.hardline
+              [ invoke "ls.mask_fields" [D.text (q (C.idText tag)), array (map (D.text . show) positions)]
+              | (tag, positions) <- Backend.maskedPositions declarations ]
+          | not (null (Backend.maskedPositions declarations)) ] ++
           [D.text "return " <> invoke "_schema.Schema"
             [array metadata, array (map (D.text . q . primitiveName) primitives)]]))
       source = D.joinWith D.hardline header <> D.hardline <> D.hardline <> D.hardline <>
@@ -130,10 +137,31 @@ emitPythonDataWithProfile bits layout declarations = do
         let free = freeExistentials declaration constructor
             witnesses = [D.text (S.witnessFieldName (length free) k ++ ": str") | k <- [0 .. length free - 1]]
         let fields' = fields ++ witnesses
-        pure (D.text "@_dataclasses.dataclass(frozen=True, slots=True, eq=False)" <> D.hardline <>
+        -- A record with a masking block shows itself as the block allows:
+        -- repr and str are what a logger, a traceback and an f-string call.
+        -- The text is maskedR's (LawSpec.ContractRules). ref:DEC-masking
+        let masks = if isProduct declaration then C.dataMasking declaration else []
+            labels = map C.binderName (C.constructorFields constructor)
+            piece masked (index, label) =
+              let lead = (if index == (0 :: Int) then native ++ "{" else ", ") ++ label ++ "=" in
+              case if masked then lookup label masks else Nothing of
+                Just (C.MaskLast count) -> [D.text (q lead), D.text ("ls.mask_last(" ++ show count ++ ", self." ++ label ++ ")")]
+                Just C.MaskEmail -> [D.text (q lead), D.text ("ls.mask_email(self." ++ label ++ ")")]
+                Just C.MaskHash -> [D.text (q lead), D.text ("ls.mask_hash(self." ++ label ++ ")")]
+                Just _ -> [D.text (q (lead ++ "***"))]
+                Nothing -> [D.text (q lead), D.text ("ls.plain(self." ++ label ++ ")")]
+            -- A joined list is laid out the same way whatever its length.
+            rendering masked = D.text "return " <> invoke "\"\".join"
+              [array (concatMap (piece masked) (zip [0 ..] labels) ++ [D.text (q "}")])]
+            renderings = if null masks then [] else
+              [ D.hardline <> suite (D.text "def __repr__(self)") (rendering True)
+              , D.hardline <> D.text "__str__ = __repr__"
+              , D.hardline <> suite (D.text "def unmasked_repr(self)")
+                  (D.text "\"\"\"Every field as it is, the masked ones too: never for a log.\"\"\"" <> D.hardline <> rendering False) ]
+        pure (D.text ("@_dataclasses.dataclass(frozen=True, slots=True, eq=False" ++ (if null masks then "" else ", repr=False") ++ ")") <> D.hardline <>
           suite (D.text "class " <> application native classArgs <>
             (if isProduct declaration then mempty else D.text "(" <> application name baseArgs <> D.text ")"))
-            (if null fields' then D.text "pass" else D.joinWith D.hardline fields'))
+            (if null fields' then D.text "pass" else D.joinWith D.hardline (fields' ++ renderings)))
       -- A product is a single dataclass named after its type.
       pure ([base | not (isProduct declaration)] ++ variants)
     definitionSchema names bindings fieldHints schema = do

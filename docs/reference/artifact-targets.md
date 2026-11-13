@@ -123,8 +123,13 @@ The supported data representation is:
 | Multiple-constructor data, including `Maybe` and `Either` | Object with qualified `tag` and a `fields` object |
 
 Recursive data uses schema references. Generic parameters must be concrete
-where a value is exported. Constructor predicates support integer field
-comparisons with integer constants and their conjunctions. Unsupported
+where a value is exported. Constructor predicates support, for one field
+and in conjunctions: integer comparisons with integer constants; a text's or
+list's length compared with a constant (`minLength`, `maxLength`,
+`minItems`, `maxItems`); `matches regex` and `matches format` (`pattern`,
+anchored and written for ECMA-262); and membership in a written-out list
+(`enum`). A validator that does not match patterns in Unicode mode counts a
+character outside the Basic Multilingual Plane as two. Unsupported
 predicates, scalar representations, handles, existential or indexed types
 produce `target-unsupported`; their constraints are never silently omitted.
 Non-regular type expansion beyond 128 levels is also unsupported.

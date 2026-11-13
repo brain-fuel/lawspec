@@ -187,6 +187,221 @@ export class DataValue
     this.fields = Object.freeze([...fields]);
     Object.freeze(this);
   }
+
+  // fast-check prints a counterexample with this method when a value has
+  // one, so a masked field is not printed there either.
+  [Symbol.for('fast-check/toStringMethod')]()
+  {
+    return shown(this);
+  }
+}
+
+// The fields a masking block hides, by constructor tag and position. The
+// generated data module registers them (maskFields); everything this runtime
+// prints about a failure shows such a field as ***, whatever its mask. A
+// counterexample is replayed by its seed, never by what was printed.
+const MASKED_FIELDS = new Map();
+const CONCEALED = Object.freeze({
+  toString()
+  {
+    return '***';
+  },
+});
+
+export function maskFields(tag, positions)
+{
+  MASKED_FIELDS.set(tag, new Set(positions));
+}
+
+/**
+ * Three stars and the last characters; a text no longer than that is not
+ * shown at all. As rulesMaskLast of lawspec.rules.
+ */
+export function maskLast(count, value)
+{
+  const points = Array.from(String(value));
+  return points.length <= count
+    ? '***'
+    : '***' + points.slice(points.length - count).join('');
+}
+
+/**
+ * The first character before the first at sign, three stars, and what
+ * follows the last at sign; a text without one is not shown at all. As
+ * rulesMaskEmail of lawspec.rules.
+ */
+export function maskEmail(value)
+{
+  const text = String(value);
+  const first = text.indexOf('@');
+  if (first < 0) return '***';
+  const name = Array.from(text.slice(0, first));
+  return (name[0] ?? '') + '***@' + text.slice(text.lastIndexOf('@') + 1);
+}
+
+const BLAKE3_IV = [
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c,
+  0x1f83d9ab, 0x5be0cd19,
+];
+const BLAKE3_SCHEDULE = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8];
+const BLAKE3_CHUNK_START = 1;
+const BLAKE3_CHUNK_END = 2;
+const BLAKE3_PARENT = 4;
+const BLAKE3_ROOT = 8;
+const BLAKE3_KEYED_HASH = 16;
+
+/** Sixteen little-endian words of a block, zero padded past its length. */
+function blake3Words(bytes, offset, length)
+{
+  const words = new Uint32Array(16);
+  for (let i = 0; i < length; i++)
+    words[i >>> 2] |= bytes[offset + i] << (8 * (i & 3));
+  return words;
+}
+
+/** The first eight words of BLAKE3's compression: a chaining value. */
+function blake3Compress(node, extra)
+{
+  const state = new Uint32Array(16);
+  state.set(node.cv);
+  state.set(BLAKE3_IV.slice(0, 4), 8);
+  state[12] = node.counter;
+  state[13] = Math.floor(node.counter / 4294967296);
+  state[14] = node.length;
+  state[15] = node.flags | extra;
+  let m = node.words;
+  const g = (a, b, c, d, x, y) =>
+  {
+    state[a] = state[a] + state[b] + x;
+    state[d] = ((state[d] ^ state[a]) >>> 16) | ((state[d] ^ state[a]) << 16);
+    state[c] = state[c] + state[d];
+    state[b] = ((state[b] ^ state[c]) >>> 12) | ((state[b] ^ state[c]) << 20);
+    state[a] = state[a] + state[b] + y;
+    state[d] = ((state[d] ^ state[a]) >>> 8) | ((state[d] ^ state[a]) << 24);
+    state[c] = state[c] + state[d];
+    state[b] = ((state[b] ^ state[c]) >>> 7) | ((state[b] ^ state[c]) << 25);
+  };
+  for (let round = 0; round < 7; round++)
+  {
+    g(0, 4, 8, 12, m[0], m[1]);
+    g(1, 5, 9, 13, m[2], m[3]);
+    g(2, 6, 10, 14, m[4], m[5]);
+    g(3, 7, 11, 15, m[6], m[7]);
+    g(0, 5, 10, 15, m[8], m[9]);
+    g(1, 6, 11, 12, m[10], m[11]);
+    g(2, 7, 8, 13, m[12], m[13]);
+    g(3, 4, 9, 14, m[14], m[15]);
+    m = Uint32Array.from(BLAKE3_SCHEDULE, from => m[from]);
+  }
+  return Uint32Array.from({length: 8}, (_, i) => state[i] ^ state[i + 8]);
+}
+
+/**
+ * Keyed BLAKE3-256 (the BLAKE3 specification, section 2.1) of some bytes
+ * under a key of eight words, in lower-case hexadecimal. The chunks are
+ * merged as the reference implementation merges them: a stack of subtree
+ * chaining values, one subtree closed per trailing zero of the chunk count.
+ */
+function blake3KeyedHex(key, bytes)
+{
+  const parent = (left, right) =>
+  {
+    const words = new Uint32Array(16);
+    words.set(left);
+    words.set(right, 8);
+    const flags = BLAKE3_KEYED_HASH | BLAKE3_PARENT;
+    return {cv: key, words, counter: 0, length: 64, flags};
+  };
+  const chunk = index =>
+  {
+    const end = Math.min(bytes.length, index * 1024 + 1024);
+    let offset = index * 1024;
+    let cv = key;
+    let flags = BLAKE3_KEYED_HASH | BLAKE3_CHUNK_START;
+    while (end - offset > 64)
+    {
+      const words = blake3Words(bytes, offset, 64);
+      cv = blake3Compress({cv, words, counter: index, length: 64, flags}, 0);
+      flags = BLAKE3_KEYED_HASH;
+      offset += 64;
+    }
+    return {
+      cv,
+      words: blake3Words(bytes, offset, end - offset),
+      counter: index,
+      length: end - offset,
+      flags: flags | BLAKE3_CHUNK_END,
+    };
+  };
+  const chunks = Math.max(1, Math.ceil(bytes.length / 1024));
+  const stack = [];
+  let node = chunk(chunks - 1);
+  for (let index = 0; index < chunks - 1; index++)
+  {
+    let cv = blake3Compress(chunk(index), 0);
+    for (let total = index + 1; total % 2 === 0; total /= 2)
+      cv = blake3Compress(parent(stack.pop(), cv), 0);
+    stack.push(cv);
+  }
+  while (stack.length > 0) node = parent(stack.pop(), blake3Compress(node, 0));
+  let hex = '';
+  for (const word of blake3Compress(node, BLAKE3_ROOT))
+  {
+    for (let shift = 0; shift < 32; shift += 8)
+      hex += ((word >>> shift) & 255).toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+/** The key of the hash mask: set by the application, never generated. */
+let MASK_KEY = null;
+
+/**
+ * Sets the key of the `hash` mask: 32 secret bytes the application loads
+ * when it starts. LawSpec never writes a key into generated code, and has
+ * no default.
+ */
+export function setMaskKey(key)
+{
+  if (!(key instanceof Uint8Array) || key.length !== 32)
+    throw new TypeError(
+      'LawSpec masking: the hash key is a Uint8Array of 32 bytes',
+    );
+  MASK_KEY = blake3Words(key, 0, 32).slice(0, 8);
+}
+
+/**
+ * `hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes: equal
+ * values show alike, and the value cannot be read back without the key.
+ * Without a key it throws; it never falls back to showing or hiding.
+ */
+export function maskHash(value)
+{
+  if (MASK_KEY === null)
+    throw new Error(
+      'LawSpec masking: a field is shown as hash and no key is set; call' +
+        ' setMaskKey with 32 secret bytes when the application starts',
+    );
+  const bytes = new TextEncoder().encode(String(value));
+  return 'hash:' + blake3KeyedHex(MASK_KEY, bytes);
+}
+
+/** A value with every masked field replaced by a marker that prints as ***. */
+export function concealed(v)
+{
+  if (MASKED_FIELDS.size === 0) return v;
+  if (Array.isArray(v)) return v.map(concealed);
+  if (v instanceof DataValue && !isHandle(v))
+  {
+    const masked = MASKED_FIELDS.get(v.tag);
+    return new DataValue(
+      v.tag,
+      v.fields.map((field, i) =>
+        masked?.has(i) ? CONCEALED : concealed(field),
+      ),
+    );
+  }
+  return v;
 }
 export const UNIT = Object.freeze({kind: 'Unit'});
 export const integerType = t =>
@@ -3054,6 +3269,7 @@ export function render(v)
  */
 export function shown(v)
 {
+  if (v === CONCEALED) return '***';
   if (typeof v === 'string')
   {
     let out = '"';
@@ -3076,8 +3292,14 @@ export function shown(v)
   if (v instanceof DataValue && !isHandle(v))
   {
     const name = v.tag.split('::').pop();
+    const masked = MASKED_FIELDS.get(v.tag);
     return v.fields.length
-      ? name + '(' + v.fields.map(shown).join(', ') + ')'
+      ? name +
+          '(' +
+          v.fields
+            .map((field, i) => (masked?.has(i) ? '***' : shown(field)))
+            .join(', ') +
+          ')'
       : name;
   }
   return render(v);
@@ -3705,6 +3927,23 @@ export function freePort()
  * the portable rendering: '' when they agree or neither has parts.
  */
 export function difference(actual, expected)
+{
+  // Masked fields are compared as equal: a difference only in them is
+  // reported without saying where or what.
+  const a = concealed(actual);
+  const b = concealed(expected);
+  const found = differenceBetween(a, b);
+  if (
+    found === '' &&
+    MASKED_FIELDS.size > 0 &&
+    render(a) === render(b) &&
+    render(actual) !== render(expected)
+  )
+    return ' | the values differ only in masked fields';
+  return found;
+}
+
+function differenceBetween(actual, expected)
 {
   const path = [];
   let a = actual;
@@ -5072,7 +5311,7 @@ async function execute(model, run)
       if (!command.unit && compareValues(result, wanted) !== 0)
         return [
           step,
-          `returned ${render(result)}; the model returns ${render(wanted)}`,
+          `returned ${render(concealed(result))}; the model returns ${render(concealed(wanted))}`,
         ];
       failure = await checkState(model, symbols, state, expected);
       if (failure) return [step, failure];
@@ -5093,7 +5332,7 @@ async function checkState(model, symbols, state, expected)
   {
     const actual = await model.abstract(symbols, state);
     if (compareValues(actual, expected) !== 0)
-      return `the state is ${render(actual)}; the model is ${render(expected)}`;
+      return `the state is ${render(concealed(actual))}; the model is ${render(concealed(expected))}`;
   }
   for (const [kind, invariant] of model.invariants)
     if (!(await invariant(symbols, kind === 'model' ? expected : state)))
@@ -5494,7 +5733,7 @@ async function executeParallel(model, testCase, shake)
   branches.forEach((b, i) =>
     b.forEach(([index], k) =>
       observed.push(
-        `${branchName(i)}: ${model.commands[index].name}() returned ${render(history[i][k][2])}`,
+        `${branchName(i)}: ${model.commands[index].name}() returned ${render(concealed(history[i][k][2]))}`,
       ),
     ),
   );
@@ -6608,7 +6847,7 @@ async function runScenario(model, spec, shake, crash = false, network = false)
         )
         {
           failures.push(
-            `expect ${name} = ${render(wanted)} failed: ${name} is ${render(actual)}`,
+            `expect ${name} = ${render(concealed(wanted))} failed: ${name} is ${render(concealed(actual))}`,
           );
           return 'failed';
         }
@@ -6644,7 +6883,7 @@ async function runScenario(model, spec, shake, crash = false, network = false)
       .sort((a, b) => a[3] - b[3])
       .map(
         ([c, args, r]) =>
-          `${c.name}(${args.map(render).join(', ')}) returned ${render(r)}`,
+          `${c.name}(${args.map(x => render(concealed(x))).join(', ')}) returned ${render(concealed(r))}`,
       )
       .join('; ');
     return [

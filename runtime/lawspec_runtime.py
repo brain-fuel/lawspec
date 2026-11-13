@@ -98,13 +98,211 @@ class Presence:
     value: object = None
 
 
-@dataclass(eq=False, frozen=True)
+# The fields a masking block hides, by constructor tag and position. The
+# generated data module registers them (mask_fields); everything this runtime
+# prints about a failure shows such a field as ***, whatever its mask. A
+# counterexample is replayed by its seed or its kept inputs, never by what
+# was printed.
+_MASKED_FIELDS = {}
+
+
+class _Concealed:
+    def __repr__(self):
+        return "***"
+
+    __str__ = __repr__
+
+
+_CONCEALED = _Concealed()
+
+
+def mask_fields(tag, positions):
+    _MASKED_FIELDS[tag] = frozenset(positions)
+
+
+@dataclass(eq=False, frozen=True, repr=False)
 class DataValue:
     tag: str
     fields: tuple
 
     def __post_init__(self):
         object.__setattr__(self, "fields", tuple(self.fields))
+
+    # Hypothesis and pytest print a failing value with repr.
+    def __repr__(self):
+        hidden = concealed(self)
+        return f"DataValue(tag={hidden.tag!r}, fields={hidden.fields!r})"
+
+
+def mask_last(count, value):
+    """Three stars and the last characters; a text no longer than that is
+    not shown at all. As rulesMaskLast of lawspec.rules."""
+    text = str(value)
+    return "***" if len(text) <= count else "***" + text[len(text) - count :]
+
+
+def mask_email(value):
+    """The first character before the first at sign, three stars, and what
+    follows the last at sign; a text without one is not shown at all. As
+    rulesMaskEmail of lawspec.rules."""
+    text = str(value)
+    if "@" not in text:
+        return "***"
+    return text.split("@")[0][:1] + "***@" + text.rsplit("@", 1)[1]
+
+
+_BLAKE3_IV = (
+    0x6A09E667,
+    0xBB67AE85,
+    0x3C6EF372,
+    0xA54FF53A,
+    0x510E527F,
+    0x9B05688C,
+    0x1F83D9AB,
+    0x5BE0CD19,
+)
+_BLAKE3_SCHEDULE = (2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8)
+_BLAKE3_ROUND = (
+    (0, 4, 8, 12),
+    (1, 5, 9, 13),
+    (2, 6, 10, 14),
+    (3, 7, 11, 15),
+    (0, 5, 10, 15),
+    (1, 6, 11, 12),
+    (2, 7, 8, 13),
+    (3, 4, 9, 14),
+)
+_BLAKE3_CHUNK_START = 1
+_BLAKE3_CHUNK_END = 2
+_BLAKE3_PARENT = 4
+_BLAKE3_ROOT = 8
+_BLAKE3_KEYED_HASH = 16
+_WORD = 0xFFFFFFFF
+
+
+def _blake3_words(block):
+    """Sixteen little-endian words of a block, zero padded to 64 bytes."""
+    padded = block + bytes(64 - len(block))
+    return [
+        int.from_bytes(padded[i : i + 4], "little") for i in range(0, 64, 4)
+    ]
+
+
+def _blake3_compress(cv, words, counter, length, flags):
+    """The first eight words of BLAKE3's compression: a chaining value."""
+    state = list(cv) + list(_BLAKE3_IV[:4])
+    state += [counter & _WORD, (counter >> 32) & _WORD, length, flags]
+    m = words
+    for _ in range(7):
+        for step, (a, b, c, d) in enumerate(_BLAKE3_ROUND):
+            for message, first, second in (
+                (m[2 * step], 16, 12),
+                (m[2 * step + 1], 8, 7),
+            ):
+                state[a] = (state[a] + state[b] + message) & _WORD
+                mixed = state[d] ^ state[a]
+                state[d] = ((mixed >> first) | (mixed << (32 - first))) & _WORD
+                state[c] = (state[c] + state[d]) & _WORD
+                mixed = state[b] ^ state[c]
+                state[b] = (
+                    (mixed >> second) | (mixed << (32 - second))
+                ) & _WORD
+        m = [m[i] for i in _BLAKE3_SCHEDULE]
+    return [state[i] ^ state[i + 8] for i in range(8)]
+
+
+def _blake3_keyed_hex(key, data):
+    """Keyed BLAKE3-256 (the BLAKE3 specification, section 2.1) of some
+    bytes under a key of eight words, in lower-case hexadecimal. The chunks
+    are merged as the reference implementation merges them: a stack of
+    subtree chaining values, one subtree closed per trailing zero of the
+    chunk count."""
+
+    def chunk(index):
+        end = min(len(data), index * 1024 + 1024)
+        offset = index * 1024
+        cv = key
+        flags = _BLAKE3_KEYED_HASH | _BLAKE3_CHUNK_START
+        while end - offset > 64:
+            words = _blake3_words(data[offset : offset + 64])
+            cv = _blake3_compress(cv, words, index, 64, flags)
+            flags = _BLAKE3_KEYED_HASH
+            offset += 64
+        words = _blake3_words(data[offset:end])
+        return (cv, words, index, end - offset, flags | _BLAKE3_CHUNK_END)
+
+    def parent(left, right):
+        return (key, left + right, 0, 64, _BLAKE3_KEYED_HASH | _BLAKE3_PARENT)
+
+    chunks = max(1, (len(data) + 1023) // 1024)
+    stack = []
+    for index in range(chunks - 1):
+        cv = _blake3_compress(*chunk(index))
+        total = index + 1
+        while total % 2 == 0:
+            cv = _blake3_compress(*parent(stack.pop(), cv))
+            total //= 2
+        stack.append(cv)
+    node = chunk(chunks - 1)
+    while stack:
+        node = parent(stack.pop(), _blake3_compress(*node))
+    cv, words, counter, length, flags = node
+    root = _blake3_compress(cv, words, counter, length, flags | _BLAKE3_ROOT)
+    return b"".join(word.to_bytes(4, "little") for word in root).hex()
+
+
+_MASK_KEY = None
+
+
+def set_mask_key(key):
+    """Sets the key of the `hash` mask: 32 secret bytes the application
+    loads when it starts. LawSpec never writes a key into generated code,
+    and has no default."""
+    global _MASK_KEY
+    if not isinstance(key, (bytes, bytearray)) or len(key) != 32:
+        raise TypeError("LawSpec masking: the hash key is 32 bytes")
+    _MASK_KEY = _blake3_words(bytes(key))[:8]
+
+
+def mask_hash(value):
+    """`hash:` and the keyed BLAKE3-256 digest of the text's UTF-8 bytes:
+    equal values show alike, and the value cannot be read back without the
+    key. Without a key it raises; it never falls back to showing or
+    hiding."""
+    if _MASK_KEY is None:
+        raise RuntimeError(
+            "LawSpec masking: a field is shown as hash and no key is set;"
+            " call set_mask_key with 32 secret bytes when the application starts"
+        )
+    return "hash:" + _blake3_keyed_hex(_MASK_KEY, str(value).encode("utf-8"))
+
+
+def plain(value):
+    """A field that is not masked, as the checked renderer writes it."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def concealed(v):
+    """A value with every masked field replaced by a marker that prints as
+    ***."""
+    if not _MASKED_FIELDS:
+        return v
+    if isinstance(v, list):
+        return [concealed(x) for x in v]
+    if isinstance(v, tuple):
+        return tuple(concealed(x) for x in v)
+    if isinstance(v, DataValue) and not is_handle(v):
+        masked = _MASKED_FIELDS.get(v.tag, ())
+        return DataValue(
+            v.tag,
+            tuple(
+                _CONCEALED if i in masked else concealed(x)
+                for i, x in enumerate(v.fields)
+            ),
+        )
+    return v
 
 
 @dataclass(frozen=True)
@@ -2806,7 +3004,22 @@ def render(v):
 
 def difference(actual, expected):
     """Where a structured actual value first differs from the expected one,
-    by the portable rendering: '' when they agree or neither has parts."""
+    by the portable rendering: '' when they agree or neither has parts.
+    Masked fields are compared as equal: a difference only in them is
+    reported without saying where or what."""
+    a, b = concealed(actual), concealed(expected)
+    found = _difference_between(a, b)
+    if (
+        found == ""
+        and _MASKED_FIELDS
+        and render(a) == render(b)
+        and render(actual) != render(expected)
+    ):
+        return " | the values differ only in masked fields"
+    return found
+
+
+def _difference_between(actual, expected):
     path = []
     a, b = actual, expected
     while True:
@@ -3875,7 +4088,7 @@ def _execute(model, run):
             if not command.unit and compare_values(result, wanted) != 0:
                 return (
                     step,
-                    f"returned {render(result)}; the model returns {render(wanted)}",
+                    f"returned {render(concealed(result))}; the model returns {render(concealed(wanted))}",
                 )
             failure = _check_state(model, symbols, state, expected)
             if failure:
@@ -3891,7 +4104,7 @@ def _check_state(model, symbols, state, expected):
     if model.abstract is not None:
         actual = model.abstract(symbols, state)
         if compare_values(actual, expected) != 0:
-            return f"the state is {render(actual)}; the model is {render(expected)}"
+            return f"the state is {render(concealed(actual))}; the model is {render(concealed(expected))}"
     for kind, invariant in model.invariants:
         if not invariant(symbols, expected if kind == "model" else state):
             return f"an invariant on the {kind} fails"
@@ -4177,7 +4390,7 @@ def _execute_parallel(model, case, shake):
     if _linearizable(model, symbols, branches, history, expected, final, state):
         return None
     observed = "; ".join(
-        f"{_branch_name(i)}: {model.commands[branches[i][k][0]].name}() returned {render(history[i][k][2])}"
+        f"{_branch_name(i)}: {model.commands[branches[i][k][0]].name}() returned {render(concealed(history[i][k][2]))}"
         for i in range(len(branches))
         for k in range(len(branches[i]))
     )
@@ -5002,7 +5215,7 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                 actual, wanted = env.get(str(act[1])), _constant(act[2])
                 if actual is None or compare_values(actual, wanted) != 0:
                     failures.append(
-                        f"expect {act[1]} = {render(wanted)} failed: {act[1]} is {render(actual)}"
+                        f"expect {act[1]} = {render(concealed(wanted))} failed: {act[1]} is {render(concealed(actual))}"
                     )
                     return "failed"
         if victim is not None and victim == (identity, len(acts)):
@@ -5026,7 +5239,7 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
     )
     if not _linearizes_history(model, symbols, history, expected, final, state):
         observed = "; ".join(
-            f"{c.name}({', '.join(render(a) for a in args)}) returned {render(r)}"
+            f"{c.name}({', '.join(render(concealed(a)) for a in args)}) returned {render(concealed(r))}"
             for c, args, r, *_ in sorted(history, key=lambda h: h[3])
         )
         return (

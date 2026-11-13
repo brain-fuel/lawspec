@@ -160,6 +160,23 @@ domainInput g = C.Quantifier (generatorBinder g) (generatorPredicates g) (genera
 domainBounds :: GeneratorRequirement -> [(String,Expr)]
 domainBounds g = [(C.binaryName op,e) | (op,e) <- generatorBounds g]
 
+-- | The targets whose generated records render themselves masked and whose
+-- test runtime hides masked fields in failure output. ref:DEC-masking
+maskedRenderingTargets :: [String]
+maskedRenderingTargets = ["java", "javascript", "python", "typescript"]
+
+-- | Each masked record's constructor and the positions of the fields its
+-- masking block hides, for a runtime to hide them in what it prints.
+-- ref:DEC-masking
+maskedPositions :: [C.DataDeclaration] -> [(C.Id, [Int])]
+maskedPositions declarations =
+  [ (C.constructorId constructor, positions)
+  | declaration <- declarations, not (null (C.dataMasking declaration))
+  , constructor <- C.dataConstructors declaration
+  , let positions = [position | (position, field) <- zip [0 ..] (C.constructorFields constructor)
+                              , C.binderName field `elem` map fst (C.dataMasking declaration)]
+  , not (null positions) ]
+
 -- | Portable runtime keys retain nested presence and Either argument boundaries.
 scalarTypeKey :: Type -> String
 scalarTypeKey (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) =

@@ -69,6 +69,7 @@ end unit
 | `x is within d of y` | `x` and `y` are at most `d` apart | one numeric type |
 | `t starts with p`, `t ends with p` | `p` is a prefix, or a suffix, of `t` | `Text` |
 | `t matches regex "..."` | the regex matches all of `t` | `Text` |
+| `t matches format email` | `t` is in the named format (`email`, `uuid`; see [record rules](record-rules.md#formats)) | `Text` |
 | `t matches r` | the same, with `r :: Regex` | `Text` and `Regex` |
 | `v matches C p1 p2` | `C` built `v`, and its fields match `p1`, `p2` | any data type |
 | `e fails with C p1` | `e` raises a failure that matches `C p1` | see [typed failures](failures.md) |
@@ -124,6 +125,49 @@ match anywhere in a text, write `.*a.*`.
 Each runtime has its own matcher for this dialect, so no target depends on a
 regex library. It follows every position a pattern can reach at once, so it
 never backtracks.
+
+## What the email format accepts
+
+`v matches format email` ([record rules](record-rules.md#formats)) is a regex
+of this dialect. It accepts an `address` of RFC 822, section 6.1, exactly as
+the regex of the Perl module Mail::RFC822::Address 0.3 does. That is more
+than most forms mean by an email address:
+
+| Accepted | Example |
+| --- | --- |
+| a plain mailbox | `ann@example.org` |
+| a display name | `Ann Lee <ann@example.org>` |
+| a route | `Ann <@a.example,@b.example:ann@example.org>` |
+| a group of addresses, or an empty group | `team: ann@example.org, Bob <bob@example.org>;` and `team:;` |
+| a domain of one label | `ann@example` |
+| a domain literal | `ann@[10.0.0.1]` |
+| a quoted local part | `"Ann Lee"@example.org` |
+| one line feed at the end | `ann@example.org` followed by `\n` |
+| white space after a part, folded lines included | `ann @ example.org` |
+| letters outside ASCII | `änn@exämple.org` |
+| the control characters U+001A to U+001F in a name | see below |
+
+Three of these come from how the module is written, not from RFC 822:
+
+- **The final line feed.** Perl's `$` matches before a last line feed, so
+  the module accepts an address followed by exactly one. Two are refused.
+- **The control range.** The module excludes controls as `\000-\031`, which
+  Perl reads in octal: U+0000 to U+0019. U+001A to U+001F and U+007F are
+  therefore ordinary characters of a name.
+- **White space in a group.** After a group's comma and semicolon the module
+  uses Perl's `\s`, which is Unicode white space; elsewhere only a space, a
+  tab and a folded line count.
+
+These are refused: an empty text, a text without `@`, two addresses outside
+a group (`ann@example.org, bob@example.org`), two dots in a row, and a
+comment (`ann@example.org (Ann)`). The module's `valid` function removes
+comments before it matches; the format does not, because comments nest and
+this dialect cannot count.
+
+To accept less, such as a plain mailbox only, give the field a second
+restriction of your own beside the format. The module's verdict on 11,442
+texts is recorded in `test/fixtures/formats/email-vectors.tsv`; the
+agreement is tested, not proved.
 
 ## Laws of the matchers
 

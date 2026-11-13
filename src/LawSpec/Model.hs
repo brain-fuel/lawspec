@@ -186,7 +186,55 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   -- with three values, since an open history may not decide yet.
   , historyLaws :: [HistoryLaw]
   -- Original parsed signatures for editor presentation, before ABI erasure.
-  , sourceSignatures :: [(String, Type)] } deriving (Eq, Show, Generic)
+  , sourceSignatures :: [(String, Type)]
+  -- masking R is ... end masking: how a record's fields are shown where a
+  -- value is rendered for people (LawSpec.ContractRules).
+  , maskingDeclarations :: [MaskingDeclaration]
+  -- Derived: each record's rules by their stable ids, and what was generated
+  -- for it (LawSpec.ContractRules).
+  , recordContracts :: [RecordContract] } deriving (Eq, Show, Generic)
+
+-- | How a masked field is shown: the first character of an address's local
+-- part and its domain; the last n characters; a keyed hash; or nothing of it.
+data FieldMask = MaskEmail | MaskLast Integer | MaskHash | MaskHidden deriving (Eq, Show, Generic)
+
+-- | The words that name a mask after `shown as`.
+fieldMaskText :: FieldMask -> String
+fieldMaskText mask = case mask of
+  MaskEmail -> "email"
+  MaskLast count -> "last " ++ show count
+  MaskHash -> "hash"
+  MaskHidden -> "hidden"
+
+-- | masking Record is field shown as mask ... end masking.
+data MaskingDeclaration = MaskingDeclaration
+  { maskingRecord :: String, maskingFields :: [(String, FieldMask)], maskingSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+-- | One rule of a record: a restriction of a field, or a named rule of the
+-- whole record. Its id is stable: `<field>.<suffix>`, or the rule's name.
+data ContractRule = ContractRule
+  { contractRuleId :: String, contractRuleField :: Maybe String
+  -- min, max, pattern, oneOf, email, ... or `predicate` for anything else.
+  , contractRuleKind :: String
+  -- What a violation says, without the value.
+  , contractRuleMessage :: String
+  } deriving (Eq, Show, Generic)
+
+-- | A record's rules and masks, and whether its validator was generated.
+data RecordContract = RecordContract
+  { contractRecord :: String, contractRules :: [ContractRule]
+  , contractMasks :: [(String, FieldMask)], contractGenerated :: Bool
+  } deriving (Eq, Show, Generic)
+
+-- | `p as label` in a record field's restriction is carried from the parser
+-- to LawSpec.ContractRules as a call of a name with this prefix; a record's
+-- `rule name is p` clauses are carried on its last field, under this binder
+-- and prefix. Neither outlives contract elaboration.
+ruleLabelPrefix, recordRulePrefix, recordRuleBinder :: String
+ruleLabelPrefix = "lawspec.rule-label:"
+recordRulePrefix = "lawspec.record-rule:"
+recordRuleBinder = "lawspecRecordRules"
 
 -- | law name in history h is definition: the complete history holds P
 --   (or: the history so far holds P) end definition end law. h is a checked
