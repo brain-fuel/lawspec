@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-11-13
+
 ### Added
 
 - A definition can abstract over what `map` works on: `m a` is a type
@@ -2762,7 +2764,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.33.1...HEAD
+[0.33.1]: https://github.com/brain-fuel/lawspec/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/brain-fuel/lawspec/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...v0.32.0
 [0.31.3]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...v0.31.3

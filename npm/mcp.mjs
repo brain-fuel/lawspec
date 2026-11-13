@@ -8,7 +8,7 @@ import {readManifest, findManifest, dependencyRanges} from './component.mjs';
 import {resolveDependencies} from './component-packages.mjs';
 import {collectNativeSources} from './authoring.mjs';
 import {collectSources} from './files.mjs';
-const VERSION = '0.33.0';
+const VERSION = '0.33.1';
 function diagnostics(result)
 {
   if (result.diagnostics?.length)
