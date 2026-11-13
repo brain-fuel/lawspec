@@ -65,6 +65,7 @@ import qualified ScenarioSpec
 import qualified TargetNamesSpec
 import qualified TargetOptionsSpec
 import qualified ParameterNamesSpec
+import qualified CalendarSpec
 import qualified TimeSpec
 import qualified ImportSpec
 import qualified DischargeSpec
@@ -197,6 +198,7 @@ main = hspec $ do
   TargetOptionsSpec.test_javaReleaseRefusesWhatItCannotCompile
   ParameterNamesSpec.test_generatedParametersTakeTheirSignaturesNames
   TimeSpec.test_durationsAreExactAndPortable
+  CalendarSpec.test_calendarDatesAreCheckedDefinitions
   ImportSpec.test_importsResolveAcrossUnitsWithoutLeakingAdapters
   DischargeSpec.test_lawsAreDischargedWithHonestEvidence
   AttestationSpec.test_attestationReportsWhereTestsRanWithoutChangingEvidence

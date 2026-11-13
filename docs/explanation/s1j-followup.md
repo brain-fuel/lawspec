@@ -21,7 +21,7 @@ passes. It does not mean the original project was run.
 | 18 | Changed | `npm/package-lock.json` pins the optional native packages, `tools/npm-lock.mjs` regenerates it, and CI checks it. | `npm ci` from a checkout needs the 0.33.0 native packages to be published. |
 | 19 | Changed | A Go unit receives a bound-handler bridge only for abilities it uses. | The original package layout. |
 | 20 | Partly changed | See [Cache and compile time](#cache-and-compile-time). | Reuse across runs, and the `generate` slowdown. |
-| 21 | Partly changed | `prelude.split`, `trim`, `words` and `lines` exist on every target ([sequences](../reference/language/sequences.md#pieces-of-a-text)). The `text-pieces` suite passes on all 18 program targets with both mutants rejected. List `map` and `filter` exist on every target; the `list-mapping` suite passes on all 18 with its three mutants rejected. | The capability that gives one `map` for lists and `Either` is not implemented. The typed fast-path backends run list `map` and `filter` through the portable runtime. |
+| 21 | Changed | `prelude.split`, `trim`, `words` and `lines` exist on every target ([sequences](../reference/language/sequences.md#pieces-of-a-text)). `prelude.map` and `prelude.filter` work over lists on every target, and one `map` serves lists and `Either` ([sequences](../reference/language/sequences.md)). A definition can be written once over either with `requires Mappable m` ([definitions](../reference/language/definitions.md)); that capability is not in 0.33.0 and ships in the next 0.33 patch. The `text-pieces` and `list-mapping` suites pass on all 18 program targets with every mutant rejected. | `Mappable` has two built-in instances, `List` and `Either`; projects cannot add their own. The typed fast-path backends run list `map` and `filter` through the portable runtime. Law proofs report a list `map` or `filter` as an explicit "unsupported" node. |
 
 ## Cache and compile time
 
@@ -41,17 +41,31 @@ What changed:
 
 What the measurements show:
 
-| Probe: three units, 3,087 lines | Before | After |
-| --- | --- | --- |
-| Check with a new cache directory | 5.49 s | 3.79 s |
-| The same check again | 5.40 s | 4.36 s |
-| Check with no cache directory | not measured | 3.52 s |
+| Probe: three units, 3,087 lines | Main before this work | 0.33.0 | With the parse table |
+| --- | --- | --- | --- |
+| Check with a new cache directory | 5.49 s | 3.79 s | 3.83 s |
+| The same check again | 5.40 s | 4.36 s | 2.22 s |
+| Check with no cache directory | not measured | 3.52 s | not measured |
 
-A second run is not faster than the first on this probe. The cache tables
-for definition templates, unit validation and law expansion are all read
-from disk on the second run, but they hold the cheap part of this probe.
-Parsing is about 60% of the check and nothing persists it. Reading the
-stored definition templates costs more than the first run spent on them.
+The last column was measured after 0.33.0, in a later session on the same
+machine; its second-run figure is the median of three.
+
+In 0.33.0 a second run was not faster than the first on this probe: nothing
+kept the parse, and reading the stored definition templates cost more than
+inferring them. After 0.33.0:
+
+- Each source's parse is stored, keyed by the source, the headers and
+  indexed families its imports give it, its harness files and the
+  coordinates of inserted names. On this probe parsing takes 1.1 s and
+  reading the stored parse 0.2 s.
+- Definition templates are kept in memory only. Reading them from disk took
+  0.9 s on this probe; the second run is 0.7 s faster without the table and
+  uses half the memory.
+
+The stored parse has a cost. It takes 10.6 MB on disk for these 3,087 lines,
+and the second run's peak memory is 558 MB against 320 MB for the first.
+About 1.9 s of the second run is work no table holds, and it was not
+profiled.
 
 A project whose time goes to admitting definitions is a different case, and
 the reported one is of that kind. On main, a single expensive definition
@@ -64,9 +78,8 @@ Not done:
 
 - No table persists admission per definition. An edit to one definition
   re-admits its whole unit.
-- A unit whose definition templates weigh more than the table's budget is
-  recomputed on every run. `LAWSPEC_CACHE_TRACE=1` prints `over-budget` for
-  such an entry, with each table's time, on standard error.
+- The cache directory is never pruned, so stored parses of edited sources
+  accumulate until the folder is removed.
 - The `generate` slowdown against 0.31.3 was not profiled.
 - `npm/test/cache.test.mjs` has no assertion that a warm run admits nothing.
 

@@ -232,6 +232,9 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
               substitutions <- lift (match M.empty (baseType (definitionType template)) (baseType concrete))
               let replace = mapType (\ty -> case ty of
                     Variable variable -> M.findWithDefault ty variable substitutions
+                    -- m a, once m is known, is an ordinary type.
+                    Application head' [constructor, argument] | head' == constructorApplicationName ->
+                      applyConstructor constructor argument
                     _ -> ty) (mapExprTypes replace)
                   requirements = [Capability capability (replace ty) | Capability capability ty <- functionRequirements template]
               forM_ requirements $ \requirement -> unless (satisfies requirement)

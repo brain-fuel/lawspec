@@ -26,6 +26,16 @@ function positives (xs :: List Integer) -> List Integer is
   prelude.filter isPositive xs
 end function
 
+-- One definition for every type `map` works on: a list, or the success
+-- value of an Either.
+function quadrupled (values :: m Integer) -> m Integer requires Mappable m is
+  prelude.map double (prelude.map double values)
+end function
+
+function halved (n :: Integer) -> Either Text Integer is
+  if prelude.rem n 2 = 0 then Right (prelude.quot n 2) else Left "odd" end if
+end function
+
 -- An outline: an item, and the items under it.
 type Outline is a record{
   label :: Text,
@@ -83,6 +93,19 @@ law "|only positive elements are kept| is
   definition :
     for all (xs :: List Integer) =>
       prelude.all isPositive (positives xs) end for all
+  end definition
+end law
+
+law "|one definition maps a list and an Either| is
+  definition :
+    quadrupled [1, 2] = [4, 8] and quadrupled (halved 6) = Right 12 and quadrupled (halved 1) = Left "odd"
+  end definition
+end law
+
+law "|mapping an Either keeps a failure| is
+  definition :
+    for all (n :: Integer) =>
+      quadrupled (halved (2 * n + 1)) = Left "odd" end for all
   end definition
 end law
 

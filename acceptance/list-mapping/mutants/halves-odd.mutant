@@ -1,0 +1,7 @@
+expect: mapping an Either keeps a failure
+@@ examples/specs/list_mapping.lawspec
+<<<<<<<
+  if prelude.rem n 2 = 0 then Right (prelude.quot n 2) else Left "odd" end if
+=======
+  if prelude.rem n 2 = 0 then Right (prelude.quot n 2) else if n > 2 then Right n else Left "odd" end if end if
+>>>>>>>

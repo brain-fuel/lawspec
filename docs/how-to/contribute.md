@@ -71,7 +71,7 @@ To build and install a local archive:
 
 ```sh
 npm pack ./npm
-npm install --save-dev ./lawspec-0.33.0.tgz
+npm install --save-dev ./lawspec-0.33.1.tgz
 ```
 
 ## Generated files
@@ -158,10 +158,19 @@ resources exclusively:
 - Each acceptance suite holds its project directory,
   `.artifacts/<suite><profile>/<target>`. Suites for one target run together,
   each in its own project.
-- Steps that call `stack run`, `stack build` or `stack test` in the
-  repository run one at a time, since each may reconfigure and rebuild the
-  package. `compiler-tests` and `build-acceptance` also reinstall
-  `lawspec-acceptance`, so no suite runs beside them.
+- The `build` step builds the library, the executables and the test suite
+  once, and nothing that runs them starts before it. Every other step uses
+  `stack exec`. Switching between `stack test` and `stack run` recompiles the
+  library, so no step does either.
+- The compiler's tests run from the built test executable in five parts
+  (`compiler-tests-proof-receipts`, `-smt-text`, `-test-manifest`,
+  `-generation` and `-rest`). The last part skips what the others select, so
+  a new test group runs there without being listed. `sh
+  tools/compiler-tests.sh --match "SMT text"` runs one part by hand.
+- Each file in `npm/test` is a step, `npm-test-<name>`.
+- Native/WASM parity runs as seven steps, `parity-<part>`
+  (`node tools/parity.mjs --part=frontend-32` runs one). In one process it
+  took 113 minutes.
 - Haskell and Java suites follow the target's `crypto` suite, which fills
   Stack's snapshot database and Maven's repository alone; neither guards
   concurrent installation. Cargo, Go, Gradle, NuGet and npm lock their caches.
@@ -187,10 +196,11 @@ characters, `?` any one; repeat the option for several patterns).
 base: by default the commit where the branch left `main`, with uncommitted
 and untracked files counted. Together they run the named steps that are
 affected. `--no-core` leaves out the compiler, npm and editor steps, as
-`--core` leaves out the targets'.
+`--core` leaves out the targets'; the `build` step stays, since every suite
+runs what it builds.
 
 Both selections also run the steps the selected ones follow, such as a
-target's bootstrap and `build-acceptance`, since a suite without them checks
+target's bootstrap and `build`, since a suite without them checks
 nothing; `--exact` runs the selection alone. `--list` prints the steps that
 would run.
 
@@ -203,6 +213,11 @@ it. The target bootstraps and the tool-driven integration steps are in that
 class; `--core` or `--only` narrows them further. `--affected` chooses what to
 run while working. It does not replace the complete check before a release.
 
+A step that runs past two hours is stopped and fails;
+`LAWSPEC_CI_STEP_MINUTES` changes the limit. On macOS the check holds an
+idle-sleep assertion (`caffeinate -i`) until it exits, since a sleeping
+machine stops every step.
+
 Ctrl-C stops every running step and everything it started. To add a step,
 declare what it follows and holds in `plan` in `dev/Ci.hs`.
 
@@ -213,14 +228,25 @@ Results are content-addressed, so a second run only repeats what changed:
   dependency locks and environment. A compiler change that leaves a target's
   generated files unchanged reuses that target's results; the console marks
   them `(cached)`.
-- The compiler, npm, parity, package, docs and Rust runtime steps are keyed by
-  the bytes of the repository files they read (tracked or untracked, not
-  ignored) and their tools' versions, and print `cached`. `package-smoke` is
-  keyed on what npm packs from `npm/`; `npm-tests` reads most of the
-  repository, so every file is its input, with the presence and version of
-  each optional tool and the bootstrapped environments. What those two
-  resolve from package registries is in no key, which is one reason a
-  release runs `--fresh`.
+- The compiler, parity, package, docs and Rust runtime steps are keyed by the
+  bytes of the repository files they read (tracked or untracked, not ignored)
+  and their tools' versions, and print `cached`. `package-smoke` is keyed on
+  what npm packs from `npm/`.
+- An `npm-test-<name>` step is keyed the same way, by what that file can
+  read: `npm/` without the other test files, the environment locks, each
+  repository root that the file, a test helper or an SDK module names as a
+  path, and the Haskell sources only if the file names `stack`, GHC or one of
+  the repository's executables. The key also holds the presence and version
+  of every tool a test may start and the bootstrapped environments. Editing
+  one test file reruns that file; editing documentation or an acceptance
+  suite reruns none. These inputs are declared, not observed: a test that
+  reads a root through a computed path must name it in a string, or
+  `sdkTestInputs` in `dev/Ci.hs` must add it.
+- What `package-smoke` and the SDK tests resolve from package registries is
+  in no key, which is one reason a release runs `--fresh`.
+- The keys hold only the environment variables that change what a check does
+  (`effectiveEnvironment` in `tools/ci-artifact-key.mjs`), so a pass recorded
+  in one terminal or worktree is reused in the next.
 
 `--fresh` (or `make ci-fresh`) runs everything, as a release does.
 Fresh runs still record their passes. For a single `lawspec-acceptance` run,
@@ -276,8 +302,8 @@ affect, and leave the complete check for the merged branch.
 | Documentation (`docs/`, `README.md`) | `stack run lawspec-dev -- ci --only docs --only rejection-examples` (`make docs-check` is the first of these). |
 | The CI driver or harness (`dev/`, `acceptance/*.hs`) | `stack run lawspec-dev -- ci --only 'ci-*'`, then one cheap suite such as `stack run lawspec-acceptance -- domain javascript`, twice: a run, then a recorded pass. |
 
-After a change to `src/` that the WASM core must carry, `integrity` and
-`parity` need `make wasm` first; `--affected` selects them but cannot build it.
+After a change to `src/` that the WASM core must carry, `integrity` and the
+`parity-*` steps need `make wasm` first; `--affected` selects them but cannot build it.
 
 Smaller checks:
 

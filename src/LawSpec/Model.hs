@@ -517,6 +517,7 @@ prettyType (RefinementApp n args) = unwords (n:map arg args) where
   arg (ValueArgument e) = "(" ++ prettyExpr e ++ ")"
 prettyType (Named n) = n
 prettyType (Variable n) = reverse (takeWhile (/= ':') (reverse n))
+prettyType (Application n [f, a]) | n == constructorApplicationName = prettyType f ++ " (" ++ prettyType a ++ ")"
 prettyType (Applied n t) = n ++ " (" ++ prettyType t ++ ")"
 prettyType (Application n ts) = n ++ concatMap (\t -> " (" ++ prettyType t ++ ")") ts
 prettyType (IndexedRecord fields (RecordIndexConstraints guards)) =
@@ -798,6 +799,27 @@ typeConstraints (Application _ ts) = concatMap typeConstraints ts
 typeConstraints (RecordShape fields) = concatMap (typeConstraints . recordFieldType) fields
 typeConstraints (Arrow a b) = typeConstraints a ++ typeConstraints b
 typeConstraints _ = []
+
+-- | The head of a type whose constructor is a type variable: `m a` is
+-- Application constructorApplicationName [Variable "m", Variable "a"]. Once
+-- the variable is known, 'applyConstructor' gives the ordinary type.
+-- ref:DEC-mappable-capability
+constructorApplicationName :: String
+constructorApplicationName = "~apply"
+
+-- | A constructor applied to its last argument. The constructors a variable
+-- can stand for are List, written Named "List", and an Either with its
+-- failure given, written Application "Either" [failure].
+applyConstructor :: Type -> Type -> Type
+applyConstructor (Named "List") a = Applied "List" a
+applyConstructor (Application "Either" [failure]) a = Application "Either" [failure, a]
+applyConstructor constructor a = Application constructorApplicationName [constructor, a]
+
+-- | Every constructor application whose constructor is known, made ordinary.
+normalizeConstructorApplications :: Type -> Type
+normalizeConstructorApplications = mapType (\ty -> case ty of
+  Application n [constructor, a] | n == constructorApplicationName -> applyConstructor constructor a
+  _ -> ty) (mapExprTypes normalizeConstructorApplications)
 
 mapType :: (Type -> Type) -> (Expr -> Expr) -> Type -> Type
 mapType f g = walk where

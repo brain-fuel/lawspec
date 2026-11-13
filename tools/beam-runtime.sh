@@ -9,7 +9,7 @@ mkdir -p "$beam_artifacts/priv"
 cp runtime/lawspec_crypto_native.c "$beam_artifacts/priv/lawspec_crypto_native.c"
 escript runtime/lawspec_crypto_build.escript "$beam_artifacts"
 python3 tools/beam-crypto-build.py
-stack --no-terminal run lawspec-dev -- beam-vectors "$beam_artifacts/scalars.json"
+stack --no-terminal exec lawspec-dev -- beam-vectors "$beam_artifacts/scalars.json"
 python3 tools/beam-values-reference.py "$beam_artifacts/values.json"
 node tools/beam-search-reference.mjs "$beam_artifacts/search.json"
 python3 tools/beam-model-reference.py "$beam_artifacts/models.json" "$beam_artifacts/model-parallel.json" "$beam_artifacts/model-histories.json"

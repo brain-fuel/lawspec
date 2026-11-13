@@ -84,7 +84,7 @@ test_railwayCombinatorsComposeResultsAsDocumented = describe "railway combinator
   it "says what map applies to when its operand is neither a List nor an Either" $ do
     let maybeMap = rejected "prelude.map double (Present 5 :: Maybe Integer)" "(Present 10 :: Maybe Integer)"
         textMap = rejected "prelude.map double \"abc\"" "\"abc\""
-    maybeMap `shouldSatisfy` isInfixOf "prelude.map (and f <$> m) applies to a List, mapping each element, or to an Either, mapping its success value; this operand is a Maybe (Integer)."
+    maybeMap `shouldSatisfy` isInfixOf "prelude.map (and f <$> m) applies to a Mappable type: a List, mapping each element, or an Either, mapping its success value; this operand is a Maybe (Integer)."
     maybeMap `shouldSatisfy` isInfixOf "prelude.presentOr m default"
     maybeMap `shouldSatisfy` (not . isInfixOf "Either::Left")
     textMap `shouldSatisfy` isInfixOf "this operand is a Text."

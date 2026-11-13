@@ -596,7 +596,7 @@ DEC-incremental-compilation:
   status: decided
   question: How does the compiler avoid redoing work when a project changes a little?
   answer: |
-    A recursive incremental build rather than flat keys, shipped as patches before 0.18: 0.17.2 Merkle dependency digests (SHA-256) of types and declarations decide which laws to replan and units to re-emit; 0.17.3 keys each law's expansion and elaboration by exactly its inputs and adds an on-disk cache in .lawspec/cache, on by default (--no-cache or cache false turns it off); 0.17.4 lawspec test runs only laws whose results may have changed. Adapter staleness is per package and conservative: any changed non-generated source marks every adapter-calling law stale, as does any change to the compiler, runtime or generated test code a law runs on; a property test is skipped with its recorded seed only when none of these changed. Owner decisions of 2026-10-02, recorded in CHANGELOG 0.17.2 to 0.17.4.
+    A recursive incremental build rather than flat keys, shipped as patches before 0.18: 0.17.2 Merkle dependency digests (SHA-256) of types and declarations decide which laws to replan and units to re-emit; 0.17.3 keys each law's expansion and elaboration by exactly its inputs and adds an on-disk cache in .lawspec/cache, on by default (--no-cache or cache false turns it off); 0.17.4 lawspec test runs only laws whose results may have changed. Adapter staleness is per package and conservative: any changed non-generated source marks every adapter-calling law stale, as does any change to the compiler, runtime or generated test code a law runs on; a property test is skipped with its recorded seed only when none of these changed. Owner decisions of 2026-10-02, recorded in CHANGELOG 0.17.2 to 0.17.4. Each source's parse is also stored, keyed by everything the parse reads: the source, the headers and indexed families its imports supply, its harness files and the coordinates of inserted names. Definition templates stay in memory, because reading them from disk was measured slower than inferring them.
   opened: 0.17.1
   decided: 0.17.4
 
@@ -804,6 +804,15 @@ DEC-parallel-ci:
     lawspec-dev ci --jobs N (LAWSPEC_CI_JOBS, half the processors by default) runs steps on a worker pool (dev/scheduler/Scheduler.hs). Each step declares the steps it follows and the resources it claims, shared, exclusive or counted, and dev/Ci.hs's plan names them: a target's .integration environment (written by its bootstrap and the BEAM framework steps, read by its suites), each acceptance project directory, the repository's .stack-work (every stack run, build or test may reconfigure and rebuild the package, so they run one at a time, and compiler-tests and build-acceptance reinstall lawspec-acceptance, so no suite runs beside them), Stack's snapshot database, the runtime crate's Cargo target, and a timing class for suites that wait on the real clock. Haskell and Java suites follow their target's crypto suite, which fills Stack's snapshot and Maven's repository alone, since neither guards concurrent installation. A step follows others in order only, never on their success, so a parallel run executes the same steps as a sequential one and reports the same failures, in step order; --jobs 1 is the sequential run exactly. Steps run in process groups that Ctrl-C stops. The npm package's prepack replaces its copied documents by rename, since several steps pack npm/ at once.
   opened: 0.23.0
   decided: 0.23.0
+
+DEC-ci-test-targets:
+  status: decided
+  question: The SDK tests ran as one uncached step that took 107 minutes of a full check, and the compiler's tests as one step of 14 to 18 minutes that also recompiled the library. How are they divided and reused?
+  answer: |
+    As a build system treats targets: each has declared inputs, and a target whose inputs are unchanged is not run again (Bazel's action cache keyed on input digests; Make's prerequisites). The build step builds the library, executables and test suite once (stack build --test --no-run-tests), and every other step runs what it built with stack exec; stack test and stack run configure the package differently, and each switch recompiled the library. The compiler's Hspec suite runs from the built executable in five parts chosen from measured times (compilerTestShards in dev/Ci.hs); the last part skips what the others select, so a new group is never left out. Each file in npm/test is a step keyed by the digests of the repository files it can read, its command and environment, and the presence and version of every tool an SDK test may start (tools/ci-artifact-key.mjs npm-tests). Bazel enforces a target's declared inputs with a sandbox; nothing here records what a test process opens, so the inputs are a declared over-approximation by repository root (sdkTestInputs): the SDK without the other test files, the environment locks, each root that the test file, a test helper or an SDK module names as a path segment, and the Haskell sources only when the file names stack, GHC or a repository executable. A test that reaches a root through a computed path must be added there. Keys leave out the variables a terminal or agent session sets for itself. A step is stopped after two hours (LAWSPEC_CI_STEP_MINUTES), and on macOS the check holds an idle-sleep assertion while it runs. The export of every bundled example and the Unicode folding checks are each split into two test files, so their halves run at once and are cached apart. package-smoke stays uncached.
+  opened: 0.33.1
+  decided: 0.33.1
+  refs: [bazel-remote-caching, salsa]
 
 DEC-scala-on-the-jvm-runtime:
   status: decided
@@ -1472,7 +1481,8 @@ DEC-list-map-filter:
     Either's success value, lowered to the same match as before. This is the
     behaviour of fmap in Haskell's Functor, Functor.map in Lean 4 and map in
     Idris 2's Functor interface, restricted to the two instances LawSpec
-    has; a program cannot yet abstract over the type constructor itself.
+    has. A definition abstracts over the constructor with the Mappable
+    capability (DEC-mappable-capability).
     Termination: the body is audited with the element bound as a part of the
     list, so a definition may map itself over the children of its argument.
     A proof treats a map or filter as an atom of its list and body, with the
@@ -1483,6 +1493,31 @@ DEC-list-map-filter:
   opened: 0.33.0
   decided: 0.33.0
   refs: [haskell-functor, lean-functor, idris2-functor, REQ-honest-evidence]
+
+DEC-mappable-capability:
+  status: decided
+  question: How does a definition abstract over the types map works on?
+  answer: |
+    A type variable applied to one argument, m a, stands for a type
+    constructor, and the capability Mappable m requires that map is defined
+    on it. This is a constructor class in Haskell's sense (Functor f with
+    f of kind Type -> Type), which Lean 4's Functor and Idris 2's Functor
+    interface share. LawSpec has exactly two instances, both built in: List,
+    and Either with its failure type fixed. There are no user instances, no
+    other constructor capabilities and no constructor variables of two or
+    more arguments.
+    Inference keeps m a as an application of a variable until unification
+    with a List or an Either type fixes the constructor; map over an
+    unresolved m a owes Mappable m, discharged by the definition's
+    requirement or, at a call, by the constructor chosen. Definitions are
+    specialized per call as every generic definition is, so no dictionary
+    and no constructor variable reaches Core or a target: each instance is
+    the List node or the Either match of DEC-list-map-filter.
+    The variable's kind is not declared; a variable used both applied and
+    bare fails as an ordinary type mismatch.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [haskell-functor, lean-functor, idris2-functor, DEC-list-map-filter]
 
 DEC-text-pieces:
   status: decided
@@ -2022,6 +2057,19 @@ DEC-init-prepares-project:
   opened: 0.33.0
   decided: 0.33.0
   refs: []
+
+DEC-calendar-date:
+  status: decided
+  question: Specs with deadlines, reviews and daily occurrences need calendar dates that mean the same on every target. What is a date in LawSpec, and what is trusted?
+  answer: |
+    A built-in unit, lawspec.calendar, added to a program that imports it (as lawspec.network is). Date is a wrapper over Integer: days since 1970-01-01 in the proleptic Gregorian calendar, from -719162 (0001-01-01) to 2932896 (9999-12-31). Weekday is a seven-constructor data type and CivilDate a record of year, month and day. dateOf, dateFromDays, civilOf, weekdayOf, weekdayNumber, addDays, daysBetween, isLeapYear, daysInMonth and daysFromCivil are checked LawSpec definitions, so every target gets the same generated code and no target's date library is called. Operations that can leave the range return Maybe rather than fail, so user definitions stay total without range proofs. Date is not mapped to a native date type in this decision; a later one may map it, as Duration is mapped.
+
+    Precedent. The day count from 1970-01-01 is java.time's epoch day (LocalDate.ofEpochDay) and C++20's sys_days (java-time-localdate, hinnant-date-algorithms). The conversions are Hinnant's days_from_civil and civil_from_days, which shift the year to start in March so the leap day is last and use 400-year eras of 146097 days; his paper gives the derivation and an exhaustive test over millions of years. They need floor division for negative years; LawSpec's prelude.quot rounds toward zero, and the two agree here because, with years from 1, every dividend is non-negative (the shifted year is at least 0, and days + 719468 is at least 306). The range is the narrowest native one among LawSpec's targets: Python's datetime.date and .NET's DateOnly both span years 1 to 9999 (python-datetime-date, dotnet-dateonly); java.time, Haskell's Data.Time.Calendar.Day and Lean 4's Std.Time.PlainDate hold more. Lean 4's Std.Time keeps PlainDate in its Date modules, apart from its Zoned modules (lean4-std-time), and ISO 8601 numbers weekdays from Monday as 1, which weekdayNumber follows. Ada.Calendar was not consulted: its reference manual could not be reached when this was written, and Ada is not a target.
+
+    Trust boundary. Nothing bespoke is trusted beyond the compiler and the selected solver: the laws in examples/specs/calendar.lawspec (civil round trip for every date, weekday period, year and month lengths, addDays) are proved by Z3 through the existing obligation generator, without a kernel-checked certificate, and the calendar acceptance suite runs them on every target. Time zones are out of scope here: turning an Instant into a Date needs zone rules, which will be a separate ability with a pinned-snapshot handler and a host handler.
+  opened: 0.33.0
+  decided: 0.33.0
+  refs: [hinnant-date-algorithms, java-time-localdate, python-datetime-date, dotnet-dateonly, lean4-std-time]
 
 DEC-vacuous-outcome:
   status: decided

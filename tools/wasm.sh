@@ -16,8 +16,11 @@ if [ -z "${LAWSPEC_WASM_LOCKED:-}" ]; then
   export LAWSPEC_WASM_LOCKED=1
   exec python3 tools/with-lock.py "$locks/wasm.lock" "$0" "$@"
 fi
-stack --no-terminal run lawspec-dev -- generate
-stack --no-terminal build
+# One configuration for every stack command here and in lawspec-dev ci:
+# building with and without the test suite in turn recompiles the library.
+stack --no-terminal build --test --no-run-tests
+stack --no-terminal exec lawspec-dev -- generate
+stack --no-terminal build --test --no-run-tests
 unset GHC_PACKAGE_PATH
 if [ -f "$HOME/.ghc-wasm/env" ]; then source "$HOME/.ghc-wasm/env"; fi
 command -v wasm32-wasi-cabal >/dev/null
@@ -41,4 +44,4 @@ cp -R examples/rc1 npm/examples/rc1
 cp -R examples/native-payments/. npm/examples/native-payments/
 cp -R examples/packages/. npm/examples/packages/
 cp LICENSE npm/
-stack --no-terminal run lawspec-dev -- integrity --record
+stack --no-terminal exec lawspec-dev -- integrity --record

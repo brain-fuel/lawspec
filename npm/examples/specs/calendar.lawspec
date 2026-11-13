@@ -1,0 +1,100 @@
+unit guide.calendar
+
+import lawspec.calendar (Date, Weekday, CivilDate, civilOf, dateOf, weekdayOf,
+  addDays, daysBetween, weekdayNumber, daysFromCivil, isLeapYear, daysInMonth)
+
+-- The next day a weekly meeting falls on, on or after a date.
+function nextOn (weekday :: Weekday) (date :: Date) -> Maybe Date is
+  addDays date
+    (prelude.rem (weekdayNumber weekday - weekdayNumber (weekdayOf date) + 7) 7)
+end function
+
+law "|a date's civil form names that date| is
+  definition:
+    for all (date :: Date) =>
+      (let civil = civilOf date in
+        dateOf civil.year civil.month civil.day = Present date end let)
+    end for all
+  end definition
+  example "|the epoch| :
+    date = Date 0
+    expect civilOf date = CivilDate record{year = 1970, month = 1, day = 1}
+  end example
+  example "|a leap day| :
+    date = Date 11016
+    expect civilOf date = CivilDate record{year = 2000, month = 2, day = 29}
+  end example
+end law
+
+law "|the first and last dates| is
+  definition:
+    dateOf 1 1 1 = Present (Date (-719162)) and
+      dateOf 9999 12 31 = Present (Date 2932896) and dateOf 0 12 31 = Absent and
+      dateOf 10000 1 1 = Absent and dateOf 2026 2 29 = Absent and
+      dateOf 2026 11 12 = Present (Date 20769)
+  end definition
+end law
+
+law "|the epoch was a Thursday| is
+  definition:
+    weekdayOf (Date 0) = Thursday and weekdayOf (Date (-719162)) = Monday and
+      weekdayOf (Date 2932896) = Friday
+  end definition
+end law
+
+law "|a week later is the same weekday| is
+  definition:
+    for all (date :: Date where valueOfDate date <= 2932889) =>
+      weekdayOf (Date (valueOfDate date + 7)) = weekdayOf date
+    end for all
+  end definition
+end law
+
+law "|a year has 365 days, or 366 when it is a leap year| is
+  definition:
+    for all (year :: Integer where year >= 1 && year <= 9998) =>
+      daysFromCivil (year + 1) 1 1 - daysFromCivil year 1 1 =
+        (if isLeapYear year then 366 else 365 end if)
+    end for all
+  end definition
+end law
+
+law "|a month's last day is followed by the first of the next month| is
+  definition:
+    for all (year :: Integer where year >= 1 && year <= 9999)
+        (month :: Integer where month >= 1 && month <= 11) =>
+      daysFromCivil year (month + 1) 1 - daysFromCivil year month 1 =
+        daysInMonth year month
+    end for all
+  end definition
+end law
+
+law "|adding days moves a date by that many days| is
+  definition:
+    for all (date :: Date) (days :: Integer where days >= -30 && days <= 30) =>
+      first matching case of addDays date days:
+        when Absent then
+          valueOfDate date + days < -719162 or valueOfDate date + days > 2932896
+        when Present moved then daysBetween moved date = days
+      end case
+    end for all
+  end definition
+end law
+
+law "|the next meeting is on its weekday, within a week| is
+  definition:
+    for all (date :: Date where valueOfDate date <= 2932890) =>
+      first matching case of nextOn Friday date:
+        when Absent then false
+        when Present meeting then
+          weekdayOf meeting = Friday and daysBetween meeting date >= 0 and
+            daysBetween meeting date <= 6
+      end case
+    end for all
+  end definition
+  example "|from a Thursday| :
+    date = Date 20769
+    expect nextOn Friday date = Present (Date 20770)
+  end example
+end law
+end unit

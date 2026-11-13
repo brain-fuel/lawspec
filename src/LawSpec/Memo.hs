@@ -374,7 +374,10 @@ memoized table key value = unsafePerformIO $ do
 
 memoizedIO :: Table a -> String -> a -> IO a
 memoizedIO (Table budget weigh persistence ref) key value = do
-  let k = T.pack key
+  -- The key is complete before the table is read. Computing it may consult
+  -- this table (a source's parse is keyed by its imports' parses), and a key
+  -- forced inside the atomic update would wait on that same update.
+  k <- evaluate (T.pack key)
   recorded <- atomicModifyIORef' ref $ \s -> case M.lookup k (entries s) of
     Just e ->
       let e' = e {entryStamp = clock s}

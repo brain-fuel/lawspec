@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.33.0
+version:        0.33.1
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -255,6 +255,7 @@ extra-source-files:
     examples/specs/atoi_codec.lawspec
     examples/specs/boolean_flags.lawspec
     examples/specs/builtins.lawspec
+    examples/specs/calendar.lawspec
     examples/specs/canonical_url.lawspec
     examples/specs/collections.lawspec
     examples/specs/composition.lawspec
@@ -681,6 +682,7 @@ library
       LawSpec.Bounds
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
+      LawSpec.Calendar
       LawSpec.Capabilities
       LawSpec.CapabilityCheck
       LawSpec.CaseFold
@@ -1124,6 +1126,7 @@ test-suite lawspec-test
       BeamSpec
       BoundsSpec
       BuiltinsSpec
+      CalendarSpec
       CanonicalCollectionsSpec
       CanonicalInterfaceSpec
       CanonicalMatcherSpec

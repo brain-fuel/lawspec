@@ -232,6 +232,29 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         , "  size (Item record{label = \"a\", children = [Item record{label = \"b\", children = []}]}) = 2"
         , "end definition end law" ]
         `shouldSatisfy` isRight
+    it "defines one function over every type map works on" $
+      evaluated
+        [ "function double (n :: Integer) -> Integer is n * 2 end function"
+        , "function twice (values :: m Integer) -> m Integer requires Mappable m is"
+        , "  prelude.map double (prelude.map double values) end function"
+        , "function half (n :: Integer) -> Either Text Integer is"
+        , "  if prelude.rem n 2 = 0 then Right (prelude.quot n 2) else Left \"odd\" end if end function"
+        , "law \"|generic| is definition :"
+        , "  twice [1, 2] = [4, 8] and twice (half 2) = Right 4 and twice (half 3) = Left \"odd\""
+        , "end definition end law" ]
+        `shouldSatisfy` isRight
+    it "requires the Mappable capability of a type constructor variable" $
+      evaluated
+        [ "function double (n :: Integer) -> Integer is n * 2 end function"
+        , "function twice (values :: m Integer) -> m Integer is prelude.map double values end function"
+        , "law \"|generic| is definition : twice [1] = [2] end definition end law" ]
+        `shouldSatisfy` isLeft
+    it "rejects a type that is neither a List nor an Either for a Mappable variable" $
+      evaluated
+        [ "function double (n :: Integer) -> Integer is n * 2 end function"
+        , "function twice (values :: m Integer) -> m Integer requires Mappable m is prelude.map double values end function"
+        , "law \"|generic| is definition : twice (prelude.at 0 [1]) = Present 2 end definition end law" ]
+        `shouldSatisfy` isLeft
     it "refutes a filter that keeps a rejected element" $
       evaluated
         [ "function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function"

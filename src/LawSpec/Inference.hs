@@ -159,7 +159,11 @@ resolve (Variable n) = gets (M.lookup n . substitutions) >>= maybe (pure (Variab
 resolve (Named ('@':n)) = gets (M.lookup n . givens) >>= maybe (pure (Named ('@':n))) resolve
 resolve (Arrow a b) = Arrow <$> resolve a <*> resolve b
 resolve (Applied n t) = Applied n <$> resolve t
-resolve (Application n ts) = Application n <$> mapM resolve ts
+resolve (Application n ts) = do
+  resolved <- mapM resolve ts
+  pure (case resolved of
+    [constructor, argument] | n == constructorApplicationName -> applyConstructor constructor argument
+    _ -> Application n resolved)
 resolve t@(RecordShape fields) = checkRecordFields fields >> resolveRetained t
 resolve t = pure (baseType t)
 
@@ -192,8 +196,25 @@ unify a b = do
     (Applied n p, Applied m q) | n == m -> unify p q
     (Application n ps, Application m qs) | n == m && length ps == length qs -> zipWithM_ unify ps qs
     (RecordShape fields,RecordShape others) -> sameRecordIndices x y >> unifyRecordFields fields others
+    -- m a against a known type: the constructor variable is what remains of
+    -- that type without its last argument.
+    (Application n [constructor, argument], Applied "List" element) | n == constructorApplicationName ->
+      unify constructor (Named "List") >> unify argument element
+    (Applied "List" element, Application n [constructor, argument]) | n == constructorApplicationName ->
+      unify constructor (Named "List") >> unify argument element
+    (Application n [constructor, argument], Application "Either" [failure, success]) | n == constructorApplicationName ->
+      unify constructor (Application "Either" [failure]) >> unify argument success
+    (Application "Either" [failure, success], Application n [constructor, argument]) | n == constructorApplicationName ->
+      unify constructor (Application "Either" [failure]) >> unify argument success
+    (Application n [_, _], other) | n == constructorApplicationName, unmappable other -> throwC (notMappable other)
+    (other, Application n [_, _]) | n == constructorApplicationName, unmappable other -> throwC (notMappable other)
     _ -> throwC ("type mismatch: " ++ prettyType x ++ " and " ++ prettyType y)
-  where bind n t | occurs n t = throwC "infinite type"
+  where unmappable other = case other of
+          Variable _ -> False
+          Application n _ -> n /= constructorApplicationName
+          _ -> True
+        notMappable other = prettyType other ++ " is not a List or an Either, the types a Mappable type constructor can stand for"
+        bind n t | occurs n t = throwC "infinite type"
                  | otherwise = modify (\s -> s{substitutions=M.insert n t (substitutions s)})
 
 -- Closed products compare labels, stored types and restrictions. They never
@@ -341,9 +362,9 @@ infer env e@(MapElementsExpr value binder body) = do
   shape <- mappedElement env value
   case shape of
     Left operand -> mapsEither operand (infer env (eitherMap e))
-    Right element -> do
+    Right (element, mapped) -> do
       result <- infer (M.insert binder (Monomorphic element) env) body >>= resolve
-      pure (Applied "List" result)
+      pure (mapped result)
 infer env (FilterElementsExpr value binder predicate) = do
   element <- Variable . ("iteration:" ++) <$> fresh
   checkExpr env (Applied "List" element) value
@@ -548,6 +569,8 @@ checkExpr env expected e = do
         | (label,value) <- fields]
     (Variable _,RecordLit _) -> infer env e >>= unify t
     (_,RecordLit _) -> throwC "an anonymous record literal requires a structural record type"
+    -- Against m a with m not yet known, the constructor says what m is.
+    (Application n [Variable _, _],ConstructLit _ _) | n == constructorApplicationName -> infer env e >>= unify t
     (_,ConstructLit name fields) -> do
       parameters <- constructorParameters t name
       unless (length parameters == length fields) (throwC (constructorArity name (length parameters) (length fields)))
@@ -1115,11 +1138,11 @@ typedExpressionWithSchemesContext context declarations bits env e = do
           pure [TypedCase "" [(binder,element)] body]
         MapElementsExpr value binder body -> do
           shape <- mappedElement context value
-          case (shape,t) of
-            (Right element,Applied "List" result) -> do
+          case (shape,mappedResult t) of
+            (Right (element, _),Just result) -> do
               mapped <- go (M.insert binder (Monomorphic element) context) (Just result) body
               pure [TypedCase "" [(binder,element)] mapped]
-            _ -> throwC "map requires a List or an Either"
+            _ -> throwC "map requires a List, an Either or a Mappable type"
         FilterElementsExpr _ binder predicate -> case t of
           Applied "List" element -> do
             body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
@@ -1767,7 +1790,6 @@ membershipTypes env value collection = do
   checkExpr env element value
   pure selected
 
--- | The element type when a `map`'s operand is a List.
 -- | A constructor with too few values is usually one meant as a function.
 -- The prelude combinators accept that (LawSpec.Railway); elsewhere checked
 -- definitions are first-order, so the message gives the wrapper to write.
@@ -1789,20 +1811,33 @@ constructorArity name wanted given =
     count 1 = "1 value"
     count n = show n ++ " values"
 
-mappedElement :: Env -> Expr -> C (Either Type Type)
+-- | The element type of a `map`'s operand and the type of its result, when
+-- the operand is a List or a value of a Mappable type constructor that is
+-- not yet known. Any other operand is returned for the Either reading.
+mappedElement :: Env -> Expr -> C (Either Type (Type, Type -> Type))
 mappedElement env value = do
   collection <- infer env value >>= resolve
-  pure (case baseType collection of
-    Applied "List" element -> Right element
-    operand -> Left operand)
+  case baseType collection of
+    Applied "List" element -> pure (Right (element, Applied "List"))
+    Application n [constructor, element] | n == constructorApplicationName -> do
+      require "Mappable" constructor
+      pure (Right (element, \result -> Application constructorApplicationName [constructor, result]))
+    operand -> pure (Left operand)
 
--- | The Either reading of a map whose operand is not a List. When the operand
--- is known to be something else (a Maybe, a Text), the failure of that reading
--- says what map applies to instead of naming Either's constructors, which the
--- author never wrote.
+-- | The element type of a `map`'s result.
+mappedResult :: Type -> Maybe Type
+mappedResult (Applied "List" result) = Just result
+mappedResult (Application n [_, result]) | n == constructorApplicationName = Just result
+mappedResult _ = Nothing
+
+-- | The Either reading of a map whose operand is neither a List nor a value
+-- of a Mappable type constructor variable. When the operand is known to be
+-- something else (a Maybe, a Text), the failure of that reading says what map
+-- applies to, by the Mappable capability and its instances, instead of
+-- naming Either's constructors, which the author never wrote.
 mapsEither :: Type -> C a -> C a
 mapsEither operand action = StateT $ \s -> case runStateT action s of
-  Left _ | mismatched -> Left ("prelude.map (and f <$> m) applies to a List, mapping each element, or to an Either, mapping its success value; this operand is "
+  Left _ | mismatched -> Left ("prelude.map (and f <$> m) applies to a Mappable type: a List, mapping each element, or an Either, mapping its success value; this operand is "
     ++ article ++ prettyType operand ++ "." ++ advice)
   result -> result
   where

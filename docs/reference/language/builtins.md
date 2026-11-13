@@ -20,6 +20,7 @@ program uses one by importing its unit.
 | `lawspec.logging` | `Log`, `Trace` | `silentLog`, `silentTrace` | [Logs and traces](logging.md) |
 | `lawspec.concurrent` | `Async` | | below |
 | `lawspec.network` | (the `Network` ability's secure handler) | | [Distribution](distribution.md#security) |
+| `lawspec.calendar` | (no ability: `Date`, `Weekday`, `CivilDate`) | | [Calendar dates](calendar.md) |
 
 ```lawspec
 unit guide.builtins

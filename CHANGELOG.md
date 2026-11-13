@@ -108,66 +108,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A constructor may be given where a prelude combinator takes a function:
   `prelude.map Present m`, `m >>= Right`, `value |> Present`.
 
-### Fixed
-
-- A JavaScript or TypeScript property test over a refined record or data
-  input no longer runs forever when random values do not meet the refinement.
-  fast-check's `filter` never gives up; the generated filter now stops after
-  `maxAttempts` rejections in a row with `refinement-generation-exhausted`.
-  A harness strategy's `such that` (and an inline refinement of its type)
-  likewise stops at its discard limit there, with the message the other
-  targets give.
-  An input refined by membership (`stage in stagesOf kind`) is drawn from the
-  list's items on every target when only the `property` layer is selected,
-  instead of being sampled from its type and filtered.
-- One failing law no longer keeps other laws from running. After a failing
-  `lawspec test`, every law of the failing native invocation, passing or not,
-  was written to the failure database with that run's seed; the next run
-  replayed all of them in one batch with the old seed, the batch failed
-  again, and the run stopped before the fresh batch started. New laws never
-  ran, and the others stayed on the old seed. Now:
-  - a law is recorded in the failure database only when its own tests failed
-    (entries carry `"cause": "own-tests-failed"`);
-  - a failed batch does not stop the later batches, unless no test in it
-    executed at all (a missing tool, a project that does not compile);
-  - a law no native process was started for has the outcome `not-run`, not
-    `incomplete`, in `.lawspec/results`, in the JSON summary (`notRun`), in
-    the text summary and in `lawspec evidence`;
-  - the summary names the seed each batch used (`ran 9 law(s): 1 replayed
-    with seed 319946530, 8 with seed 1729797406`), and the JSON summary has a
-    `batches` list. `ran` no longer includes `notRun` laws.
-
-  Databases written by 0.33 and earlier need no manual step: an entry without
-  a `cause` is replayed once with its seed, then recorded again if the law's
-  own tests failed and removed otherwise.
-
-- `lawspec doctor` read a Java build's JUnit version from the first
-  `junit-jupiter` line of `mvn dependency:tree`, which is the declared
-  aggregate. Under a BOM that manages JUnit, such as Spring Boot's, the
-  `junit-jupiter-api` and engine beneath it resolve to the BOM's release, and
-  doctor then reported a missing test engine. It now reads the resolved
-  `junit-jupiter-api` and `junit-jupiter-engine`, names the resolved release
-  when it is outside the supported range, and says to import
-  `org.junit:junit-bom` before the managing BOM.
-
-- On Windows the CLI could not start `mvn`, `gradle`, `gradlew.bat`, `npm`,
-  `npx`, `mix` or `rebar3`: Node does not apply `PATHEXT` and refuses to start
-  a batch file without a shell (`spawn mvn ENOENT`, `EINVAL`). The CLI now
-  resolves a command through the project directory, `PATH` and `PATHEXT`, and
-  runs a `.cmd` or `.bat` through `cmd.exe /e:ON /v:OFF /d /s /c` with every
-  argument quoted for `cmd.exe`. `:maven "mvn.cmd"` and absolute paths work.
-  `init` ran its build tools through a shell with no quoting; it now uses the
-  same path. An argument that cannot be quoted (a line break or NUL) stops
-  the command before anything runs.
-- A build tool that is not installed is reported with the directories
-  searched, the manifest field that names it and what to install, where
-  `doctor`, `generate` and `test` printed `spawn <tool> ENOENT`.
-- `doctor` uses the project's `gradlew.bat` on Windows, as `init`, `generate`
-  and `test` do.
-- The `Test:` line is quoted for the shell of the platform: on Windows
-  `cmd /d /s /c "cd /d <project> && <command>"` where it was POSIX `(cd '…'
-  && …)`.
-
 ### Changed
 
 - Generated parameters take their names from the signature. `add :: (a ::
@@ -253,6 +193,63 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A JavaScript or TypeScript property test over a refined record or data
+  input no longer runs forever when random values do not meet the refinement.
+  fast-check's `filter` never gives up; the generated filter now stops after
+  `maxAttempts` rejections in a row with `refinement-generation-exhausted`.
+  A harness strategy's `such that` (and an inline refinement of its type)
+  likewise stops at its discard limit there, with the message the other
+  targets give.
+  An input refined by membership (`stage in stagesOf kind`) is drawn from the
+  list's items on every target when only the `property` layer is selected,
+  instead of being sampled from its type and filtered.
+- One failing law no longer keeps other laws from running. After a failing
+  `lawspec test`, every law of the failing native invocation, passing or not,
+  was written to the failure database with that run's seed; the next run
+  replayed all of them in one batch with the old seed, the batch failed
+  again, and the run stopped before the fresh batch started. New laws never
+  ran, and the others stayed on the old seed. Now:
+  - a law is recorded in the failure database only when its own tests failed
+    (entries carry `"cause": "own-tests-failed"`);
+  - a failed batch does not stop the later batches, unless no test in it
+    executed at all (a missing tool, a project that does not compile);
+  - a law no native process was started for has the outcome `not-run`, not
+    `incomplete`, in `.lawspec/results`, in the JSON summary (`notRun`), in
+    the text summary and in `lawspec evidence`;
+  - the summary names the seed each batch used (`ran 9 law(s): 1 replayed
+    with seed 319946530, 8 with seed 1729797406`), and the JSON summary has a
+    `batches` list. `ran` no longer includes `notRun` laws.
+
+  Databases written by 0.33 and earlier need no manual step: an entry without
+  a `cause` is replayed once with its seed, then recorded again if the law's
+  own tests failed and removed otherwise.
+
+- `lawspec doctor` read a Java build's JUnit version from the first
+  `junit-jupiter` line of `mvn dependency:tree`, which is the declared
+  aggregate. Under a BOM that manages JUnit, such as Spring Boot's, the
+  `junit-jupiter-api` and engine beneath it resolve to the BOM's release, and
+  doctor then reported a missing test engine. It now reads the resolved
+  `junit-jupiter-api` and `junit-jupiter-engine`, names the resolved release
+  when it is outside the supported range, and says to import
+  `org.junit:junit-bom` before the managing BOM.
+
+- On Windows the CLI could not start `mvn`, `gradle`, `gradlew.bat`, `npm`,
+  `npx`, `mix` or `rebar3`: Node does not apply `PATHEXT` and refuses to start
+  a batch file without a shell (`spawn mvn ENOENT`, `EINVAL`). The CLI now
+  resolves a command through the project directory, `PATH` and `PATHEXT`, and
+  runs a `.cmd` or `.bat` through `cmd.exe /e:ON /v:OFF /d /s /c` with every
+  argument quoted for `cmd.exe`. `:maven "mvn.cmd"` and absolute paths work.
+  `init` ran its build tools through a shell with no quoting; it now uses the
+  same path. An argument that cannot be quoted (a line break or NUL) stops
+  the command before anything runs.
+- A build tool that is not installed is reported with the directories
+  searched, the manifest field that names it and what to install, where
+  `doctor`, `generate` and `test` printed `spawn <tool> ENOENT`.
+- `doctor` uses the project's `gradlew.bat` on Windows, as `init`, `generate`
+  and `test` do.
+- The `Test:` line is quoted for the shell of the platform: on Windows
+  `cmd /d /s /c "cd /d <project> && <command>"` where it was POSIX `(cd '…'
+  && …)`.
 - `npm install <checkout>/npm` no longer fails in `postinstall` with
   `MODULE_NOT_FOUND`. The step does nothing where there is no
   `host-component` directory, as in a git checkout. Where
@@ -265,6 +262,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which a new clone has none of the CLI's dependencies. The guide now also
   covers installing the `lawspec-<version>.tgz` attached to a GitHub release,
   for registries that lag, and the release procedure attaches it.
+
+## [0.33.1] - 2026-11-13
+
+### Added
+
+- A definition can abstract over what `map` works on: `m a` is a type
+  constructor variable applied, and `requires Mappable m` allows `prelude.map`
+  on it. The instances are `List` and `Either` with its failure type fixed.
+  See [Definitions](docs/reference/language/definitions.md#a-definition-over-a-type-constructor).
+- Calendar dates: the built-in unit `lawspec.calendar`, with `Date` (days
+  since 1970-01-01, from 0001-01-01 to 9999-12-31), `Weekday` and `CivilDate`,
+  and `dateOf`, `dateFromDays`, `civilOf`, `weekdayOf`, `weekdayNumber`,
+  `addDays`, `daysBetween`, `isLeapYear`, `daysInMonth` and `daysFromCivil` as
+  checked definitions on every target. Z3 proves its laws, and the `calendar`
+  acceptance suite runs them (DEC-calendar-date). Time zones are not included.
+
+### Changed
+
+- `lawspec-dev ci` builds once, runs the compiler's tests in five parts and
+  each SDK test file as a step of its own, and reuses an SDK test's pass
+  while the files and tools it can read are unchanged. A step is stopped
+  after two hours, and on macOS the machine is kept awake while the check
+  runs. See [Contribute](docs/how-to/contribute.md).
+- Compiling a project with structural records no longer normalizes every
+  declaration again for each example and refinement check. The 70 bundled
+  example specs compile for their first target in 44 s, from 55 s.
+- A second `check` of an unchanged project reads each source's stored parse
+  from the cache directory. On a 3,087-line probe it takes 2.2 s against
+  3.8 s for the first. Definition templates are no longer stored on disk:
+  reading them took longer than inferring them.
 
 ## [0.33.0] - 2026-11-11
 
@@ -2994,7 +3021,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.33.1...HEAD
+[0.33.1]: https://github.com/brain-fuel/lawspec/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/brain-fuel/lawspec/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/brain-fuel/lawspec/compare/v0.31.3...v0.32.0
 [0.31.3]: https://github.com/brain-fuel/lawspec/compare/v0.31.2...v0.31.3

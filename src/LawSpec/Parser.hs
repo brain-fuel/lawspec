@@ -14,6 +14,10 @@ import LawSpec.Regex (parseRegex)
 import Control.Monad.Trans.Class (lift)
 import qualified Data.List.NonEmpty as NE
 import LawSpec.Model
+import LawSpec.Digest (digestHex, digestString)
+import LawSpec.Memo (Table, memoized, newPersistentTable)
+import LawSpec.Persist ()
+import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), sourceSyntax)
 import LawSpec.Blocks
 import LawSpec.SourceOrigins
@@ -44,7 +48,7 @@ import qualified Text.Megaparsec as MP
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
-data Header = RefinementHeader [Bool] | DataHeader [Bool] | RecordHeader [(String,Type)] | AliasHeader
+data Header = RefinementHeader [Bool] | DataHeader [Bool] | RecordHeader [(String,Type)] | AliasHeader deriving (Show)
 data BlockError = BlockError String String Span (Maybe Span)
   | LocatedFailure Int String deriving (Eq,Show)
 instance Ord BlockError where
@@ -501,7 +505,22 @@ parens :: P a -> P a
 parens = between (symbol "(") (symbol ")")
 typeP :: P Type
 typeP = recovering (Named "Unit") $ sourceNode "type-expression" (Just . prettyType) $ do
-  a <- typeAtom
+  line <- sourceLine <$> getSourcePos
+  variable <- typeAtom
+  -- m a: a type variable applied, standing for a type constructor. The
+  -- argument is on the variable's line, so a signature's last type does not
+  -- take the next declaration's name.
+  a <- case variable of
+    Variable name | name /= "_" -> option variable (try (do
+      here <- sourceLine <$> getSourcePos
+      if here == line then pure () else fail "a type argument is on its constructor's line"
+      -- uses, fails and decreases open a signature clause and are not
+      -- reserved words, so they are never read as the argument.
+      notFollowedBy (choice (map keyword ["uses", "fails", "decreases"]))
+      argument <- typeAtom
+      notFollowedBy annotationP
+      pure (Application constructorApplicationName [variable, argument])))
+    _ -> pure variable
   -- A / A' is a flow parameter: the call takes the state at A to A'.
   a' <- option a (do void (symbol "/"); b <- typeAtom; pure (Application flowTypeName [a, b]))
   option a' (Arrow a' <$> (symbol "->" *> typeP))
@@ -580,8 +599,8 @@ param = sourceNode "parameter" (Just . fst) $ parens $ do
   pure (n,maybe t (\e -> Refined n t (Just e)) p)
 constraintsP :: P [Constraint]
 constraintsP = option [] (keyword "requires" *> some (sourceNode "capability" (\(Capability name _) -> Just name) $ do
-  n <- choice [name <$ keyword name | name <- ["Eq","Integer","Ordered","Bounded","Keyed"]]
-  Capability n <$> typeP))
+  n <- choice [name <$ keyword name | name <- ["Eq","Integer","Ordered","Bounded","Keyed","Mappable"]]
+  Capability n <$> typeAtom))
 refinementP :: P Refinement
 refinementP = blockP "refinement" $ do
   keyword "refinement"; n <- ident; ps <- many param; cs <- constraintsP
@@ -2898,7 +2917,7 @@ parseSourcesWithInventoryMode syntaxOnly origins capture canonical collections b
     harnessesOf n = [source | (source, Right (_, served)) <- harnessSources, served == n]
     -- Parsed lazily in import order, so a unit sees its imports' indexed
     -- families under the names it uses for them.
-    results = Lazy.fromList [(n, parseWithProfilesInventory origins capture profile (imported s) (families imports) (harnessesOf n) s) | (s, n, imports) <- preambles]
+    results = Lazy.fromList [(n, parsedSource origins capture profile (imported s) (families imports) (harnessesOf n) s) | (s, n, imports) <- preambles]
     families imports = concat
       [ [f{familyName = importAlias i ++ "." ++ familyName f} | f <- declared] ++
         [f | f <- declared, familyName f `elem` importItems i]
@@ -3022,6 +3041,21 @@ parseWith = parseWithProfiles (\_ env -> env)
 parseWithProfiles :: (Source -> M.Map String Header -> M.Map String Header) -> M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
 parseWithProfiles profile extra importedFamilies harnessFiles source =
   fst <$> parseWithProfilesInventory [] False profile extra importedFamilies harnessFiles source
+
+-- | One source's parse, kept by everything the parse reads: the source, the
+-- headers and indexed families its imports give it, its harness files and
+-- the coordinates of inserted names. A later run with the same inputs reads
+-- the result instead of parsing. ref:DEC-incremental-compilation
+parsedSource :: [SourceOriginMap] -> Bool -> (Source -> M.Map String Header -> M.Map String Header) -> M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] (((Unit, [Import]), [IndexedFamily]),[SourceSyntax])
+parsedSource origins capture profile extra importedFamilies harnessFiles source =
+  memoized parseTable
+    (digestHex (digestString (show (origins, capture, M.toList (profile source extra), importedFamilies,
+      [(harness, M.toList (profile harness M.empty)) | harness <- harnessFiles], source))))
+    (parseWithProfilesInventory origins capture profile extra importedFamilies harnessFiles source)
+
+parseTable :: Table (Either [Diagnostic] (((Unit, [Import]), [IndexedFamily]),[SourceSyntax]))
+parseTable = unsafePerformIO (newPersistentTable "parse" 4096 (const 1))
+{-# NOINLINE parseTable #-}
 
 parseWithProfilesInventory :: [SourceOriginMap] -> Bool -> (Source -> M.Map String Header -> M.Map String Header) -> M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] (((Unit, [Import]), [IndexedFamily]),[SourceSyntax])
 parseWithProfilesInventory origins capture profile extra importedFamilies harnessFiles source@(Source p s) =

@@ -4,7 +4,11 @@
 -- a declaration, including sequences that normalize to the same descriptor.
 module LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords,normalizeExpressionRecordsWithViews,withRecordViewDefinitions) where
 
+import Control.Exception (evaluate)
 import Control.Monad (unless, forM, foldM)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Mem.StableName (StableName, makeStableName)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -75,20 +79,58 @@ normalizeExpressionRecordsWithViews=normalizeExpressionRecordsUsing True
 normalizeExpressionRecordsUsing allowed bits declarations value
   | all ((==Nothing) . dataStructural) declarations = Right (value,declarations,[])
   | otherwise = do
-      ((made,known),state) <- diagnostic $ runStateT rewrite (initialNormalizing source allowed S.empty)
-      _ <- constructorProofContracts bits known
-      interned <- diagnostic (internRecordDeclarations known)
-      pure (made,interned,[definition | key<-reverse (viewOrder state),Just definition<-[M.lookup key (viewDefinitions state)]])
-  where
-    source=M.fromListWith (\_ first->first) [(dataId d,d) | d<-declarations]
-    diagnostic=either (Left . pure . (\message->Diagnostic "record-type" message Nothing)) Right
-    rewrite=do
-      known<-mapM dataDeclaration declarations
-      made<-expression value
-      state<-get
+      (known,before) <- declarationsNormalized prepared
+      (made,state) <- diagnostic (runStateT (expression value) before)
       let present=S.fromList (map dataId known)
           extra=[d | identity<-reverse (productOrder state),identity `S.notMember` present,Just d<-[M.lookup identity (products state)]]
-      pure (made,known++extra)
+      -- An expression that adds no product leaves the declarations as they
+      -- were prepared, with the checks already made on them.
+      interned <- if null extra then declarationsInterned prepared else checkedDeclarations bits (known++extra)
+      pure (made,interned,[definition | key<-reverse (viewOrder state),Just definition<-[M.lookup key (viewDefinitions state)]])
+  where
+    prepared=preparedDeclarations allowed bits declarations
+    diagnostic=either (Left . pure . (\message->Diagnostic "record-type" message Nothing)) Right
+
+-- | The part of an expression's normalization that depends only on the
+-- declarations: each declaration normalized, and the result's constructor
+-- contracts checked and its records interned. The second field is used only
+-- when the expression itself normalizes, so a failure in the expression is
+-- still reported before a failure in those checks.
+data Prepared = Prepared
+  { declarationsNormalized :: Either [Diagnostic] ([DataDeclaration],Normalizing)
+  , declarationsInterned :: Either [Diagnostic] [DataDeclaration] }
+
+checkedDeclarations :: Int -> [DataDeclaration] -> Either [Diagnostic] [DataDeclaration]
+checkedDeclarations bits known = do
+  _ <- constructorProofContracts bits known
+  either (Left . pure . (\message->Diagnostic "record-type" message Nothing)) Right (internRecordDeclarations known)
+
+-- | A unit's examples and refinement checks each normalize one expression
+-- against the same declarations, and normalizing the declarations took most
+-- of that time: 302 expressions against the bundled examples' declarations
+-- were a fifth of their compile. The last preparation is kept for each mode,
+-- keyed by the declarations' identity in memory as Core.Types.makeRegistry
+-- keeps its registry. The function is pure, so this is only a cache.
+preparedDeclarations :: Bool -> Int -> [DataDeclaration] -> Prepared
+preparedDeclarations allowed bits declarations = unsafePerformIO $ do
+  _ <- evaluate declarations
+  name <- makeStableName declarations
+  cached <- M.lookup allowed <$> readIORef preparedCache
+  let ids=map dataId declarations
+  case cached of
+    Just (key,keyBits,keyIds,prepared) | key == name, keyBits == bits, keyIds == ids -> pure prepared
+    _ -> do
+      let source=M.fromListWith (\_ first->first) [(dataId d,d) | d<-declarations]
+          normalized=either (Left . pure . (\message->Diagnostic "record-type" message Nothing)) Right
+            (runStateT (mapM dataDeclaration declarations) (initialNormalizing source allowed S.empty))
+          prepared=Prepared normalized (normalized >>= checkedDeclarations bits . fst)
+      atomicModifyIORef' preparedCache (\entries -> (M.insert allowed (name,bits,ids,prepared) entries,()))
+      pure prepared
+{-# NOINLINE preparedDeclarations #-}
+
+preparedCache :: IORef (M.Map Bool (StableName [DataDeclaration],Int,[Id],Prepared))
+preparedCache = unsafePerformIO (newIORef M.empty)
+{-# NOINLINE preparedCache #-}
 
 checked :: Either String a -> Normalize a
 checked = lift

@@ -6,19 +6,15 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {
-  mkdtemp,
-  readdir,
-  readFile,
-  writeFile,
-  rm,
-  symlink,
-} from 'node:fs/promises';
+import {mkdtemp, readdir, readFile, rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 const exec = promisify(execFile);
 const cli = new URL('../bin/lawspec.mjs', import.meta.url).pathname;
-test('examples exports all bundled stubs/tests, preserves adapters, and protects edited tests and paths', async () =>
+// The export of every target is compared with the API's own generation, and
+// then repeated. The upgrade and protection cases are in
+// examples-upgrade.test.mjs, on single targets, so the two files run at once.
+test('examples exports all bundled stubs/tests as the API generates them, and a second export changes nothing', async () =>
 {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-examples-'));
   const run = (args = []) =>
@@ -28,12 +24,6 @@ test('examples exports all bundled stubs/tests, preserves adapters, and protects
     });
   try
   {
-    const result = JSON.parse((await run()).stdout);
-    assert.deepEqual(
-      result.map(project => project.target),
-      targets,
-    );
-    const compiler = await createCompiler();
     const directory = new URL('../examples/specs/', import.meta.url);
     const sources = await Promise.all(
       (await readdir(directory))
@@ -44,17 +34,26 @@ test('examples exports all bundled stubs/tests, preserves adapters, and protects
           content: await readFile(new URL(name, directory), 'utf8'),
         })),
     );
+    // The command line runs in its own process, so the API generates the
+    // expected files while it works.
+    const exported = run();
+    const compiler = await createCompiler();
+    const expected = new Map();
+    for (const target of targets)
+      expected.set(target, await generateInput(compiler, {sources, target}));
+    const result = JSON.parse((await exported).stdout);
+    assert.deepEqual(
+      result.map(project => project.target),
+      targets,
+    );
     for (const target of result)
     {
-      const expected = await generateInput(compiler, {
-        sources,
-        target: target.target,
-      });
+      const generated = expected.get(target.target);
       assert.equal(target.languageProfile, '1.0-rc.2');
-      assert.deepEqual(expected.diagnostics, []);
+      assert.deepEqual(generated.diagnostics, []);
       assert.deepEqual(
         target.files,
-        expected.files.map(({path, ownership, placement}) => ({
+        generated.files.map(({path, ownership, placement}) => ({
           path,
           ownership,
           placement,
@@ -70,50 +69,8 @@ test('examples exports all bundled stubs/tests, preserves adapters, and protects
           (await readFile(path.join(target.directory, f.path), 'utf8')).length,
         );
     }
-    // Simulate upgrading a 0.4 Kotlin adapter while preserving its implementation.
-    const kotlin = result.find(r => r.target === 'kotlin');
-    const kotlinAdapter = 'src/main/kotlin/example/BooleanFlags.kt';
-    const legacy = 'package example\nfun flipFlag(x: Boolean): Boolean = !x\n';
-    await writeFile(path.join(kotlin.directory, kotlinAdapter), legacy);
-    const manifestPath = path.join(kotlin.directory, '.lawspec/generated.json');
-    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    manifest.adapters[kotlinAdapter] = 'previous-stub-shape';
-    await writeFile(manifestPath, JSON.stringify(manifest));
-    const updated = await exec(
-      process.execPath,
-      [cli, 'examples', '--target', 'kotlin'],
-      {cwd: root},
-    );
-    assert.match(updated.stdout, /Review required adapter signatures/);
-    assert.match(updated.stdout, /object BooleanFlags/);
-    assert.equal(
-      await readFile(path.join(kotlin.directory, kotlinAdapter), 'utf8'),
-      legacy,
-    );
-    const java = result.find(r => r.target === 'java');
-    const adapter = path.join(
-      java.directory,
-      'src/main/java/example/Slug.java',
-    );
-    await writeFile(adapter, '// user implementation\n');
     const again = JSON.parse((await run()).stdout);
     assert.ok(again.every(t => t.changes === 0));
-    assert.equal(await readFile(adapter, 'utf8'), '// user implementation\n');
-    const test = path.join(
-      java.directory,
-      'src/test/java/example/SlugLawSpecTest.java',
-    );
-    await writeFile(test, '// user edit\n');
-    await assert.rejects(run());
-    assert.equal(await readFile(test, 'utf8'), '// user edit\n');
-    const single = JSON.parse(
-      (await run(['--target', 'python', '--output', 'custom'])).stdout,
-    );
-    assert.equal(single.length, 1);
-    await assert.rejects(run(['--output', '../escape']));
-    await symlink(root, path.join(root, 'linked'));
-    await assert.rejects(run(['--output', 'linked']));
-    await assert.rejects(run(['--target', 'unknown']));
   }
   finally
   {

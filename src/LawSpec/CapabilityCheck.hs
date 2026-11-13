@@ -15,6 +15,12 @@ checkCapability lower declarations bits allowed constraint@(Capability name ty)
   | name `elem` ["Eq","Ordered","Keyed"], Capability "Integer" ty `elem` allowed = True
   -- A portable order decides equality too.
   | name == "Eq", Capability "Keyed" ty `elem` allowed = True
+  -- The type constructors `map` is defined on: List, and an Either with its
+  -- failure type given. ref:DEC-mappable-capability
+  | name == "Mappable" = case ty of
+      Named "List" -> True
+      Application "Either" [_] -> True
+      _ -> False
   | name == "Keyed" = either (const False) id $ do
       (core,records) <- lower (mapType (\t -> case t of Named n@('@':_) -> Variable n; _ -> t) id ty)
       registry <- Types.makeRegistry (if null records then declarations else declarations ++ records)

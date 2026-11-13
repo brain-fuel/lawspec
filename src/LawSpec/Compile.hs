@@ -41,6 +41,7 @@ import LawSpec.Regex (parseRegex)
 import LawSpec.Resources (resourcesUnit, resourcesAlias, resourcesTypes, usesResources, resourcesSource)
 import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
 import LawSpec.Network (networkUnit, networkSource)
+import LawSpec.Calendar (calendarUnit, calendarSource)
 import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock, clockSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
@@ -388,7 +389,9 @@ sourceParsingContext selected sources =
       abilityUnits = [Source ("<" ++ unit ++ ">") (builtinSource unit) | unit <- builtinUnits
                      , any (importsBuiltin unit) [text | Source _ text <- sources] || (unit == "lawspec.host" && resources)] ++
         -- lawspec.network: the secure network handler's module (LawSpec.Network).
-        [Source ("<" ++ networkUnit ++ ">") networkSource | any (importsBuiltin networkUnit) [text | Source _ text <- sources]]
+        [Source ("<" ++ networkUnit ++ ">") networkSource | any (importsBuiltin networkUnit) [text | Source _ text <- sources]] ++
+        -- lawspec.calendar: dates, as checked definitions (LawSpec.Calendar).
+        [Source ("<" ++ calendarUnit ++ ">") calendarSource | any (importsBuiltin calendarUnit) [text | Source _ text <- sources]]
       versionedCollectionSources = [text | Source _ text <- abilityUnits] ++ [clockSource | clock] ++ [caseFoldSource | textFolding]
       candidates = if canonical then usedCollectionsCanonical userTexts versionedCollectionSources
         else usedCollections ([text | Source _ text <- sources] ++ versionedCollectionSources)
@@ -423,7 +426,7 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
   -- Reserved Core identities belong to compiler-provided versioned sources.
   -- A user unit must not manufacture one when its built-in is not injected.
   when canonical $ forM_ sources $ \source -> case sourceUnit source of
-    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : caseFoldUnit : resourcesUnit : networkUnit : builtinUnits) ->
+    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : caseFoldUnit : resourcesUnit : networkUnit : calendarUnit : builtinUnits) ->
       Left [Diagnostic "reserved-unit" ("the unit " ++ name ++ " is reserved for compiler-provided definitions") Nothing]
     _ -> pure ()
   -- Programs that use a collection get the built-in collections unit.
@@ -903,7 +906,12 @@ typeCheck sourceTypes declarations bits = case CoreTypes.makeRegistry declaratio
       CoreTypes.checkType extended ty
 
 validTypeWithData :: (Type -> Bool) -> Type -> Bool
-validTypeWithData check t = check t
+validTypeWithData check t = check (mapType (\ty -> case ty of
+  -- m a is a value type when List a is: a constructor variable stands for a
+  -- constructor that takes one value type, as List does.
+  Application n [Variable _, argument] | n == constructorApplicationName -> Applied "List" argument
+  Application n [Named ('@' : _), argument] | n == constructorApplicationName -> Applied "List" argument
+  _ -> ty) id t)
 
 valueType :: (Type -> Bool) -> Type -> Bool
 valueType _ (Arrow _ _) = False
@@ -968,7 +976,7 @@ inferDefinitionTemplates sourceTypes declarations bits unit = do
       unless (all (valueType checkTypes) (functionResult d : map snd parameters))
         (Left "definition parameters and result require value types")
       forM_ declared $ \(Capability name ty) -> do
-        unless (name `elem` ["Eq","Integer","Ordered","Bounded","Keyed"])
+        unless (name `elem` ["Eq","Integer","Ordered","Bounded","Keyed","Mappable"])
           (Left ("unknown capability: " ++ name))
         unless (valueType checkTypes ty && all (`elem` bound) (variables ty))
           (Left "capability mentions an invalid or unbound type")
