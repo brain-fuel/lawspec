@@ -871,6 +871,7 @@ export interface CheckRequest
   dependencies?: Record<string, string>;
   packages?: Package[];
   cacheDirectory?: string;
+  cacheAdvisory?: boolean;
   progress?: Progress | Progress[];
   attestation?: unknown;
   proofCounterexamples?: ProofCounterexample[];

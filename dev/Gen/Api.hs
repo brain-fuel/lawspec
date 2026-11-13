@@ -574,6 +574,7 @@ declarations =
           ("dependencies?", text "Record<string, string>"),
           ("packages?", text "Package[]"),
           ("cacheDirectory?", text "string"),
+          ("cacheAdvisory?", text "boolean"),
           ("progress?", text "Progress | Progress[]"),
           ("attestation?", text "unknown"),
           ("proofCounterexamples?", text "ProofCounterexample[]"),

@@ -297,10 +297,17 @@ dispatch bytes
       _ -> Object (KM.insert "advice" (Authoring.adviceView syntax core) fields)
     withAuthoring _ _ response = response
     -- Where the compiler may keep work between runs; the CLI names one per
-    -- project and compiler build. Every method uses the directory its
-    -- request names: the commands that promise to write nothing (lawspec
-    -- inspect, lawspec advise, MCP) name none.
+    -- project and compiler build. inspect and advise write nothing, whatever
+    -- directory their request names (ref:DEC-authoring-advisories), unless
+    -- the request also sets cacheAdvisory: a command that already keeps a
+    -- cache (check, generate) asks for its advice that way, so the advice
+    -- shares the command's work instead of compiling the project again.
     cacheDirectory = case decode bytes of
+      Just (Object o)
+        | Just (String method) <- KM.lookup "method" o,
+          method `elem` ["inspect", "advise"],
+          KM.lookup "cacheAdvisory" o /= Just (Bool True) ->
+            Nothing
       Just (Object o) | Just (String d) <- KM.lookup "cacheDirectory" o -> Just (T.unpack d)
       _ -> Nothing
     -- An entry the cache could not store changes no result. The response
@@ -760,7 +767,7 @@ sharedRequest bytes = case decode bytes of
               ( foldr
                   (KM.delete . K.fromString)
                   o
-                  ["method", "target", "sourceDir", "testDir", "minify", "nativeBindings", "cacheDirectory", "progress", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
+                  ["method", "target", "sourceDir", "testDir", "minify", "nativeBindings", "cacheDirectory", "cacheAdvisory", "progress", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
               )
           )
       )
@@ -778,7 +785,7 @@ emissionRequest bytes = case decode bytes of
               ( foldr
                   (KM.delete . K.fromString)
                   o
-                  ["method", "minify", "cacheDirectory", "progress", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
+                  ["method", "minify", "cacheDirectory", "cacheAdvisory", "progress", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"]
               )
           )
       )
