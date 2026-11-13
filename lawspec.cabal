@@ -1181,6 +1181,7 @@ test-suite lawspec-test
       ParserDiagnosticsSpec
       PayloadProofSpec
       PayloadSpec
+      PipeTextSpec
       PreludeResolutionSpec
       PrologTargetSpec
       PythonBindingNamesSpec

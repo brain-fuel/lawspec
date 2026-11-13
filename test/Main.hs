@@ -63,6 +63,7 @@ import qualified DomainModelSpec
 import qualified StatefulModelSpec
 import qualified ScenarioSpec
 import qualified TargetNamesSpec
+import qualified PipeTextSpec
 import qualified TimeSpec
 import qualified ImportSpec
 import qualified DischargeSpec
@@ -191,6 +192,7 @@ main = hspec $ do
   ScenarioSpec.test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree
   TargetNamesSpec.test_targetNamesNeverCollideWithKeywords
   TimeSpec.test_durationsAreExactAndPortable
+  PipeTextSpec.test_pipeTextIsDiagnosedWhereItIsWritten
   ImportSpec.test_importsResolveAcrossUnitsWithoutLeakingAdapters
   DischargeSpec.test_lawsAreDischargedWithHonestEvidence
   AttestationSpec.test_attestationReportsWhereTestsRanWithoutChangingEvidence

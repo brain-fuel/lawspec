@@ -115,3 +115,13 @@ else if (process.argv.includes('-json')) console.log(JSON.stringify({
     assert.equal(JSON.parse(stdout).ok, expected, `${version} ${replacement}`);
   }
 });
+test('haskell: a project never built is told to build it, before Stack runs', async t =>
+{
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-doctor-haskell-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  await writeFile(path.join(root, 'package.yaml'), 'name: example\n');
+  const report = await doctor({language: 'haskell'}, root);
+  assert.equal(report.ok, false);
+  assert.match(JSON.stringify(report), /has no \.cabal file yet/);
+  assert.match(JSON.stringify(report), /stack build --test --no-run-tests/);
+});

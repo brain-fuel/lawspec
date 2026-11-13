@@ -265,6 +265,11 @@ export async function doctor(target, root, plannedArtifacts = [])
     }
     else if (name === 'haskell')
     {
+      // Stack's own failure here is a long trace that ends with this advice.
+      requireThat(
+        (await readdir(root)).some(file => file.endsWith('.cabal')),
+        `The Haskell project in ${root} has no .cabal file yet. Run \`stack build --test --no-run-tests\` there once, then try again`,
+      );
       const compiler = (
         await run(
           'stack',
