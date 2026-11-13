@@ -126,6 +126,85 @@ export function recordNativeAttempts(
   );
 }
 
+// Reach: how many of a guarded law's generated cases satisfied each guard of
+// its claim, summed over the statistics files its tests wrote. The cases are
+// those that evaluated the outermost guard; the reached count is that of the
+// least reached guard, so a claim no generated case reached counts 0. A
+// guarded law without counts is unknown, never measured: its target does not
+// count, or its tests wrote nothing.
+export function lawReach(entry, statistics)
+{
+  const rows = statistics.filter(
+    row => row.law === entry.label && Array.isArray(row.reach),
+  );
+  if (!rows.length)
+    return entry.reach?.guards
+      ? {
+          status: 'unknown',
+          reason: entry.reach.measured
+            ? 'the run recorded no reach counts for this law'
+            : 'this target does not count reached consequences',
+        }
+      : undefined;
+  const sites = [];
+  for (const row of rows)
+    row.reach.forEach((site, index) =>
+    {
+      sites[index] ??= {evaluated: 0, held: 0};
+      sites[index].evaluated += site.evaluated ?? 0;
+      sites[index].held += site.held ?? 0;
+    });
+  return {
+    status: 'measured',
+    cases: sites[0]?.evaluated ?? 0,
+    reached: Math.min(...sites.map(site => site.held)),
+    sites,
+  };
+}
+
+// A law whose generated tests passed without one case reaching a guarded
+// consequence did not pass: its outcome is vacuous. Examples are separate
+// tests and keep their own results. Returns the vacuous laws' entries.
+export function applyReach(attempts, entries, statistics)
+{
+  const vacuous = [];
+  for (const entry of entries)
+  {
+    const attempt = attempts[entry.law];
+    if (!attempt) continue;
+    const reach = lawReach(entry, statistics);
+    if (!reach) continue;
+    attempt.reach = reach;
+    if (
+      attempt.outcome === 'passed' &&
+      reach.status === 'measured' &&
+      reach.cases > 0 &&
+      reach.reached === 0
+    )
+    {
+      attempt.outcome = 'vacuous';
+      vacuous.push(entry);
+    }
+  }
+  return vacuous;
+}
+
+// One line per guarded law, with the compiler's suggestion under a vacuous one.
+export function reachText(entry, attempt)
+{
+  const reach = attempt?.reach;
+  if (!reach) return [];
+  if (reach.status !== 'measured')
+    return [`  ${entry.label}: reach unknown (${reach.reason})`];
+  const line = `  ${entry.label}: ${reach.reached} of ${reach.cases} generated cases reached the consequence`;
+  return attempt.outcome === 'vacuous'
+    ? [
+        `${line} — VACUOUS`,
+        ...(entry.reach?.advice ?? []).map(advice => `    ${advice.message}`),
+      ]
+    : [line];
+}
+
 // A law an attestation touches is keyed by how its dependencies were wired:
 // endpoint, kind, and a stand-in's product, version and conformance. What the
 // run observed (reached, history digests, completion) and the identities
@@ -594,17 +673,21 @@ export function attachNativeEvidence(evidence, observations)
           : current.length === rows.length &&
               current.every(row => row.outcome === 'known-discrepancy')
             ? 'known-discrepancy'
-            : current.some(row => row.outcome === 'passed')
-              ? 'partial'
-              : current.some(row =>
-                    ['incomplete', 'not-run'].includes(row.outcome),
-                  )
-                ? 'incomplete'
-                : rows.every(row => row.freshness === 'not-selected')
-                  ? 'not-selected'
-                  : rows.some(row => row.freshness === 'stale')
-                    ? 'stale'
-                    : 'unavailable';
+            : // No generated case reached a guarded consequence on some
+              // target: nothing there tested the claim.
+              current.some(row => row.outcome === 'vacuous')
+              ? 'vacuous'
+              : current.some(row => row.outcome === 'passed')
+                ? 'partial'
+                : current.some(row =>
+                      ['incomplete', 'not-run'].includes(row.outcome),
+                    )
+                  ? 'incomplete'
+                  : rows.every(row => row.freshness === 'not-selected')
+                    ? 'not-selected'
+                    : rows.some(row => row.freshness === 'stale')
+                      ? 'stale'
+                      : 'unavailable';
     const completeFinite =
       status === 'passed' &&
       rows.every(
@@ -673,6 +756,22 @@ export function attachNativeEvidence(evidence, observations)
               ? 'every finite input was checked.'
               : 'this is scoped native execution evidence, not a universal model or search proof.') +
           (flaky ? ' Its last run failed, then passed on a retry.' : ''),
+      };
+    if (status === 'vacuous')
+      return {
+        ...enriched,
+        plannedEvidence: {status: item.status, reason: item.reason},
+        status: 'vacuous',
+        reason:
+          'Recorded native checks completed, but ' +
+          current
+            .filter(row => row.outcome === 'vacuous')
+            .map(
+              row =>
+                `${row.attempt?.reach?.reached ?? 0} of ${row.attempt?.reach?.cases ?? 0} generated cases reached the guarded consequence on ${row.target}`,
+            )
+            .join(', ') +
+          '; the claim behind the guard was not tested by generated cases.',
       };
     if (['failed', 'incomplete'].includes(status))
       return {

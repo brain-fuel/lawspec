@@ -35,6 +35,8 @@ import {
 import {applyRequirements, gradleFor, prepareProject} from '../prepare.mjs';
 import {
   recordNativeAttempts,
+  applyReach,
+  reachText,
   nativeSeed,
   attestedKeys,
   readNativeObservations,
@@ -587,9 +589,14 @@ async function lastRuns()
   // targets a failure outweighs a pass.
   const outcomes = new Map();
   const rank = o =>
-    ['passed', 'known-discrepancy', 'skipped', 'incomplete', 'failed'].indexOf(
-      o,
-    );
+    [
+      'passed',
+      'known-discrepancy',
+      'skipped',
+      'vacuous',
+      'incomplete',
+      'failed',
+    ].indexOf(o);
   for (const name of (await readOptionalDirectory(folder)) ?? [])
   {
     if (!name.endsWith('.json')) continue;
@@ -621,11 +628,22 @@ async function lastRuns()
       runs.set(law, {
         flaky: known.flaky || run.flaky,
         adequacy: run.adequacy ?? known.adequacy,
+        reach: run.reach ?? known.reach,
+        vacuous: known.vacuous,
         passed: latest.passed,
         seed: latest.seed,
         environment: latest.environment,
       });
     }
+    // A law whose last attempt on a target was vacuous has no passing run
+    // there; it is vacuous whatever another target recorded.
+    for (const [law, attempt] of Object.entries(recorded.attempts ?? {}))
+      if (attempt.outcome === 'vacuous')
+        runs.set(law, {
+          ...(runs.get(law) ?? {}),
+          vacuous: true,
+          reach: attempt.reach,
+        });
   }
   return {runs, attestations, outcomes};
 }
@@ -1310,6 +1328,20 @@ async function runTests(compiler, input, selected, roots, config)
           : {}),
       };
     }
+    // Reach: a guarded law none of whose generated cases reached the
+    // consequence is vacuous, not passed, and keeps no passing run.
+    const vacuous = applyReach(
+      attempts,
+      stale.filter(entry => passed.includes(entry)),
+      statistics,
+    );
+    for (const entry of vacuous) delete laws[entry.law];
+    for (const entry of passed)
+      if (laws[entry.law] && attempts[entry.law]?.reach)
+        laws[entry.law].reach = attempts[entry.law].reach;
+    const reachLines = stale.flatMap(entry =>
+      reachText(entry, attempts[entry.law]),
+    );
     // A law that failed is recorded with its seed; one that passed leaves.
     for (const entry of stale)
     {
@@ -1403,6 +1435,8 @@ async function runTests(compiler, input, selected, roots, config)
       ...(unrun.length ? {unrun: unrun.map(e => e.law)} : {}),
       ...(flaky.length ? {flaky: [...new Set(flaky)]} : {}),
       ...(unmet.length ? {unmetCover: unmet} : {}),
+      ...(vacuous.length ? {vacuous: vacuous.map(e => e.law)} : {}),
+      ...(reachLines.length ? {reach: reachLines} : {}),
       ...(benchmarks.length ? {benchmarks} : {}),
       ...(parallelism.length ? {parallelism} : {}),
       ...(coverageError ? {coverageError} : {}),
@@ -1439,6 +1473,10 @@ async function runTests(compiler, input, selected, roots, config)
               (s.unmetCover
                 ? `\nCover not met: ${s.unmetCover.join('; ')}`
                 : '') +
+              (s.reach ? `\nGuarded laws:\n${s.reach.join('\n')}` : '') +
+              (s.vacuous
+                ? `\n${s.vacuous.length} law(s) VACUOUS: no generated case reached the guarded consequence, so the run is incomplete.`
+                : '') +
               (s.parallelism
                 ? '\n' +
                   s.parallelism
@@ -1463,6 +1501,8 @@ async function runTests(compiler, input, selected, roots, config)
           .join('\n'),
   );
   if (summaries.some(s => !s.ok)) process.exitCode = 1;
+  // A vacuous law neither passed nor failed: the run is incomplete.
+  else if (summaries.some(s => s.vacuous)) process.exitCode = 2;
 }
 // --report junit=path: one JUnit report merged across targets.
 function parseReport(value)
@@ -2181,6 +2221,8 @@ async function main()
     // run was flaky, and a law whose tests it skips.
     ['known-discrepancy', 'KNOWN DISCREPANCY'],
     ['flaky', 'FLAKY'],
+    // A law whose last run reached no guarded consequence.
+    ['vacuous', 'VACUOUS'],
     ['skipped', 'SKIPPED'],
     // A law about an open history that the entries so far do not decide.
     ['pending', 'PENDING'],
@@ -2392,10 +2434,23 @@ async function main()
       if (item.nativeEvidence) return item;
       const run = item.stage === 'law' ? runs.get(item.declaration) : undefined;
       if (!run) return item;
+      // A law whose last run was vacuous is not tested by it.
+      if (run.vacuous)
+        return {
+          ...item,
+          ...(run.reach ? {reach: run.reach} : {}),
+          ...(['property-tested', 'exhaustively-checked'].includes(item.status)
+            ? {
+                status: 'vacuous',
+                reason: `${item.reason}; in its last run ${run.reach?.reached ?? 0} of ${run.reach?.cases ?? 0} generated cases reached the guarded consequence`,
+              }
+            : {}),
+        };
       return {
         ...item,
         lastNativeRun: {passed: run.passed, seed: run.seed},
         ...(run.adequacy ? {adequacy: run.adequacy} : {}),
+        ...(run.reach ? {reach: run.reach} : {}),
         ...(run.flaky &&
         ['property-tested', 'exhaustively-checked'].includes(item.status)
           ? {
