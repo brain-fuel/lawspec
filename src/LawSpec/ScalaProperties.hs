@@ -27,7 +27,8 @@ import LawSpec.ScalaTestHelpers (scalarGenerators)
 import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod)
 import LawSpec.Naming (displayLabel)
 import LawSpec.SourceLink (generatedHeader, labelled, locationLink, originLocation, exampleLocation)
-import Data.List (intercalate, nub, sort, stripPrefix)
+import Data.List (intercalate, mapAccumL, nub, sort, stripPrefix)
+import LawSpec.Core.Vacuity (guardDirected, propositionGuards)
 
 -- | What the Scala test emitter needs besides the plan: names, layout and
 -- bindings, gathered so the emitter takes one argument.
@@ -392,6 +393,17 @@ emitTestsWith split Config{..} unit laws = do
         in if structural (expressionType a)
           then call "LawSpecTesting.check" [message, text "Schema", reference (expressionType a), text "MachineBits", text "symbols", expr a, expr b]
           else call "LawSpecTesting.check" [message, expr a, expr b]
+    -- A law's claim with each guard counted: generated cases pass a guard's
+    -- value through LawSpecRuntime.reach, which returns it, so lawspec test
+    -- can say how many reached the consequence. ref:DEC-vacuous-outcome
+    reachingAssertion label context = snd . site (0 :: Int)
+      where
+        site next proposition = case proposition of
+          AssertAll ps -> let (after, docs) = mapAccumL site next ps in (after, statements docs)
+          AssertImplies guard body ->
+            let (after, inner) = site (next + 1) body
+            in (after, braced (L.condition "if" (runtime "reach" [quoted label, number next, truth (expr guard), text "generated"])) [inner])
+          _ -> (next, contextualAssertion context proposition)
     expressionLink a = case originLocation (C.expressionOrigin a) of
       Just l | take 1 (file l) /= "<" -> Just (locationLink l)
       _ -> Nothing
@@ -437,14 +449,17 @@ emitTestsWith split Config{..} unit laws = do
           exampleContext ex = shown ++ " example " ++ displayLabel (exampleName ex)
           checkNames = map inputId (inputs e) ++
             [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
-          lawAssertion context = call (base' ++ "Check")
-            [context, text "symbols", call "Array[LawSpecRuntime.Value]" (map text checkNames)]
+          -- A guarded law's check is told whether the case was generated.
+          guarded = not (null (propositionGuards (assertion e)))
+          lawAssertion = claimAssertion True
+          claimAssertion generated context = call (base' ++ "Check")
+            ([context, text "symbols", call "Array[LawSpecRuntime.Value]" (map text checkNames)] ++ [text (if generated then "true" else "false") | guarded])
       exampleDocs <- mapM (\(suffix,ex) -> pure $ comment 6 [labelled ("example " ++ displayLabel (exampleName ex))
           (fmap locationLink (exampleLocation ex))] <>
         testFunction (fn ++ "_" ++ suffix) (withSymbols
         (handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (contextualAssertion (\l -> quoted (labelled (exampleContext ex) l))) (expectations ex) ++
-          [lawAssertion (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
+          [claimAssertion False (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
       cover <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (caseCover e)
       (coverDeclarations, coverData) <- Finite.coverBindings finiteCall id literal
         (\n value -> D.bestFit [text (visibility ++ "val " ++ n ++ " = ") <> value,
@@ -463,9 +478,9 @@ emitTestsWith split Config{..} unit laws = do
               [bracketed e [lawAssertion context]]))
             | C.harnessSkip h == Nothing] ++
             [braced (L.parameters (text (visibility ++ "def " ++ base' ++ "Check"))
-              [text "context: String", text "symbols: LawSpecScala.Symbols", text "values: Array[LawSpecRuntime.Value]"] <> text ": Unit =")
+              ([text "context: String", text "symbols: LawSpecScala.Symbols", text "values: Array[LawSpecRuntime.Value]"] ++ [text "generated: Boolean" | guarded]) <> text ": Unit =")
               ([bind n (text ("values(" ++ show i ++ ")")) | (i,n) <- zip [0::Int ..] checkNames] ++
-               [contextualAssertion (const (text "context")) (assertion e)])
+               [(if guarded then reachingAssertion label else contextualAssertion) (const (text "context")) (assertion e)])
             | C.harnessSkip h == Nothing]
           caseBody = L.arrow "()" caseCall
           extraBodies = [braced (text "locally")
@@ -513,7 +528,7 @@ emitTestsWith split Config{..} unit laws = do
         else if constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
           then (:[]) <$> contextualProperty fn propertyLabel e check
         else if any (structural . inputType) (inputs e) then pure [nativeProperty fn propertyLabel e check]
-        else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
+        else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" || guardDirected (inputs e) (map generatorHints (generationPlan e))
           then (:[]) <$> refinedProperty fn propertyLabel e check
           else pure [nativeProperty fn propertyLabel e check]
       let kinds = ["_" ++ s | s <- take (length exampleDocs) exampleSuffixes] ++

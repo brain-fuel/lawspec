@@ -30,7 +30,8 @@ import qualified LawSpec.Core.Machine as C
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
-import Data.List (intercalate, stripPrefix, nub)
+import Data.List (intercalate, mapAccumL, stripPrefix, nub)
+import LawSpec.Core.Vacuity (guardDirected, propositionGuards)
 import Data.Maybe (listToMaybe)
 import Control.Monad (unless)
 import Data.Char (toLower, isAlphaNum)
@@ -432,6 +433,17 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
               else map (quoted . typeKey . expressionType) [left,right]
             helper = if structural then "_lawspec_data_assert" else "_lawspec_assert"
         in statement (invoke helper (arguments ++ extra))
+    -- A law's claim with each guard counted: generated cases pass a guard's
+    -- value through the runtime's reach, which returns it, so lawspec test
+    -- can say how many reached the consequence. ref:DEC-vacuous-outcome
+    reachingAssertion label fallback context = snd . site (0 :: Int)
+      where
+        site next proposition = case proposition of
+          AssertAll propositions -> let (after, docs) = mapAccumL site next propositions in (after, statements docs)
+          AssertImplies guard body ->
+            let (after, inner) = site (next + 1) body
+            in (after, PythonExpr.suite (text "if " <> runtime "reach" [message label, text (show next), renderBody guard, text "_generated_case"]) inner)
+          _ -> (next, assertionDocWith fallback context proposition)
     conjunction [] = text "True"
     -- Python operands are calls or already parenthesised.
     conjunction [x] = x
@@ -461,10 +473,13 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
           assertionNames = map inputId (inputs e) ++
             [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
           assertionContext link = Doc.operation [text "_case_context", message (labelled "" link)] ["+"]
-          assertionFunction = function sharedAssertion ("_case_context" : "symbols" : assertionNames)
-            (assertionDocWith lawLink assertionContext (assertion e))
-          checkClaim context = statement (invoke sharedAssertion
-            (context : text "symbols" : map text assertionNames))
+          -- A guarded law's check is told whether the case was generated.
+          guarded = not (null (propositionGuards (assertion e)))
+          assertionFunction = function sharedAssertion ("_case_context" : "symbols" : assertionNames ++ ["_generated_case" | guarded])
+            ((if guarded then reachingAssertion label else assertionDocWith) lawLink assertionContext (assertion e))
+          checkClaim = claim True
+          claim generated context = statement (invoke sharedAssertion
+            (context : text "symbols" : map text assertionNames ++ [text (if generated then "True" else "False") | guarded]))
           shown = shownLaw e
           exampleContext example = shown ++ " example " ++ displayLabel (exampleName example)
           linked context link test = Doc.lineComment 80 "# " (labelled context link) <> test
@@ -475,7 +490,7 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
             (prefix ++ suffix) (
               (withSymbols e ([assign name (render value) | (name,value) <- bindings example] ++
                [bracket e (statements (map (assertionDocLinked lawLink (exampleContext example)) (expectations example) ++
-                 [checkClaim (message shown)]))]))) |
+                 [claim False (message shown)]))]))) |
             (suffix,example) <- zip exampleSuffixes (examples (original e))]
           finite = finiteCases e
           cases' = maybe (boundaryCases e) id finite
@@ -541,7 +556,7 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
       drawn <- if not (null (C.harnessDraws harness)) then pure <$> harnessProperty prefix e body else pure []
       let properties = if maybe False (const True) finite then [] else
             if not (null drawn) then drawn else
-            [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
+            [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" || guardDirected (inputs e) (map generatorHints (generationPlan e)) then refined else ordinary]
           propertyDocs = map (linked (short ++ ", property") lawLink) properties
           propertySuffixes = ["_property" | not (null properties)]
           renderTests suffixes docs = if wrapped then concat

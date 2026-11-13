@@ -29,7 +29,8 @@ import LawSpec.Bounds (inputRange)
 import LawSpec.Core.Program (Program(..), programSpec)
 import qualified LawSpec.Core.Machine as C
 import Data.Aeson (toJSON)
-import Data.List (intercalate, isPrefixOf, stripPrefix, nub)
+import Data.List (intercalate, isPrefixOf, mapAccumL, stripPrefix, nub)
+import LawSpec.Core.Vacuity (guardDirected, propositionGuards)
 import Data.Maybe (listToMaybe)
 import Control.Monad (foldM)
 import Data.Char (toLower)
@@ -406,6 +407,17 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
             helper = (if structural then "checkData" else "check") ++ (if asyncMode then "Async" else "")
         in [E.ExprStmt (awaitIf (runtime helper arguments))]
       _ -> []
+    -- A law's claim with each guard counted: generated cases pass a guard's
+    -- value through the runtime's reach, which returns it, so lawspec test
+    -- can say how many reached the consequence. ref:DEC-vacuous-outcome
+    reachingAssertion label generated fallback context = snd . site (0 :: Int)
+      where
+        site next proposition = case proposition of
+          AssertAll propositions -> let (after, statements) = mapAccumL site next propositions in (after, concat statements)
+          AssertImplies guard body ->
+            let (after, inner) = site (next + 1) body
+            in (after, [E.If (runtime "reach" [E.Str label, E.num (toInteger next), render guard, E.Ident generated]) inner Nothing])
+          _ -> (next, assertionWith fallback context proposition)
     conjunction expressions = case expressions of
       [] -> E.BoolLit True
       _ -> foldl1 E.and' expressions
@@ -420,12 +432,16 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
           assertionNames = map inputId (inputs e) ++
             [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
           contextName = fst (claimAll (scopeWith assertionNames) ["caseContext"]) !! 0
+          generatedName = fst (claimAll (scopeWith (contextName : assertionNames)) ["generatedCase"]) !! 0
           assertionContext link = E.Binary "+" (E.Ident contextName) (E.Str (labelled "" link))
+          -- A guarded law's check is told whether the case was generated.
+          guarded = not (null (propositionGuards (assertion e)))
           assertionFunction = E.FunctionDecl False asyncMode sharedAssertion []
-            (map E.param (contextName : "symbols" : assertionNames)) Nothing
-            (assertionWith lawLink assertionContext (assertion e))
-          checkClaim context = E.ExprStmt (awaitIf (E.call sharedAssertion
-            (context : E.Ident "symbols" : map E.Ident assertionNames)))
+            (map E.param (contextName : "symbols" : assertionNames ++ [generatedName | guarded])) Nothing
+            ((if guarded then reachingAssertion label generatedName else assertionWith) lawLink assertionContext (assertion e))
+          checkClaim = claim True
+          claim generated context = E.ExprStmt (awaitIf (E.call sharedAssertion
+            (context : E.Ident "symbols" : map E.Ident assertionNames ++ [E.BoolLit generated | guarded])))
           shown = shownLaw e
           exampleContext example = shown ++ " example " ++ displayLabel (exampleName example)
           lawLink = if null (file (location (original e))) then Nothing else Just (locationLink (location (original e)))
@@ -435,7 +451,7 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
             testCall (label ++ " example: " ++ exampleName example)
               (withSymbols e ([E.constDecl n' (render value) | (n',value) <- bindings example] ++
                 bracket e (concatMap (assertion' lawLink (exampleContext example)) (expectations example) ++
-                  [checkClaim (E.Str shown)])))
+                  [claim False (E.Str shown)])))
             | example <- examples (original e)]
           finite = finiteCases e
       cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
@@ -494,7 +510,7 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
       drawn <- if not (null (C.harnessDraws harness)) then pure <$> harnessProperty label e body else pure []
       let properties = if maybe False (const True) finite then [] else
             if not (null drawn) then drawn else
-            [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
+            [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" || guardDirected (inputs e) (map generatorHints (generationPlan e)) then refined else ordinary]
           tests = examples' ++ boundaries' ++ map (linked (short ++ ", property") lawLink) properties
       pure ([E.Comment (concatMap commentLines (lawCommentLines e))] ++
             (if C.harnessSkip harness /= Nothing then [] else [assertionFunction,E.Blank]) ++ fst searchDocs ++ [E.Blank | not (null (fst searchDocs))] ++

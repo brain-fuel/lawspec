@@ -5489,6 +5489,60 @@ def wire_encoded(text, seed, size, count):
     ]
 
 
+# Reach: how many generated cases satisfied each guard of a law's claim
+# (docs/reference/refinements.md, "Guards and reach"). A generated test
+# passes each guard's value through reach, which counts it and returns it
+# unchanged, so a guard, and any adapter it calls, is evaluated exactly once.
+# The counts of each law are written when the interpreter exits, as one JSON
+# file under LAWSPEC_STATS, which lawspec test reads. Example tests are not
+# generated cases and are not counted.
+_reach_counts = {}
+_reach_lock = threading.Lock()
+
+
+def _write_law_reach(directory, law, sites):
+    import json
+    import os
+
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in law)
+    name = f"reach_{safe}_{os.getpid()}.json"
+    counts = [{"evaluated": e, "held": h} for e, h in sites]
+    with open(os.path.join(directory, name), "w", encoding="utf-8") as out:
+        json.dump({"law": law, "reach": counts}, out)
+
+
+def _write_reach():
+    import os
+
+    directory = os.environ.get("LAWSPEC_STATS")
+    try:
+        os.makedirs(directory, exist_ok=True)
+        with _reach_lock:
+            for law, sites in _reach_counts.items():
+                _write_law_reach(directory, law, sites)
+    except Exception:  # noqa: BLE001 - statistics never fail a run
+        pass
+
+
+def reach(law, site, held, generated):
+    import os
+
+    if not generated or not os.environ.get("LAWSPEC_STATS"):
+        return held
+    with _reach_lock:
+        if not _reach_counts:
+            import atexit
+
+            atexit.register(_write_reach)
+        sites = _reach_counts.setdefault(law, [])
+        while len(sites) <= site:
+            sites.append([0, 0])
+        sites[site][0] += 1
+        if held:
+            sites[site][1] += 1
+    return held
+
+
 # The failure database's inputs (see LawSpec.Search): a failing case's
 # inputs, each in the wire encoding of its descriptor, kept under
 # LAWSPEC_FAILURES/inputs and replayed before the law's next generated cases.
