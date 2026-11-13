@@ -11,12 +11,12 @@ lawspec lsp --stdio
 lawspec mcp [--config <path>]
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--no-install] [--config <path>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec check [--warn-matches] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec check [--warn-matches] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--timings] [--config <path>]
 lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec explain [<unit>::<law>] [--view eng|math|dev] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
-lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--timings] [--config <path>]
+lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--timings] [--config <path>]
 lawspec describe --json [--config <path>]
 lawspec fetch [--locked] [--offline] [--config <path>]
 lawspec update [<package>] [--config <path>]
@@ -45,6 +45,7 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
 | `--minify` | Compact output. Used by `init`, `generate`, `test` generation and `examples`; required language line breaks remain. |
 | `--no-cache` | Do not read or write the compiler cache for this command. |
+| `--timings` | Print, on standard error, a table of the compiler's stages and the milliseconds each took, once per compiler request. For `check`, `generate` and `test`; see [progress and timings](#progress-and-timings). |
 
 ## Project setup
 
@@ -129,20 +130,68 @@ patterns, tuple types and tuple values are retained.
 
 ## The compiler cache
 
-`check`, `evidence`, `explain` and `generate` keep the compiler's work in
-`.lawspec/cache` next to the configuration file, and reuse it on later runs:
-each law is expanded, elaborated and planned again only when it or something
-it depends on changes, and each unit's files are emitted again only when
-their inputs change. The results are the same as without the cache.
+`check`, `evidence`, `explain`, `generate`, `prove` and `test` keep the
+compiler's work in a cache directory and reuse it on later runs: each law is
+expanded, elaborated and planned again only when it or something it depends
+on changes, and each unit's files are emitted again only when their inputs
+change. The results are the same as without the cache. One command also
+compiles once: the advice that `check` and `generate` print uses the same
+compiler instance and the same cache as the command itself.
 
-- The cache holds one folder per compiler build; upgrading LawSpec discards
-  the previous build's folder.
-- It contains its own `.gitignore`, so it is never committed.
-- A damaged entry is recomputed and replaced. Deleting the folder is always
-  safe.
-- `--no-cache`, or `"cache": false` in `lawspec.edn`, turns it off. It is also
-  off when the configuration file is outside the working directory, which the
-  WebAssembly compiler cannot reach.
+The directory is the first of these that is set:
+
+1. `LAWSPEC_COMPILER_CACHE`, relative to the working directory. (It is not
+   `LAWSPEC_CACHE_DIR`, which is the package cache.)
+2. `:cache-directory` in `lawspec.edn`, relative to that file.
+3. `.lawspec/cache` next to the configuration file.
+
+- An entry is `<directory>/<build>/<table>/<entry>`, with names of 16, 3 and
+  32 characters: 54 characters below the directory. Windows refuses a path of
+  260 characters or more unless `LongPathsEnabled` is set, so the default
+  directory fits a project path of up to 190 characters. A directory named by
+  `LAWSPEC_COMPILER_CACHE` or `:cache-directory` can be short, and several
+  projects can share it.
+- The cache holds one folder per compiler build. In `.lawspec/cache`,
+  upgrading LawSpec discards the previous build's folder, and the folder has
+  its own `.gitignore`, so it is never committed. LawSpec removes nothing
+  from a directory you name.
+- A damaged entry is recomputed and replaced. Deleting the directory is
+  always safe.
+- An entry that cannot be written changes no result. The command prints one
+  warning on standard error with the reason, the path and its length, and
+  `lawspec doctor` checks the directory.
+- `--no-cache`, or `:cache false` in `lawspec.edn`, turns it off.
+- `lawspec inspect` and `lawspec advise` write nothing, so they keep no cache.
+
+## Progress and timings
+
+On a terminal, `check`, `generate` and `test` show the compiler's current
+stage on one line of standard error, which is cleared when the compiler
+returns. Nothing is shown with `--json` or when standard error is not a
+terminal.
+
+`--timings` prints a table for each request the command makes of the compiler
+(`check`, then `inspect` for each target's advice, then `planGeneration`):
+
+```text
+lawspec timings: inspect java (5612 ms)
+  parse                            759 ms
+  imports                         1129 ms
+  validate lawspec.text            186 ms
+  expand prelude                     2 ms  (29 runs)
+  emit java                       1347 ms
+  (outside the stages above)       589 ms
+```
+
+A row is a stage and the unit or target it worked on. Its time excludes the
+stages that ran inside it, and repeated runs of one row are added up. Work a
+stage leaves unevaluated is counted where it is first needed, so read the
+table as where the time went, not as a profile of each function. A request
+the compiler answers from memory has few rows.
+
+`LAWSPEC_CACHE_TRACE=1` adds a line for each cache table miss: the table,
+whether the entry was read from disk, computed, or too heavy to keep, its
+weight and its time.
 
 Options that take a value require one. Unknown options, and positional
 arguments where none are expected, are errors. The command exits with status 1
@@ -345,6 +394,13 @@ build tools are checked by the [artifact acceptance workflow](artifact-targets.m
 Inspects each selected target's environment and prints `ready`, or a message
 and setup instructions. Exits with status 1 if any target is not ready. See
 [Diagnose your environment with doctor](../how-to/run-doctor.md).
+
+It also checks the project's [compiler cache](#the-compiler-cache), unless the
+cache is off: it creates and removes the deepest path the compiler would
+write there, and prints `compiler cache: ready` with the directory and that
+path's length, or the reason it cannot be written. On Windows it reports the
+`LongPathsEnabled` registry setting. With `--json` the check is one more
+report, whose `target` is `compiler cache`.
 
 ## `generate`
 

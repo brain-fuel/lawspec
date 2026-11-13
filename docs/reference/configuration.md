@@ -66,7 +66,8 @@ tags and executable forms are rejected. JSON manifests are no longer accepted.
 | `dependencies` | map | No | Package names mapped to ranges or source maps: `:version` plus `:path`, `:git` or `:archive`. |
 | `packages` | array of paths | No | Package directories to load, each with a `lawspec.edn`. Explicit path dependencies may also select local packages; Git and archive dependencies are fetched automatically. |
 | `inputs` | array of paths | No | Native implementation or data files and directories, relative to this manifest; sibling directories are supported. See component descriptions below. |
-| `cache` | boolean | No | Keep the compiler's work in `.lawspec/cache` between runs. Default `true`; see [the compiler cache](cli.md#the-compiler-cache). |
+| `cache` | boolean | No | Keep the compiler's work between runs. Default `true`; see [the compiler cache](cli.md#the-compiler-cache). |
+| `cache-directory` | path | No | Where the compiler keeps that work, relative to this manifest. Default `.lawspec/cache`. A short directory outside the project keeps Windows paths under 260 characters and can be shared by projects; the `LAWSPEC_COMPILER_CACHE` environment variable overrides it. |
 | `attestation` | path | No | An environment attestation that `lawspec test` and `lawspec evidence` read when `--attestation` is not given; see [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran). |
 
 Which optional law layers are selected is explicit in the manifest. How those checks run (strategies, handlers, adequacy, tags, timeouts and

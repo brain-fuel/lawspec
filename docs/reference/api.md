@@ -78,6 +78,8 @@ interface CheckRequest {
   dependencies?: Record<string, string>;
   packages?: Package[];
   cacheDirectory?: string;                  // keep work between runs here
+  cacheAdvisory?: boolean;                  // let inspect and advise use cacheDirectory
+  progress?: Progress | Progress[];         // 'lines' | 'terminal' | 'timings', on standard error
   attestation?: unknown;                    // an environment attestation document
   attestedOutcomes?: Record<string, string>; // law -> outcome recorded in its run
 }
@@ -107,10 +109,18 @@ interface GenerationRequest extends CheckRequest {
   [formatting](formatting.md).
 - `cacheDirectory` names a folder where the compiler keeps its work, so later
   requests reuse what did not change; results are identical either way. The
-  folder is created as needed, and entries are tied to the compiler version.
-  The WebAssembly compiler resolves it against the working directory, the
-  only directory it can reach. Use one folder per compiler build; the CLI does
-  (see [the compiler cache](cli.md#the-compiler-cache)).
+  folder is created as needed and mounted for the compiler, wherever it is.
+  Entries live in a folder per compiler build below it, so one folder serves
+  several builds (see [the compiler cache](cli.md#the-compiler-cache)). A
+  result has `cacheFailure`, with a `path` and a `reason`, when an entry could
+  not be stored; the result is otherwise unchanged.
+- `inspect` and `advise` write nothing, so they ignore `cacheDirectory`
+  unless `cacheAdvisory` is true. The CLI sets it for the advice inside
+  `check` and `generate`, which keep a cache already.
+- `progress` makes the compiler report its stages on standard error:
+  `'lines'` writes `lawspec-progress <stage> <ms> [<unit or target>]` as each
+  stage ends, `'terminal'` rewrites one line, and `'timings'` prints a table
+  when the request ends. It changes no result.
 - `attestation` is an environment attestation document, version 1 (see
   [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran)).
   A malformed one, or an unknown format or version, is a diagnostic with code
