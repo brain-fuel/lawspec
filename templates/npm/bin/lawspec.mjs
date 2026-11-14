@@ -1212,6 +1212,26 @@ async function runTests(compiler, input, selected, roots, config)
     const seedOf = new Map();
     for (const batch of batches)
     {
+      // A native process starts for this batch now: if this run is
+      // interrupted, its laws were started and are incomplete, not not-run.
+      Object.assign(
+        attempts,
+        recordNativeAttempts({laws: batch.entries, command: null}, [], {
+          keys,
+          seed: batch.seed,
+          ok: false,
+          profile,
+          allEntries: planned.tests,
+        }),
+      );
+      await atomicWrite(
+        resultsFile,
+        JSON.stringify(
+          {...previous, version: 1, laws: pendingLaws, attempts},
+          null,
+          2,
+        ) + '\n',
+      );
       let progress = startBatch();
       for (const run of invocations(target, batch.entries, {
         offline,

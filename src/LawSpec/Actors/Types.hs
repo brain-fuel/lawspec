@@ -1,8 +1,8 @@
 -- | What an actor's typed class on a target is made from (see LawSpec.Actors).
-module LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..), actorsOf, supervisionsOf) where
+module LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..), actorsOf, casedActor, supervisionsOf) where
 
 import qualified LawSpec.Core as C
-import LawSpec.Naming (sourceParameterNames)
+import LawSpec.Naming (sourceParameterNames, parameterNames)
 import Data.Char (toUpper)
 import LawSpec.Core.Machine
 
@@ -57,6 +57,18 @@ data Handler = Handler
   -- The reply's type; Nothing when the handler returns the state alone.
   , handlerReply :: Maybe C.Type
   }
+
+-- | An actor with its argument names spelled for a target: the model's names
+-- are the spec's (hakker_1), and a target's parameters follow its own casing
+-- (hakker1 in Java) and avoid its keywords. ref:DEC-generated-parameter-names
+casedActor :: String -> Actor -> Actor
+casedActor target a = a
+  { actorStartArguments = cased (actorStartArguments a)
+  , actorHandlers = [h { handlerArguments = cased (handlerArguments h) } | h <- actorHandlers a] }
+  where
+    cased arguments =
+      zip (parameterNames target [] "argument" (C.DeclaredParameters (map (Just . fst) arguments)) (map snd arguments))
+        (map snd arguments)
 
 -- | The unit's actors, with each adapter's argument names from its contract.
 actorsOf :: C.Unit -> [Actor]

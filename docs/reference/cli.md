@@ -758,7 +758,10 @@ See [authoring advisories](authoring-advisories.md) for `prelude`, `inspect`,
 `lawspec mutate [paths...] --target go --json` runs acceptance-format `.mutant`
 files. With no paths, it recursively finds `mutants/**/*.mutant`. Each file has
 optional `expect:` / `expect-any:` output expectations, optional `forbid:`
-lines naming text the failing output must not contain, then edits:
+lines naming text the failing output must not contain, an optional
+`output-unchecked-on: <targets> | <reason>` line naming targets where the mutant
+must fail but its output is not held to those expectations (the result carries
+the reason as `outputUnchecked`), then edits:
 
     expect: sample::identity
     @@ native/adapter.go

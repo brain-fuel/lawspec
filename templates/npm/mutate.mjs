@@ -26,6 +26,7 @@ export function parseMutant(content)
     edits = [];
   let at = 0,
     rejection = null,
+    outputUnchecked = null,
     file;
   while (at < lines.length && !lines[at].startsWith('@@ '))
   {
@@ -37,6 +38,18 @@ export function parseMutant(content)
     else if (line.startsWith('expect-any: '))
       expectations.push(line.slice(12).split(' | '));
     else if (line.startsWith('forbid: ')) forbidden.push(line.slice(8));
+    else if (line.startsWith('output-unchecked-on: '))
+    {
+      // The mutant must still fail on these targets; only its output is not
+      // held to the expectations there, for the stated reason.
+      const [targets, ...reason] = line.slice(21).split('|');
+      outputUnchecked = {
+        targets: targets.split(' ').filter(Boolean),
+        reason: reason.join('|').trim(),
+      };
+      if (!outputUnchecked.targets.length || !outputUnchecked.reason)
+        throw new Error('output-unchecked-on needs targets, then | and a reason');
+    }
     else throw new Error(`unexpected header line: ${line}`);
   }
   while (at < lines.length)
@@ -65,7 +78,7 @@ export function parseMutant(content)
     });
   }
   if (!edits.length) throw new Error('mutation has no edits');
-  return {expectations, forbidden, edits, rejection};
+  return {expectations, forbidden, edits, rejection, outputUnchecked};
 }
 
 export async function applyMutant(root, mutant)
@@ -182,7 +195,7 @@ function execute(root, args, timeout)
   });
 }
 
-export function classifyMutation(run, mutant)
+export function classifyMutation(run, mutant, target)
 {
   const failedLaws = [
     ...new Set(
@@ -210,6 +223,12 @@ export function classifyMutation(run, mutant)
       failedLaws,
       reason: 'No individually identified executed failing law',
       diagnostics: run.report?.diagnostics,
+    };
+  if (mutant.outputUnchecked?.targets.includes(target))
+    return {
+      status: 'killed',
+      failedLaws,
+      outputUnchecked: mutant.outputUnchecked.reason,
     };
   if (
     !mutant.expectations.every(alternatives =>
@@ -392,7 +411,7 @@ export async function mutateProject({
             : args,
           timeout,
         );
-        mutations.push({name, ...classifyMutation(result, mutant)});
+        mutations.push({name, ...classifyMutation(result, mutant, target)});
       }
       catch (error)
       {

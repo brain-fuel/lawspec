@@ -76,6 +76,30 @@ test('acceptance mutation format, strict edits and failure classifications', asy
     ).status,
     'errored',
   );
+  // On a target whose output is declared unchecked the mutant need only fail.
+  const unchecked = parseMutant(
+    'forbid: law two\noutput-unchecked-on: go rust | native rendering\n' +
+      source,
+  );
+  assert.deepEqual(unchecked.outputUnchecked, {
+    targets: ['go', 'rust'],
+    reason: 'native rendering',
+  });
+  const failing = {
+    code: 1,
+    report: [{failedLaws: ['unit::one']}],
+    output: 'broken law two',
+  };
+  assert.deepEqual(classifyMutation(failing, unchecked, 'go'), {
+    status: 'killed',
+    failedLaws: ['unit::one'],
+    outputUnchecked: 'native rendering',
+  });
+  assert.equal(classifyMutation(failing, unchecked, 'java').status, 'errored');
+  assert.throws(
+    () => parseMutant('output-unchecked-on: go\n' + source),
+    /needs targets, then \| and a reason/,
+  );
 });
 
 test('passing baseline, kill matrix and workspace preservation use independent copies', async t =>

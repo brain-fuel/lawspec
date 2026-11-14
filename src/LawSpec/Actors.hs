@@ -7,7 +7,7 @@
 module LawSpec.Actors (actorArtifacts) where
 
 import LawSpec.ActorRuntime (ActorRemote(..), ActorRuntime(..), ActorSettings(..), actorRuntimeName)
-import LawSpec.Actors.Types (actorsOf, supervisionsOf)
+import LawSpec.Actors.Types (actorsOf, casedActor, supervisionsOf)
 import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.Testing (Plan(..), PlannedUnit(..))
 import qualified LawSpec.Actors.Python as Python
@@ -27,7 +27,7 @@ actorArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 actorArtifacts minify target plan = case concatMap actorsOf units of
   [] -> Right []
   actors -> either (\message -> Left [Diagnostic "actors" message Nothing]) Right
-    (emitter target minify bits datas actors (concatMap supervisionsOf units))
+    (emitter target minify bits datas (map (casedActor target) actors) (concatMap supervisionsOf units))
   where
     units = map plannedUnit (plannedUnits plan)
     datas = planDataDeclarations plan
