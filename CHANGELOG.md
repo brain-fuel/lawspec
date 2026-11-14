@@ -371,8 +371,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   10 GB. The audit now moves an inner binding out of a binding's value and
   walks a shared binding's value once, and a law's static proof binds a
   record argument once instead of copying it into every field read. The
-  example compiles in under 4 s with the same response, byte for byte. No
+  example compiles in about 4 s with the same response, byte for byte. No
   check is skipped. A record of 32 ruled fields still takes about 40 s.
+  `lawspec examples --json` for every target, which ran out of memory,
+  finishes at a peak of 2.5 GB.
 - A JavaScript or TypeScript property test over a refined record or data
   input no longer runs forever when random values do not meet the refinement.
   fast-check's `filter` never gives up; the generated filter now stops after
