@@ -297,6 +297,32 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
       T.strictLet selected (T.Variable result) (T.Variable selected) `shouldBe` T.Variable result
       let bad = T.Division False Quotient (n 1) (n 0)
       audit (T.strictLet selected bad (n 1)) `shouldSatisfy` isLeft
+    it "moves a binding out of a binding's value, so a chain of shared bindings stays linear" $ do
+      -- The shape of a record's generated violations: each binding's value
+      -- is the binding before it, and its body reads its binder twice.
+      let flag index=Id ("flag" ++ show index)
+          rest index=Id ("rest" ++ show index)
+          step index value=T.strictLet (rest index) value
+            (T.Conditional (T.Variable (flag index)) (T.Variable (rest index)) (T.ListCons (n index) (T.Variable (rest index))))
+          chain=foldr step T.ListNil [1 .. 24 :: Integer]
+          written=take 100001 (show chain)
+      -- Left in place, every level doubles the term: 2^24 nodes.
+      length written `shouldSatisfy` (<= 100000)
+      T.audit [T.ProofDefinition (Id "chain") "chain" Nothing (map flag [1 .. 24]) chain []] `shouldBe` Right ()
+    it "leaves an inner binding where its name is taken in the body" $ do
+      let inner=T.strictLet selected (T.Conditional (T.Variable result) (n 1) (n 2))
+            (T.ExactArithmetic Add (T.Variable selected) (T.Variable selected))
+          outer=T.strictLet (Id "outer") inner
+            (T.ExactArithmetic Add (T.Variable (Id "outer")) (T.ExactArithmetic Add (T.Variable (Id "outer")) (T.Variable selected)))
+      case outer of
+        T.Match (T.Match _ [([name],_)]) [([],_)] -> name `shouldBe` selected
+        other -> expectationFailure (show other)
+    it "reads a field off the product a binding names, auditing the product once" $ do
+      T.strictLet selected (T.Construct tag [n 3,n 4]) (T.Field tag 1 (Nothing,Nothing) (T.Variable selected))
+        `shouldBe` T.Match (T.Construct tag [n 3,n 4]) [([],n 4)]
+      let bad = T.Division False Quotient (n 1) (n 0)
+      audit (T.strictLet selected (T.Construct tag [bad,n 4]) (T.Field tag 1 (Nothing,Nothing) (T.Variable selected)))
+        `shouldSatisfy` isLeft
     it "retains known field values through strict source evaluation" $
       audit (match (source (T.Construct tag [n 3]))
         (T.Division False Quotient (n 9) (T.Variable selected))) `shouldBe` Right ()

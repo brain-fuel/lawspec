@@ -576,6 +576,13 @@ walk signatures contracts self provenance facts expression = case expression of
     unless (not (null choices)) (Left "known constructor has no matching branch")
     after <- concat <$> mapM (\(scope,known,body) -> walk signatures contracts self scope known body) choices
     pure (before ++ after)
+  -- A shared binding (strictLet). Its fact is the value over again, leaf by
+  -- leaf, and the value is audited as the prefix; auditing the fact as well
+  -- would audit a chain of such bindings twice at every level.
+  Match value [([binder], TypedDomain [fact] body)] | fact == bindingFact binder (bindingResult value) -> do
+    before <- recur value
+    after <- walk signatures contracts self (branchProvenance provenance value [binder]) (assume True fact facts) body
+    pure (before ++ after)
   Match value branches -> do
     before <- recur value
     after <- concat <$> mapM (branch value) branches
@@ -1355,6 +1362,16 @@ freeVariables expression = case expression of
 strictLet :: Id -> Proof -> Proof -> Proof
 strictLet binder value body = case value of
   Variable _ -> substituted
+  -- let x = (let y = v in e) in body is let y = v in let x = e in body: the
+  -- inner binding moves out, so a chain of bindings in a value becomes a
+  -- chain in the body. Left where it is, each shared binding's fact would
+  -- repeat the whole chain below it and the proof would double per binding
+  -- (let floating: Peyton Jones, Partain and Santos, "Let-floating: moving
+  -- bindings to give faster programs", ICFP 1996). The value is still
+  -- evaluated first, and y's facts are about y alone.
+  Match prefix [([name], TypedDomain facts inner)] | floats name ->
+    Match prefix [([name], TypedDomain facts (strictLet binder inner body))]
+  Match prefix [([], inner)] | chained inner -> Match prefix [([], strictLet binder inner body)]
   _ | shared -> Match value [([binder], TypedDomain [bindingFact binder result] body)]
     | otherwise -> Match value [([], substituted)]
   where
@@ -1363,10 +1380,20 @@ strictLet binder value body = case value of
     -- otherwise nested record literals double the proof tree at each level.
     -- Only a known constructor is reduced: opaque calls retain their original
     -- proof, and no constructor contract or strict prefix is discarded.
-    result = case knownResult value of
-      product@(Construct _ _) -> product
-      _ -> value
-    substituted = substituteProof (M.singleton binder result) body
+    result = bindingResult value
+    -- The inner binder must mean nothing in the body it comes to enclose.
+    floats name = name /= binder && name `notElem` allVariables body
+    chained expression = case expression of
+      Match _ [([name], TypedDomain _ _)] -> floats name
+      Match _ [([], inner)] -> chained inner
+      _ -> False
+    -- A field read off the product the binder stands for is that field: the
+    -- product itself is audited once, as the strict prefix, and the prover
+    -- reads the same field through knownResult. Copying the whole product
+    -- into every read would make a record's proof quadratic in its fields.
+    substituted = case result of
+      Construct _ _ -> substituteProduct binder result body
+      _ -> substituteProof (M.singleton binder result) body
     -- A branching or arithmetic value used more than once keeps its binder. Copying it into
     -- each use multiplies the proof by the number of uses at every dependent
     -- binding, as substitution does in verification-condition generation
@@ -1390,10 +1417,20 @@ strictLet binder value body = case value of
       DataMatch {} -> True
       ListMatch {} -> True
       Match _ [([], inner)] -> branching inner
+      -- A shared binding (below) whose body branches: the value of a
+      -- binding that is itself a chain of bindings.
+      Match _ [([_], inner)] -> branching inner
       Match _ (_ : _ : _) -> True
       TypedDomain _ inner -> branching inner
       Integral inner -> branching inner
       _ -> False
+
+-- | What a binder stands for: its value, or the product the value is known
+-- to build.
+bindingResult :: Proof -> Proof
+bindingResult value = case knownResult value of
+  product@(Construct _ _) -> product
+  _ -> value
 
 -- | What a shared binder equals, branch by branch. A Boolean leaf is an
 -- equivalence, so a later guard on the binder still decides the leaf.
@@ -1444,10 +1481,33 @@ operationLet operation binder bound body = case checked bound of
       Variable result -> Just result
       _ -> Nothing
 
+-- | A binder replaced by the product it names, each field read off the binder
+-- becoming the product's field.
+substituteProduct :: Id -> Proof -> Proof -> Proof
+substituteProduct binder product = substituteProofWith (Just binder) (M.singleton binder product)
+
 -- | Capture-avoiding substitution is required even though ordinary compiler IDs
 -- are unique: independently supplied Core may reuse binder IDs across scopes.
 substituteProof :: M.Map Id Proof -> Proof -> Proof
-substituteProof replacements expression = case expression of
+substituteProof = substituteProofWith Nothing
+
+-- | Substitution that, for the binder named, also reads fields off the
+-- product replacing it. A binder the body binds again is another value: it
+-- has left the replacements by then.
+substituteProofWith :: Maybe Id -> M.Map Id Proof -> Proof -> Proof
+substituteProofWith projecting replacements = substituteCapturing projecting replacements (replacementVariables replacements)
+
+-- | The variables free in what a substitution writes: a binder of one of
+-- these names would capture it.
+replacementVariables :: M.Map Id Proof -> S.Set Id
+replacementVariables = S.fromList . concatMap freeVariables . M.elems
+
+-- | The substitution, with the free variables of its replacements carried
+-- along. They change only under a binder that hides a replaced name or is
+-- renamed, so they are not collected again at every binder: for a record
+-- written into a long chain of bindings that was the square of its size.
+substituteCapturing :: Maybe Id -> M.Map Id Proof -> S.Set Id -> Proof -> Proof
+substituteCapturing projecting replacements captured expression = case expression of
   Variable name -> M.findWithDefault expression name replacements
   AllElements value binder body -> case branch ([binder],body) of
     ([renamed],result) -> AllElements (recur value) renamed result
@@ -1486,22 +1546,28 @@ substituteProof replacements expression = case expression of
   IsPresent value -> IsPresent (recur value)
   PresentValue value -> PresentValue (recur value)
   Opaque name values -> Opaque name (map recur values)
+  Field tag index _ (Variable name)
+    | Just name == projecting, Just (Construct actual fields) <- M.lookup name replacements
+    , actual == tag, index >= 0, selected : _ <- drop index fields -> selected
   Field tag index bounds value -> Field tag index bounds (recur value)
   where
-    recur = substituteProof replacements
+    recur = substituteCapturing projecting replacements captured
     branch (binders,body) =
-      let visible = foldr M.delete replacements binders
-          captured = concatMap freeVariables (M.elems visible)
+      let hidden = any (`M.member` replacements) binders
+          visible = if hidden then foldr M.delete replacements binders else replacements
+          capturing = if hidden then replacementVariables visible else captured
           used = S.fromList (allVariables body ++ binders ++ M.keys replacements ++
             concatMap allVariables (M.elems replacements))
           rename (names,aliases,taken) name
-            | name `notElem` captured = (names ++ [name],aliases,taken)
+            | name `S.notMember` capturing = (names ++ [name],aliases,taken)
             | otherwise =
                 let fresh = head [Id (idText name ++ "::proof::" ++ show n) | n <- [0::Int ..],
                       Id (idText name ++ "::proof::" ++ show n) `S.notMember` taken]
                 in (names ++ [fresh],M.insert name (Variable fresh) aliases,S.insert fresh taken)
           (names,aliases,_) = foldl rename ([],M.empty,used) binders
-      in (names, substituteProof (M.union aliases visible) body)
+          inner = M.union aliases visible
+      in (names, substituteCapturing projecting inner
+           (if M.null aliases then capturing else replacementVariables inner) body)
 
 allVariables :: Proof -> [Id]
 allVariables term = case term of

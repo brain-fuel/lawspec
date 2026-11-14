@@ -17,7 +17,7 @@ module LawSpec.Discharge
   ) where
 
 import Control.Monad (forM, unless)
-import Control.Monad.State.Strict (StateT, evalStateT, get, put, modify, lift)
+import Control.Monad.State.Strict (StateT, evalState, evalStateT, get, put, modify, lift)
 import Control.Monad.Except (throwError)
 import LawSpec.Naming (displayLabel)
 import Data.List (intercalate, isPrefixOf, isInfixOf)
@@ -406,7 +406,7 @@ proves program definitions p = do
 -- so its body is unfolded, a bounded number of times. Definitions with
 -- preconditions stay calls, so the audit still checks their arguments.
 inline :: Program -> [Definition] -> Expr -> Expr
-inline program definitions = go (8 :: Int)
+inline program definitions claim = evalState (go (8 :: Int) claim) (0 :: Int)
   where
     guarded = S.fromList [contractDeclaration c | c <- definitionContracts (programUnits program), not (null (contractPreconditions c))]
     -- Whether a definition unfolds is decided for the ones a claim calls, not
@@ -423,10 +423,37 @@ inline program definitions = go (8 :: Int)
           (maybe [] (callees . definitionBody) (lookupDefinition n) ++ rest)
     byId = M.fromListWith (\_ first -> first) [(declarationId (definitionDeclaration d), d) | d <- definitions]
     lookupDefinition n = M.lookup n byId
-    go depth e = rebuild (go depth) e $ case expressionNode e of
-      ExternalCall n args | depth > 0, Just d <- unfoldable n, length args == length (definitionArguments d) ->
-        Just (go (depth - 1) (substitute (M.fromList (zip (map binderId (definitionArguments d)) (map (go depth) args))) (definitionBody d)))
-      _ -> Nothing
+    go depth e = case expressionNode e of
+      ExternalCall n args | depth > 0, Just d <- unfoldable n, length args == length (definitionArguments d) -> do
+        values <- mapM (go depth) args
+        let body = definitionBody d
+            uses = freeBinders body
+        bindings <- forM (zip (definitionArguments d) values) $ \(parameter, value) ->
+          -- A record the body reads more than once is bound once, as a call
+          -- binds it, under a name of this unfolding alone; the audit then
+          -- reads each field off it (Totality.strictLet). Written into every
+          -- read, a record passed down through a few definitions is copied
+          -- at each of them, and the claim grows with the cube of its fields.
+          -- Any other argument is written into its reads, so the prover
+          -- follows the branches of a call's result as before.
+          if not (product value) || length (filter (== binderId parameter) uses) < 2 then pure (parameter, value, Nothing) else do
+            serial <- get
+            put (serial + 1)
+            pure (parameter, value, Just parameter { binderId = Id (idText (binderId parameter) ++ "::unfolded::" ++ show serial) })
+        let table = M.fromList [ (binderId parameter, maybe value (\binder -> value { expressionNode = Local (binderId binder) }) bound)
+                               | (parameter, value, bound) <- bindings ]
+        unfolded <- go (depth - 1) (substitute table body)
+        pure (foldr (\(_, value, bound) rest -> maybe rest (\binder -> rest { expressionNode = Let binder value rest }) bound) unfolded bindings)
+      _ -> traverseChildren (go depth) e
+    -- A record built here: a constructor's fields, or such a record with a
+    -- field replaced (a match on its one constructor that builds it again),
+    -- under whatever names its parts were given on the way.
+    product value = case expressionNode value of
+      Construct _ _ -> True
+      Update _ _ subject _ -> product subject
+      Match subject [only] -> product subject && product (caseBody only)
+      Let _ _ body -> product body
+      _ -> False
 
 -- | Replace locals by expressions. Core identities are unique, so a definition's
 -- binders never capture a law's inputs.
@@ -434,11 +461,6 @@ substitute :: M.Map Id Expr -> Expr -> Expr
 substitute table e = case expressionNode e of
   Local n | Just value <- M.lookup n table -> value
   _ -> rebuildWith (substitute table) e
-
--- | Apply a replacement at the root, or else rebuild the children with f.
-rebuild :: (Expr -> Expr) -> Expr -> Maybe Expr -> Expr
-rebuild _ _ (Just replaced) = replaced
-rebuild f e Nothing = rebuildWith f e
 
 rebuildWith :: (Expr -> Expr) -> Expr -> Expr
 rebuildWith = mapChildren
