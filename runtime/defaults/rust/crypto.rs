@@ -163,7 +163,8 @@ impl crate::lawspec_abilities::lawspec_crypto::Aead for AeadHandler
         }
     }
 
-    fn deriveAeadKey(&self, shared_secret: SharedSecret, key_context: std::vec::Vec<u8>) -> AeadKey
+    fn deriveAeadKey(&self, shared_secret: SharedSecret, key_context: std::vec::Vec<u8>)
+    -> AeadKey
     {
         let mut material = shared_secret.value.clone();
         material.extend_from_slice(&key_context);
@@ -172,8 +173,12 @@ impl crate::lawspec_abilities::lawspec_crypto::Aead for AeadHandler
         }
     }
 
-    fn seal(&self, key: AeadKey, plaintext: std::vec::Vec<u8>, associated_data: std::vec::Vec<u8>)
-    -> Sealed
+    fn seal(
+        &self,
+        key: AeadKey,
+        plaintext: std::vec::Vec<u8>,
+        associated_data: std::vec::Vec<u8>,
+    ) -> Sealed
     {
         let mut sealed = primitives::random_bytes(12);
         let body =

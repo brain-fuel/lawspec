@@ -173,7 +173,8 @@ emitScalaDefinitions layout bits declarations units = do
           codecNames = helperNames Camel inUse "codec" named
           valueNames = helperNames Camel (inUse ++ codecNames) "value" named
           input parameter codecName valueName codec = [assign codecName (L.receiverDoc codec),
-            D.text ("val " ++ valueName ++ " = " ++ codecName ++ ".encode(" ++ parameter ++ ")")]
+            -- (scalafmt moves a value that does not fit after the = to the next line)
+            assign valueName (call (codecName ++ ".encode") [D.text parameter])]
           body = installs ++ concat (zipWith4 input named codecNames valueNames codecs) ++
             [assign "result" (call evaluator (D.text "symbols" : map D.text (take (length args) valueNames))),
              assign "resultCodec" (L.receiverDoc resultCodec),D.text "resultCodec.decode(result)"]

@@ -360,7 +360,8 @@ object Crypto {
         override fun deriveAeadKey(
             sharedSecret: @@SharedSecret@@,
             keyContext: kotlin.ByteArray,
-        ): @@AeadKey@@ = @@AeadKey@@(shake256(sharedSecret.value + keyContext, 32))
+        ): @@AeadKey@@ =
+            @@AeadKey@@(shake256(sharedSecret.value + keyContext, 32))
 
         override fun seal(
             key: @@AeadKey@@,
