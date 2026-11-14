@@ -154,6 +154,21 @@ type lawSpecCheckedStrategy struct {
 	witnesses map[string][]LawSpecValue
 }
 
+type lawSpecProbe struct {
+	schema   *lawSpecSchema
+	key      lawSpecGeneratorKey
+	bits     int
+	attempts int
+}
+
+// A law's inputs are planned again for every case it draws, and a probe's
+// answer is the same each time: a witness that fits needs no probe, and each
+// plan starts from no symbols.
+var lsProbes sync.Map
+
+// rapid's Example retries a filtered generator a thousand times from the seed.
+const lsProbeSeed = 0x4c617753
+
 func lsDataNodes(value LawSpecValue) int {
 	count := 1
 	switch data := value.Data.(type) {
@@ -275,16 +290,53 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 	var inhabited func(lawSpecTypeRef, int) bool
 	var allocation func([]lawSpecFieldSchema, int) ([]int, bool)
 	var build func(lawSpecTypeRef, int) *rapid.Generator[LawSpecValue]
+	probing := checked != nil
+	// Whether a restricted type has a value at this budget: its filtered
+	// generator yields one from a fixed seed. A budget that only holds shapes
+	// the restriction refuses (an empty list in a wrapper that needs an
+	// element) is then no budget for the type, so an enclosing constructor
+	// gives it more or is left out. The probe draws from its own seed, so a
+	// law's values for a seed do not depend on it.
+	satisfiable := func(typeRef lawSpecTypeRef, available int) (found bool) {
+		problem := checked.problem
+		defer func() {
+			checked.problem = problem
+			if recover() != nil {
+				found = false
+			}
+		}()
+		build(typeRef, available).Example(lsProbeSeed)
+		return true
+	}
+	// The generator at the largest budget, at most the one given, that has a value.
+	within := func(typeRef lawSpecTypeRef, available int) *rapid.Generator[LawSpecValue] {
+		for available > 1 && !inhabited(typeRef, available) {
+			available--
+		}
+		return build(typeRef, available)
+	}
 	// The nodes a restricted type reserves: the size of its smallest witness,
 	// which stands for its smallest value. The smallest shape of such a type
 	// (an empty list in a wrapper that refuses one) need not be a value. A type
 	// with no restriction, or no witness, reserves nothing beyond its shape.
-	reservation := func(typeRef lawSpecTypeRef, constructors []lawSpecConstructorSchema) int {
-		restricted := false
+	restricted := func(constructors []lawSpecConstructorSchema) bool {
 		for _, constructor := range constructors {
-			restricted = restricted || len(schema.contracts[constructor.tag]) != 0
+			if len(schema.contracts[constructor.tag]) != 0 {
+				return true
+			}
 		}
-		if !restricted || checked == nil {
+		return false
+	}
+	seeded := func(typeRef lawSpecTypeRef, available int) bool {
+		for _, witness := range checked.witnesses[typeRef.key()] {
+			if lsDataNodes(witness) <= available {
+				return true
+			}
+		}
+		return false
+	}
+	reservation := func(typeRef lawSpecTypeRef, constructors []lawSpecConstructorSchema) int {
+		if checked == nil || !restricted(constructors) {
 			return 0
 		}
 		smallest := 0
@@ -350,6 +402,19 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 						}
 					}
 				}
+			}
+			// A witness that fits is a value, and needs no probe.
+			if result && probing && restricted(constructors) && !seeded(typeRef, available) {
+				probe := lawSpecProbe{schema, key, bits, checked.attempts}
+				known, probed := lsProbes.Load(probe)
+				if !probed {
+					// The candidates are built as an inhabited type's are.
+					inhabitants[key] = true
+					known = satisfiable(typeRef, available)
+					lsProbes.Store(probe, known)
+					delete(arbitraries, key)
+				}
+				result = known.(bool)
 			}
 		} else {
 			switch typeRef.name {
@@ -417,7 +482,7 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 					}
 					fields := make([]*rapid.Generator[LawSpecValue], len(costs))
 					for index, field := range declared {
-						fields[index] = build(field.typeRef, costs[index])
+						fields[index] = within(field.typeRef, costs[index])
 					}
 					alternatives = append(alternatives, rapid.Custom(func(t *rapid.T) LawSpecValue {
 						values := make([]LawSpecValue, 0, len(fields)+len(witnesses))
@@ -454,7 +519,7 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 				lists := make([]*rapid.Generator[[]LawSpecValue], maximum+1)
 				lists[0] = rapid.Just([]LawSpecValue{})
 				for length := 1; length <= maximum; length++ {
-					lists[length] = rapid.SliceOfN(build(typeRef.arguments[0], remaining/length), length, length)
+					lists[length] = rapid.SliceOfN(within(typeRef.arguments[0], remaining/length), length, length)
 				}
 				result = rapid.Custom(func(t *rapid.T) LawSpecValue {
 					length := rapid.IntRange(0, maximum).Draw(t, "length")
@@ -524,6 +589,15 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 	// The root's own witnesses always fit, whatever budget the caller states.
 	if constructors, custom := schema.constructors(reference); custom {
 		budget = max(budget, reservation(reference, constructors))
+	}
+	// A probe that found nothing where a value exists (a restriction a draw
+	// seldom meets) can leave the law's own input no constructor at all; the
+	// plan is then made again without probes, as it was before them.
+	if probing && !inhabited(reference, budget) {
+		probing = false
+		clear(minima)
+		clear(inhabitants)
+		clear(arbitraries)
 	}
 	return build(reference, budget)
 }

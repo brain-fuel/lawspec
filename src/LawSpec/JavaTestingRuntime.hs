@@ -14,9 +14,11 @@ renderDataStrategies style body = unlines
   ([ "package lawspec.testing;", "" ] ++
    map (\name -> "import " ++ name ++ ";")
      [ "java.util.ArrayList", "java.util.HashMap", "java.util.List", "java.util.Map"
+     , "java.util.concurrent.ConcurrentHashMap"
      , "java.util.function.Function", "java.util.function.Predicate"
      , "lawspec.runtime.LawSpecRuntime.Data", "lawspec.runtime.LawSpecRuntime.Presence"
      , "lawspec.runtime.LawSpecRuntime.Value", "lawspec.runtime.LawSpecSchema"
      , "lawspec.runtime.LawSpecSchema.Named"
-     , propertyPackage style ++ ".Generator", propertyPackage style ++ ".IntDistribution" ] ++
+     , propertyPackage style ++ ".Generator", propertyPackage style ++ ".IntDistribution"
+     , propertyPackage style ++ ".PropertyChecker" ] ++
    [ "" ]) ++ body

@@ -164,6 +164,21 @@ JavaScript/TypeScript runtimes do this. The Haskell, Rust, Swift, .NET and
 BEAM runtimes do not yet: there a restricted value that needs more than its
 shape's minimum is drawn only from the witnesses.
 
+A law that writes no value of a restricted type gives it no witness. For that
+case the same runtimes, except Python's, probe: once for each restricted type
+and budget that no witness fits, they draw from the type's unfiltered
+generator with a fixed seed, as many times as the filter may (at least 100, at
+most 10,000; Go uses the thousand tries of Rapid's `Example`), and ask
+whether any draw passes the restriction. A budget where none does counts as
+too small, so the enclosing constructor gives the field more or is not
+offered at that size. The probe has its own seed and its answers are kept for
+the run, so the cases a law draws from a seed are the same every time. A
+restriction that draws seldom meet can fail a probe; if that leaves the law's
+own input nothing to generate, the plan is made again without probes and the
+filter alone decides, as it did before. Python's Hypothesis strategies cannot
+be sampled inside a running test, and Python filters whole inputs, not their
+parts, so a draw with such a field is rejected there, not failed.
+
 ## Custom generators
 
 A [native generator binding](../how-to/custom-codecs-and-generators.md) replaces

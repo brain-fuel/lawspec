@@ -89,4 +89,91 @@ law "|only a note has no workload| is
     end for all
   end definition
 end law
+
+-- A wide record whose restricted list sits under two sums and a Maybe, in a
+-- law that writes no value of that list: nothing seeds it but the generator.
+-- At the node budget of 64 the record's eleven fields leave `pattern` five
+-- nodes and `earlier` four, so the list under OnWeekdays is planned at two
+-- nodes, the size of the empty list its wrapper refuses.
+type Weekday is one of
+  | Monday
+  | Tuesday
+  | Wednesday
+  | Thursday
+  | Friday
+  | Saturday
+  | Sunday
+end type
+
+type Period is one of
+  | PerDay
+  | PerWeek
+  | PerMonth
+end type
+
+type Frequency is one of
+  | EveryN of type record{ count :: Integer period :: Period}
+  | OnWeekdays of type NonEmptyList Weekday
+  | Described of type Label
+end type
+
+type Pattern is one of
+  | Once of type Maybe Integer
+  | Recurring of type Maybe Frequency
+  | AsNeeded of type Maybe Frequency
+end type
+
+type Start is one of
+  | Manual
+  | Immediate
+  | Cued of type Label
+end type
+
+type Recognition is a record{
+  choice :: Label
+  recipient :: Maybe Label
+  occasion :: Maybe Label
+  details :: Maybe Label
+}
+end type
+
+type Practice is a record{
+  id :: Label
+  owner :: Label
+  action :: Label
+  pattern :: Pattern
+  fallback :: Maybe Pattern
+  earlier :: List Frequency
+  start :: Start
+  recognition :: Recognition
+  obstacle :: Label
+  review :: Check
+  chosen :: Choice
+}
+end type
+
+function isOnce (pattern :: Pattern) -> Bool is
+  first matching case of pattern:
+    when Once date then true
+    when Recurring frequency then false
+    when AsNeeded frequency then false
+  end case
+end function
+
+function repeats (practice :: Practice) -> Bool is
+  first matching case of practice.pattern:
+    when Once date then false
+    when Recurring frequency then true
+    when AsNeeded frequency then true
+  end case
+end function
+
+law "|a practice repeats unless it is done once| is
+  definition:
+    for all (practice :: Practice where
+      practice.start = Manual or practice.start = Immediate) =>
+      not (repeats practice = isOnce practice.pattern)
+    end for all
+  end definition
+end law
 end unit

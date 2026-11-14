@@ -202,6 +202,49 @@ export function strategy(
     return found.length === 0 ? 0 : Math.min(...found.map(seed => seed.cost));
   }
 
+  // Whether a restricted type has a value at this budget: one of as many
+  // draws as the filter may make (at least PROBE_MINIMUM, at most
+  // PROBE_ATTEMPTS) from fixed seeds passes its restriction. A budget that
+  // only holds shapes the restriction refuses (an empty list in a wrapper that
+  // needs an element) is then no budget for the type, so an enclosing
+  // constructor gives it more or is left out. The probe draws from its own
+  // seeds, so a law's values for a seed do not depend on it. A draw that fails
+  // for another reason decides nothing.
+  let probing = true;
+  function satisfiable(type, available)
+  {
+    const candidates = build(type, available);
+    const attempts = Math.min(
+      Math.max(maxAttempts, PROBE_MINIMUM),
+      PROBE_ATTEMPTS,
+    );
+    try
+    {
+      for (let drawn = 0; drawn < attempts; drawn += PROBE_BATCH)
+      {
+        const values = fc.sample(candidates, {
+          seed: PROBE_SEED + drawn,
+          numRuns: PROBE_BATCH,
+        });
+        if (values.some(value => accepts(type, value))) return true;
+      }
+    }
+    catch
+    {
+      return true;
+    }
+    return false;
+  }
+
+  // The arbitrary at the largest budget, at most the one given, that has a
+  // value.
+  function within(type, available)
+  {
+    let cost = available;
+    while (cost > 1 && !inhabited(type, cost)) --cost;
+    return build(type, cost);
+  }
+
   function minimum(type, limit)
   {
     const id = key(type, limit);
@@ -254,6 +297,28 @@ export function strategy(
             ([fields]) => allocation(fields, available - 1) !== null,
           ),
         );
+      // A witness that fits is a value, and needs no probe.
+      if (
+        result &&
+        probing &&
+        constructors.some(item => item.predicates.length !== 0) &&
+        !(seeds.get(JSON.stringify(type)) ?? []).some(
+          seed => seed.cost <= available,
+        )
+      )
+      {
+        if (!PROBES.has(schema)) PROBES.set(schema, new Map());
+        const known = PROBES.get(schema);
+        const probe = JSON.stringify([type, available, bits, maxAttempts]);
+        if (!known.has(probe))
+        {
+          // The candidates are built as an inhabited type's are.
+          inhabitants.set(id, true);
+          known.set(probe, satisfiable(type, available));
+          arbitraries.delete(id);
+        }
+        result = known.get(probe);
+      }
     }
     else if (
       type.args.length === 0 ||
@@ -332,7 +397,7 @@ export function strategy(
           const costs = allocation(declared, available - 1);
           if (costs === null) continue;
           const children = declared.map((field, index) =>
-            build(field.type, costs[index]),
+            within(field.type, costs[index]),
           );
           const values = fc
             .tuple(...children)
@@ -386,7 +451,7 @@ export function strategy(
       result = fc.integer({min: 0, max}).chain(length =>
         length === 0
           ? fc.constant([])
-          : fc.array(build(type.args[0], Math.floor(remaining / length)), {
+          : fc.array(within(type.args[0], Math.floor(remaining / length)), {
               minLength: length,
               maxLength: length,
             }),
@@ -447,11 +512,22 @@ export function strategy(
     return result;
   }
 
+  // A probe that found nothing where a value exists (a restriction a draw
+  // seldom meets) can leave the law's own input no constructor at all; the
+  // plan is then made again without probes, as it was before them.
+  const rootBudget = Math.max(budget, reservation(reference));
+  if (index === null && !inhabited(reference, rootBudget))
+  {
+    probing = false;
+    minima.clear();
+    inhabitants.clear();
+    arbitraries.clear();
+  }
   // Reject complete candidates, not subtrees: an impossible child must not
   // prevent choosing a viable sibling constructor on the next attempt.
   const root =
     index === null
-      ? build(reference, Math.max(budget, reservation(reference)))
+      ? build(reference, rootBudget)
       : indexedArbitrary(
           schema,
           reference,
@@ -492,6 +568,14 @@ const CANONICAL = {
   'lawspec.collections::type::KeyVal': canonical(entry => entry.fields[0]),
 };
 
+// A law's inputs are planned again for every case it draws, and a probe's
+// answer is the same each time: a witness that fits needs no probe, and each
+// plan starts from no symbols.
+const PROBES = new WeakMap();
+const PROBE_SEED = 0x4c617753;
+const PROBE_MINIMUM = 100;
+const PROBE_ATTEMPTS = 10_000;
+const PROBE_BATCH = 10;
 const INDEX_SLACK = 16;
 const INDEX_CHOICES = 6;
 const INDEX_OPERATORS = ['+', '-', '*', 'div', 'mod', '^'];

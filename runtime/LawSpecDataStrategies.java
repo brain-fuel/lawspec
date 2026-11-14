@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import lawspec.runtime.LawSpecRuntime.Data;
@@ -13,6 +14,7 @@ import lawspec.runtime.LawSpecSchema;
 import lawspec.runtime.LawSpecSchema.Named;
 import org.jetbrains.jetCheck.Generator;
 import org.jetbrains.jetCheck.IntDistribution;
+import org.jetbrains.jetCheck.PropertyChecker;
 
 /**
  * Native JetCheck generation and shrinking for the checked data schema.
@@ -136,6 +138,17 @@ public final class LawSpecDataStrategies
         });
   }
 
+  /**
+   * A law's inputs are planned again for every case it draws, and a probe's answer is the same
+   * each time: a witness that fits needs no probe, and each plan starts from no symbols.
+   */
+  private record Probe(LawSpecSchema schema, Request request, int bits, int attempts)
+  {}
+
+  private static final Map<Probe, Boolean> PROBES = new ConcurrentHashMap<>();
+  private static final long PROBE_SEED = 0x4c61775370656cL;
+  private static final int PROBE_MINIMUM = 100;
+  private static final int PROBE_ATTEMPTS = 10_000;
   private static final long INDEX_SLACK = 16;
   private static final int INDEX_CHOICES = 6;
 
@@ -553,7 +566,7 @@ public final class LawSpecDataStrategies
                         environment.generate(
                             target != null
                                 ? generate(fieldType, target)
-                                : builder.generate(fieldType, budget)));
+                                : builder.within(fieldType, budget)));
                   }
                   return builder.unchecked
                       ? new Value(LawSpecSchema.key(type), new Data(tag, List.copyOf(values)))
@@ -649,7 +662,7 @@ public final class LawSpecDataStrategies
                     type,
                     bits,
                     symbols,
-                    builder.generate(type, Math.max(budget, builder.reservation(type))),
+                    builder.root(type, Math.max(budget, builder.reservation(type))),
                     maxAttempts));
           }
           catch (NativeFailure error)
@@ -747,6 +760,7 @@ public final class LawSpecDataStrategies
     private final Map<Named, List<Value>> witnesses = new HashMap<>();
     private final Map<Request, Boolean> inhabited = new HashMap<>();
     private final Map<Named, Integer> reservations = new HashMap<>();
+    private boolean probing = true;
     private final Map<Request, Generator<Value>> generators = new HashMap<>();
     private final Map<String, NativeFactory> factories;
 
@@ -840,6 +854,73 @@ public final class LawSpecDataStrategies
       return reservations.get(type);
     }
 
+    /**
+     * The generator of the law's own input. A probe that found nothing where a value exists (a
+     * restriction a draw seldom meets) can leave no constructor at all; the plan is then made
+     * again without probes, and sampling alone decides, as it did before them.
+     */
+    Generator<Value> root(Named type, int budget)
+    {
+      if (probing && !canGenerate(type, budget))
+      {
+        probing = false;
+        inhabited.clear();
+        generators.clear();
+      }
+      return generate(type, budget);
+    }
+
+    /**
+     * Whether a restricted type has a value at this budget: one of as many draws as the filter may
+     * make (at least PROBE_MINIMUM, at most PROBE_ATTEMPTS) from a fixed seed passes its
+     * restriction. A budget that only holds shapes the restriction refuses (an empty list in a
+     * wrapper that needs an element) is then no budget for the type, so an enclosing constructor
+     * gives it more or is left out, and no draw of a law meets it. The probe is a run of its own
+     * from its own seed, so a law's values for a seed do not depend on it. A run that ends for
+     * another reason decides nothing.
+     */
+    private boolean satisfiable(Named type, Generator<Value> candidates)
+    {
+      try
+      {
+        int attempts = Math.max(PROBE_MINIMUM, Math.min(maxAttempts, PROBE_ATTEMPTS));
+        PropertyChecker.customized()
+            .withSeed(PROBE_SEED)
+            .withIterationCount(attempts)
+            .silent()
+            .forAll(candidates, value -> !accepted(type, value));
+        return false;
+      }
+      catch (RuntimeException | AssertionError found)
+      {
+        return true;
+      }
+    }
+
+    private boolean accepted(Named type, Value value)
+    {
+      try
+      {
+        return schema.check(type, value, bits, symbols) instanceof LawSpecSchema.Accepted;
+      }
+      catch (RuntimeException error)
+      {
+        // Keep evaluation errors for the outer checked result to report.
+        return true;
+      }
+    }
+
+    /** The generator at the largest budget, at most the one given, that has a value. */
+    Generator<Value> within(Named type, int budget)
+    {
+      int available = budget;
+      while (available > 1 && !canGenerate(type, available))
+      {
+        available--;
+      }
+      return generate(type, available);
+    }
+
     private boolean canGenerate(Named type, int budget)
     {
       if (budget < 1 || budget < reservation(type))
@@ -871,6 +952,21 @@ public final class LawSpecDataStrategies
                     tag ->
                         schema.instances(type, tag).stream()
                             .anyMatch(choice -> allocation(choice.fields(), budget - 1) != null));
+        // A witness that fits is a value, and needs no probe.
+        if (result
+            && probing
+            && unchecked
+            && schema.restricted(type)
+            && witnesses.getOrDefault(type, List.of()).stream()
+                .noneMatch(value -> nodes(value) <= budget))
+        {
+          var probe = new Probe(schema, request, bits, maxAttempts);
+          if (!PROBES.containsKey(probe))
+          {
+            PROBES.put(probe, satisfiable(type, candidates(type, budget)));
+          }
+          result = PROBES.get(probe);
+        }
       }
       inhabited.put(request, result);
       return result;
@@ -917,6 +1013,18 @@ public final class LawSpecDataStrategies
       {
         return generators.get(request);
       }
+      var generator = candidates(type, budget);
+      if (unchecked && !schema.isScalar(type) && !factories.containsKey(type.name()))
+      {
+        generator = boundedFilter(generator, value -> accepted(type, value), maxAttempts);
+      }
+      generators.put(request, generator);
+      return generator;
+    }
+
+    /** The values planned for the type at this budget, before its own restriction filters them. */
+    private Generator<Value> candidates(Named type, int budget)
+    {
       if (factories.containsKey(type.name()))
       {
         var arguments = new ArrayList<Generator<Value>>();
@@ -947,7 +1055,6 @@ public final class LawSpecDataStrategies
                     throw new NativeFailure(type, error);
                   }
                 });
-        generators.put(request, nativeGenerator);
         return nativeGenerator;
       }
       Generator<Value> generator;
@@ -971,7 +1078,7 @@ public final class LawSpecDataStrategies
                             ? Generator.constant(new Value(LawSpecSchema.key(type), List.of()))
                             : Generator.listsOf(
                                     IntDistribution.uniform(length, length),
-                                    generate(element, (budget - 1) / length))
+                                    within(element, (budget - 1) / length))
                                 .map(
                                     values ->
                                         new Value(LawSpecSchema.key(type), List.copyOf(values))));
@@ -1008,12 +1115,12 @@ public final class LawSpecDataStrategies
             {
               var fieldType = (Named) fields.get(i).type();
               int cost = budgets.get(i);
-              var child = generate(fieldType, cost);
+              var child = within(fieldType, cost);
               // Keep empty and small sets observable as the structural budget
               // grows; deduplicating long lists otherwise saturates finite domains.
               if (type.name().equals("lawspec.collections::type::EqSet") && cost > 3)
               {
-                child = Generator.anyOf(generate(fieldType, 3), child);
+                child = Generator.anyOf(within(fieldType, 3), child);
               }
               children.add(child);
             }
@@ -1051,26 +1158,6 @@ public final class LawSpecDataStrategies
           generator = Generator.anyOf(generator, Generator.sampledFrom(seeds));
         }
       }
-      if (unchecked && !schema.isScalar(type))
-      {
-        generator =
-            boundedFilter(
-                generator,
-                value -> {
-                  try
-                  {
-                    return schema.check(type, value, bits, symbols)
-                        instanceof LawSpecSchema.Accepted;
-                  }
-                  catch (RuntimeException error)
-                  {
-                    // Keep evaluation errors for the outer checked result to report.
-                    return true;
-                  }
-                },
-                maxAttempts);
-      }
-      generators.put(request, generator);
       return generator;
     }
   }

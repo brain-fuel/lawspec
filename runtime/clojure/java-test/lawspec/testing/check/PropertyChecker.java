@@ -68,6 +68,12 @@ public final class PropertyChecker
       return this;
     }
 
+    /** A failure is only ever thrown, never printed. */
+    public Parameters silent()
+    {
+      return this;
+    }
+
     public <T> void forAll(Generator<T> generator, Predicate<T> property)
     {
       check().invoke(generator, property, iterations, seed);

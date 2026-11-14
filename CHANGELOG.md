@@ -380,6 +380,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Swift, .NET and BEAM runtimes are unchanged: there such a value is still
   drawn only from the witnesses the compiler supplies. Haskell and Rust pass
   the suite as they are; the others were not run on it.
+  A law that writes no value of the wrapper gives it no witness, and the
+  same failure then came back for some seeds (`NonEmptyList Weekday` under a
+  wide record). The Kotlin, Scala, JVM (Java, Groovy, Clojure), Go and
+  JavaScript/TypeScript runtimes now also ask, once per restricted type and
+  budget, whether a fixed-seed run of draws finds a value the restriction
+  accepts. A budget where none does is no budget for the type: an enclosing
+  constructor gives it more or is left out. If that would leave the law's
+  input nothing to generate, the plan is made again without the question, as
+  before. The Python runtime has the witness rule only: it filters whole
+  inputs, not parts, so it rejects such a draw and does not fail.
 - A type used in a data declaration without being imported is refused where
   it is written, in the unit that writes it: `GoalId is not imported.
   shop.ids declares it: add it to the import list (import shop.ids (Written,

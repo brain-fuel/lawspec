@@ -1,0 +1,9 @@
+expect: a practice repeats unless it is done once
+@@ test/fixtures/nested-refinements.lawspec
+<<<<<<<
+    when Once date then false
+    when Recurring frequency then true
+=======
+    when Once date then false
+    when Recurring frequency then false
+>>>>>>>

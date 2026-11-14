@@ -146,7 +146,7 @@ object LawSpecScalaStrategies:
     )
     // The root's own witnesses always fit, whatever budget the caller states.
     val source = builder
-      .build(tpe, budget.max(builder.reservation(tpe)))
+      .root(tpe, budget.max(builder.reservation(tpe)))
       .getOrElse(
         throw IllegalArgumentException(
           s"no value of ${LawSpecSchema.key(tpe)} within structural node budget $budget"
@@ -187,6 +187,16 @@ object LawSpecScalaStrategies:
       data.asScala.map(v => nodes(v.asInstanceOf[Value])).sum
     case _ => 0)
 
+  /** A law's inputs are planned again for every case it draws, and a probe's
+    * answer is the same each time: a witness that fits needs no probe, and each
+    * plan starts from no symbols.
+    */
+  private val Probes =
+    scala.collection.concurrent
+      .TrieMap[(LawSpecSchema, Request, Int, Int), Boolean]()
+  private val ProbeSeed = 0x4c61775370656cL
+  private val ProbeMinimum = 100
+  private val ProbeAttempts = 10000
   private val IndexSlack = 16L
   private val IndexChoices = 6
 
@@ -438,8 +448,7 @@ object LawSpecScalaStrategies:
                       generate(field.`type`().asInstanceOf[Named], target)
                     case None =>
                       builder
-                        .build(field.`type`().asInstanceOf[Named], budget)
-                        .get
+                        .within(field.`type`().asInstanceOf[Named], budget)
                 }
                 children
                   .foldLeft(Arb.constant(List.empty[Value]))((prior, child) =>
@@ -474,6 +483,51 @@ object LawSpecScalaStrategies:
     val witnesses = mutable.Map[Named, mutable.ArrayBuffer[Value]]()
     val cache = mutable.Map[Request, Option[Arb[Value]]]()
     val reservations = mutable.Map[Named, Int]()
+    var probing = true
+
+    /** The generator of the law's own input. A probe that found nothing where a
+      * value exists (a restriction a draw seldom meets) can leave no
+      * constructor at all; the plan is then made again without probes, and
+      * sampling alone decides, as it did before them.
+      */
+    def root(tpe: Named, budget: Int): Option[Arb[Value]] =
+      build(tpe, budget).orElse {
+        probing = false
+        cache.clear()
+        build(tpe, budget)
+      }
+
+    /** Whether a restricted type has a value at this budget: one of as many
+      * draws as the filter may make (at least ProbeMinimum, at most
+      * ProbeAttempts) from a fixed seed passes its restriction. A budget that
+      * only holds shapes the restriction refuses (an empty list in a wrapper
+      * that needs an element) is then no budget for the type, so an enclosing
+      * constructor gives it more or is left out, and no draw of a law meets it.
+      * The probe draws from its own source, so a law's values for a seed do not
+      * depend on it. A draw that fails for another reason decides nothing.
+      */
+    def inhabited(tpe: Named, candidates: Arb[Value]): Boolean =
+      val source = Rng(ProbeSeed)
+      (1 to maxAttempts.max(ProbeMinimum).min(ProbeAttempts)).exists(_ =>
+        try
+          schema
+            .check(tpe, candidates.sample(source).value, bits, symbols)
+            .isInstanceOf[LawSpecSchema.Accepted]
+        catch case _: RuntimeException => true
+      )
+
+    /** The generator at the largest budget, at most available, that has a
+      * value.
+      */
+    def within(tpe: Named, available: Int): Arb[Value] =
+      (available to 1 by -1).iterator
+        .flatMap(build(tpe, _))
+        .nextOption()
+        .getOrElse(
+          throw IllegalArgumentException(
+            s"no value of ${LawSpecSchema.key(tpe)} within structural node budget $available"
+          )
+        )
 
     def addWitness(tpe: Named, value: Value): Unit =
       witnesses.getOrElseUpdate(tpe, mutable.ArrayBuffer()) += value
@@ -596,11 +650,11 @@ object LawSpecScalaStrategies:
               allocation(fields, available - 1).map { costs =>
                 val children = fields.zip(costs).map { (field, cost) =>
                   val fieldType = field.`type`().asInstanceOf[Named]
-                  val child = build(fieldType, cost).get
+                  val child = within(fieldType, cost)
                   // Retain small sets as growing raw lists saturate finite domains.
                   if tpe
                       .name() == "lawspec.collections::type::EqSet" && cost > 3
-                  then Arb.choice(build(fieldType, 3).get, child)
+                  then Arb.choice(within(fieldType, 3), child)
                   else child
                 }
                 val product = children.foldLeft(
@@ -629,6 +683,15 @@ object LawSpecScalaStrategies:
           result = Some(
             Arb.choice(result.get, Arb.int(0 to seeds.size - 1).map(seeds))
           )
+        if probing && seeds.isEmpty && !schema.isScalar(tpe)
+          && schema.restricted(tpe)
+          && !Probes.getOrElseUpdate(
+            (schema, request, bits, maxAttempts),
+            inhabited(tpe, result.get)
+          )
+        then
+          cache(request) = None
+          return None
         result = Some(
           Arb.bounded(result.get, maxAttempts, LawSpecSchema.key(tpe))(value =>
             try
@@ -653,7 +716,7 @@ object LawSpecScalaStrategies:
           Arb.constant(Value(LawSpecSchema.key(tpe), java.util.List.of()))
         else
           Arb
-            .list(build(element, remaining / length).get, length to length)
+            .list(within(element, remaining / length), length to length)
             .map(values => Value(LawSpecSchema.key(tpe), values.asJava))
       }
       Arb.flatMap(Arb.int(0 to maximum))(sizes)

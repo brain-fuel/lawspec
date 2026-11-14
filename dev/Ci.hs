@@ -1108,8 +1108,9 @@ targetSteps target =
   [ step (target ++ "-vacuity") (acceptance ["vacuity", target]) | target `elem` reachTargets ] ++
   -- A restricted wrapper some records below a law's input, on the targets
   -- the suite has been run on. The first nine reserve the wrapper's smallest
-  -- witness; the Haskell and Rust runtimes draw such a value from witnesses
-  -- alone, as the targets not listed do. ref:DEC-structural-size-budget
+  -- witness, and all of those but Python probe a budget no witness fits; the
+  -- Haskell and Rust runtimes draw such a value from witnesses alone, as the
+  -- targets not listed do. ref:DEC-structural-size-budget
   [ step (target ++ "-nested-refinements") (acceptance ["nested-refinements", target])
   | target `elem` ["java", "groovy", "clojure", "kotlin", "scala", "go", "python", "javascript", "typescript", "haskell", "rust"] ] ++
   [ step (target ++ "-vacuity-sampled") (acceptance ["vacuity-sampled", target]) | target `elem` ["java", "javascript", "python"] ] ++
