@@ -50,7 +50,8 @@ def main():
                 (work / source.name).write_text(source.read_text().replace('package RUNTIME_PACKAGE', 'package indexpaths'))
             shutil.copy2(FIXTURES / 'index_paths_test.go', work)
             (work / 'go.mod').write_text('module indexpaths\n\ngo 1.25.0\n\nrequire (\n'
-                ' github.com/cloudflare/circl v1.6.5\n pgregory.net/rapid v1.2.0\n)\n\nrequire (\n'
+                ' github.com/cloudflare/circl v1.6.5\n goforge.dev/blake3sum v1.0.0\n pgregory.net/rapid v1.2.0\n)\n\nrequire (\n'
+                ' github.com/klauspost/cpuid/v2 v2.2.7 // indirect\n'
                 ' golang.org/x/crypto v0.54.0 // indirect\n golang.org/x/sys v0.47.0 // indirect\n)\n')
             shutil.copy2(ROOT / 'test/locks/go/go.sum', work / 'go.sum')
             run('go', 'test', '-mod=readonly', './...', cwd=work)
