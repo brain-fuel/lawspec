@@ -69,6 +69,7 @@ import qualified TargetOptionsSpec
 import qualified ParameterNamesSpec
 import qualified CalendarSpec
 import qualified InstancesSpec
+import qualified InstanceLawsSpec
 import qualified SmtInstancesSpec
 import qualified ContractRulesSpec
 import qualified FormatsSpec
@@ -211,6 +212,7 @@ main = hspec $ do
   TimeSpec.test_durationsAreExactAndPortable
   CalendarSpec.test_calendarDatesAreCheckedDefinitions
   InstancesSpec.test_instanceOperationsAreCheckedDefinitions
+  InstanceLawsSpec.test_capabilityLawsAreProved
   SmtInstancesSpec.test_solverUsesInstanceDefinitions
   FormatsSpec.test_formatsAreTheRecordedGrammars
   ContractRulesSpec.test_recordRulesBecomeCheckedValidators

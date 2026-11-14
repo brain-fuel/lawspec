@@ -1268,7 +1268,45 @@ instanceDefined program active scope found name written = do
 call :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
 call program active scope name arguments = do
   recursive <- gets (M.member name . groups)
-  if recursive then recursiveCall program active scope name arguments else inlineCall program active scope name arguments
+  if recursive then recursiveCall program active scope name arguments
+    else maybe (inlineCall program active scope name arguments) (abstractCall program active scope arguments) (abstractFunction program name)
+
+-- | A function of which nothing is known: an adapter of the capability
+-- laws' unit (LawSpec.Instances), with no ability and no definition. Only
+-- there: a spec's own adapter is native code, and stays unsupported.
+abstractFunction :: Program -> Id -> Maybe Declaration
+abstractFunction program name = case
+  [ d | u <- programUnits program, unitId u == Id "lawspec.instances.laws", d <- unitDeclarations u, declarationId d == name
+      , null (declarationUses d), not (declarationAsync d)
+      , name `notElem` [declarationId (definitionDeclaration x) | x <- unitDefinitions u] ] of
+  [d] -> Just d
+  _ -> Nothing
+
+-- | A call of one: an uninterpreted SMT function, the same for equal
+-- arguments and otherwise free, whose result lies in its result type. A
+-- law proved of it holds of every function of that type, as Why3 proves a
+-- cloned theory's lemmas for any instance of its abstract symbols.
+-- ref:DEC-capability-laws
+abstractCall :: Program -> [Id] -> Scope -> [Expr] -> Declaration -> Encode Term
+abstractCall program active scope arguments declaration = do
+  requires SmtLibV2
+  let name = declarationId declaration
+      symbol = "|lawspec_abstract " ++ idText name ++ "|"
+      (parameterTypes, resultType) = functionType (declarationType declaration)
+  values <- mapM (expression program active scope) arguments
+  unless (length values == length parameterTypes) (lift (Left "SMT call arity mismatch"))
+  sorts <- mapM (sortOf program) parameterTypes
+  result <- sortOf program resultType
+  done <- gets (elem name . constants)
+  unless done $ do
+    let names = ["lawspec_argument_" ++ show i | i <- [0 .. length sorts - 1]]
+        applied = app symbol names
+    range <- lift (domain (programMachineBits program) resultType applied)
+    modify (\w -> w{constants = name : constants w, functionText = functionText w ++
+      [ "(declare-fun " ++ symbol ++ " (" ++ unwords (map sortText sorts) ++ ") " ++ sortText result ++ ")\n" ++
+        (if range == "true" then "" else "(assert (forall (" ++ unwords ["(" ++ n ++ " " ++ sortText so ++ ")" | (n, so) <- zip names sorts] ++
+          ") (! " ++ range ++ " :pattern (" ++ applied ++ "))))\n") ]})
+  pure (Term result (app symbol (map value values)) (both (map defined values)))
 
 -- | A call to a recursive definition: its declared function, at the
 -- current fuel. Mandatory admission proved that the body is total on the

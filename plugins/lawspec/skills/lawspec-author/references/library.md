@@ -794,6 +794,27 @@ retain the two dimension representations from examples 48 and 49.
 - A text is read by code point; there is no operation on grapheme clusters.
 - `Bytes` cannot be decoded back into a text, for now.
 
+## The laws of the list operations
+
+The built-in unit `lawspec.instances.laws` states the laws of the list
+operations once. Each is about functions of which nothing is known (`first`,
+`second`, `accepts`, `alsoAccepts`, `combine`), so a proof of one holds for
+whatever function a spec writes in their place.
+
+| Operations | Laws |
+| --- | --- |
+| map | map of the identity changes nothing; map of a composition is two maps (for a list, and for an `Either`) |
+| filter | filter keeps only what is accepted; never lengthens; two filters commute; filtering what is all accepted changes nothing |
+| all, any, length | all and any are dual; length is never negative |
+| `++` | appending nothing changes nothing; append associates; the length of an append is the sum |
+| together | map keeps the length; map, filter and all distribute over `++`; each fold of an append folds one list then the other; filter after map is map after filter |
+
+LawSpec's own checks prove every one of these with Z3, by induction over the
+list. The solver treats the functions as unknown only in this unit. An
+adapter of your own is native code, and a law that calls it stays unsupported
+by the solver.
+
+
 
 ---
 id: lawspec.how-to.test-text-properties-and-idempotence

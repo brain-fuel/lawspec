@@ -25,6 +25,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   target, that the target's own loop gives the same result. See
   [what the list operations mean](docs/reference/language/sequences.md#what-the-list-operations-mean).
 
+- The built-in unit `lawspec.instances.laws` states the laws of the list
+  operations (map, filter, the folds, all, any, length, `++` and how they
+  combine) over functions the solver knows nothing about. LawSpec's own
+  checks prove each of them with Z3. See
+  [the laws of the list operations](docs/reference/language/sequences.md#the-laws-of-the-list-operations).
+
 ### Changed
 
 - The solver reasons about `prelude.map`, `prelude.filter`, `prelude.all`,

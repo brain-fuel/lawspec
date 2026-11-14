@@ -22,6 +22,7 @@ program uses one by importing its unit.
 | `lawspec.network` | (the `Network` ability's secure handler) | | [Distribution](distribution.md#security) |
 | `lawspec.calendar` | (no ability: `Date`, `Weekday`, `CivilDate`) | | [Calendar dates](calendar.md) |
 | `lawspec.instances` | (no ability: `mapList`, `filterList`, `foldLeftList`, …) | | [What the list operations mean](sequences.md#what-the-list-operations-mean) |
+| `lawspec.instances.laws` | (no ability: the laws of the list operations, over functions the solver knows nothing about) | | [The laws of the list operations](sequences.md#the-laws-of-the-list-operations) |
 
 ```lawspec
 unit guide.builtins

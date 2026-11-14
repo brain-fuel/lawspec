@@ -5430,45 +5430,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:123: Dependencies of generated projects",
+      "id": "reference:docs/reference/language/builtins.md:124: Dependencies of generated projects",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:123: Dependencies of generated projects",
+      "name": "docs/reference/language/builtins.md:124: Dependencies of generated projects",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:144: Async",
+      "id": "reference:docs/reference/language/builtins.md:145: Async",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:144: Async",
+      "name": "docs/reference/language/builtins.md:145: Async",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:156: Limits",
+      "id": "reference:docs/reference/language/builtins.md:157: Limits",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:156: Limits",
+      "name": "docs/reference/language/builtins.md:157: Limits",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:58: Importing a built-in unit",
+      "id": "reference:docs/reference/language/builtins.md:59: Importing a built-in unit",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:58: Importing a built-in unit",
+      "name": "docs/reference/language/builtins.md:59: Importing a built-in unit",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:69: Default handlers",
+      "id": "reference:docs/reference/language/builtins.md:70: Default handlers",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:69: Default handlers",
+      "name": "docs/reference/language/builtins.md:70: Default handlers",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7449,6 +7449,15 @@
       "id": "reference:docs/reference/language/sequences.md:282: Limits",
       "kind": "reference",
       "name": "docs/reference/language/sequences.md:282: Limits",
+      "source": "docs/reference/language/sequences.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/sequences.md:287: The laws of the list operations",
+      "kind": "reference",
+      "name": "docs/reference/language/sequences.md:287: The laws of the list operations",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

@@ -1202,6 +1202,7 @@ test-suite lawspec-test
       IncrementalSpec
       IndexedSpec
       InferenceSchemeSpec
+      InstanceLawsSpec
       InstancesSpec
       KeptValuesSpec
       LanguageGapsSpec
