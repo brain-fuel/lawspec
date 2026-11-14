@@ -452,6 +452,10 @@ auditCollected context declarations constructors bits unit templates = do
       ("blake3", _, [bytes]) -> pure (T.Opaque "blake3" [bytes])
       ("blake3DeriveKey", _, [context, material]) -> pure (T.Opaque "blake3DeriveKey" [context, material])
       ("rfc822Uncommented", _, [value]) -> pure (T.Opaque "rfc822Uncommented" [value])
+      -- A text helper the audit evaluates on literals keeps its name, as
+      -- the Core lowering keeps it (Total.proofExpression): Written
+      -- (prelude.trim " x ") is then decided as Written "x" is.
+      _ | name `elem` T.literalHelpers -> pure (T.Opaque name values)
       -- Sequence helpers are total.
       _ | name `elem` ["append","slice","take","drop","at","range","octets","bytesOf","utf8","textOf","join","split","trim","words","lines","isUnicodeWhitespace","trimAsciiControl","wrapping","saturating","bounded"] ->
         pure (T.Sequence values)

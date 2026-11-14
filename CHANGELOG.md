@@ -389,6 +389,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   whether a unit uses `lawspec.time` read `type Duration` there as the unit
   declaring its own `Duration`. The same scan for `Regex`, `Symbol` and
   `Resource` is corrected likewise.
+- In a definition, a wrapper or refined field given a text literal is checked
+  by evaluating its restriction when that passes the literal through `trim`,
+  `trimAsciiControl`, `append`, `utf8` or `rfc822Uncommented`, as it already
+  was in a law: `Written "No"` is accepted where `Written` requires
+  `length (trim value) > 0`. A literal that breaks the restriction is refused
+  with `constructor field refinement does not hold for the value given`; a
+  value the compiler cannot decide is still `could not be proved`.
 - Compiling a record with rules no longer takes time exponential in its
   rules. The totality audit doubled its proof term at every binding whose
   value was itself a shared binding, which is the shape of the generated

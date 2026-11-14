@@ -85,6 +85,13 @@ The checker also knows:
   `t ends with p` and `t contains part` are facts about the same test, so a
   value of a refined type, or one inside a guard that tests it, can fill a
   field with the same refinement. A test on literal text is decided;
+- what `prelude.trim`, `prelude.trimAsciiControl`, `prelude.append` and
+  `prelude.utf8` give for literal text, so a wrapper applied to a literal is
+  decided by its restriction: with `wrapper Written is Text where
+  prelude.length (prelude.trim value) > 0`, `Written "No"` is accepted and
+  `Written "  "` is refused with `constructor field refinement does not hold
+  for the value given`. A value the checker cannot decide is refused with
+  `could not be proved`;
 - that `x in ["a", "b"]` means `x == "a" or x == "b"`, for a list written
   out in full, and that `x is within d of y` is arithmetic over exact numbers.
 
