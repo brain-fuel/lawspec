@@ -275,6 +275,26 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 	var inhabited func(lawSpecTypeRef, int) bool
 	var allocation func([]lawSpecFieldSchema, int) ([]int, bool)
 	var build func(lawSpecTypeRef, int) *rapid.Generator[LawSpecValue]
+	// The nodes a restricted type reserves: the size of its smallest witness,
+	// which stands for its smallest value. The smallest shape of such a type
+	// (an empty list in a wrapper that refuses one) need not be a value. A type
+	// with no restriction, or no witness, reserves nothing beyond its shape.
+	reservation := func(typeRef lawSpecTypeRef, constructors []lawSpecConstructorSchema) int {
+		restricted := false
+		for _, constructor := range constructors {
+			restricted = restricted || len(schema.contracts[constructor.tag]) != 0
+		}
+		if !restricted || checked == nil {
+			return 0
+		}
+		smallest := 0
+		for _, witness := range checked.witnesses[typeRef.key()] {
+			if cost := lsDataNodes(witness); smallest == 0 || cost < smallest {
+				smallest = cost
+			}
+		}
+		return smallest
+	}
 	minimum = func(typeRef lawSpecTypeRef, limit int) int {
 		key := lawSpecGeneratorKey{typeRef.key(), limit}
 		if cost, exists := minima[key]; exists {
@@ -321,11 +341,13 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 		constructors, custom := schema.constructors(typeRef)
 		result := false
 		if custom {
-			for _, constructor := range constructors {
-				fieldSets, _ := lsWitnessInstances(constructor)
-				for _, fields := range fieldSets {
-					if _, ok := allocation(fields, available-1); ok {
-						result = true
+			if available >= reservation(typeRef, constructors) {
+				for _, constructor := range constructors {
+					fieldSets, _ := lsWitnessInstances(constructor)
+					for _, fields := range fieldSets {
+						if _, ok := allocation(fields, available-1); ok {
+							result = true
+						}
 					}
 				}
 			}
@@ -498,6 +520,10 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 		}
 		arbitraries[key] = result
 		return result
+	}
+	// The root's own witnesses always fit, whatever budget the caller states.
+	if constructors, custom := schema.constructors(reference); custom {
+		budget = max(budget, reservation(reference, constructors))
 	}
 	return build(reference, budget)
 }

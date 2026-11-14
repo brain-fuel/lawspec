@@ -642,9 +642,15 @@ public final class LawSpecDataStrategies
                         Math.max(minimumBudget, 4L * environment.getSizeHint() + 1));
             // JetCheck bounds rejection at 100 attempts and discards invalid replays
             // while shrinking. Errors remain values so properties report them.
+            // The root's own witnesses always fit, whatever budget the caller states.
             return environment.generate(
                 checkedValues(
-                    schema, type, bits, symbols, builder.generate(type, budget), maxAttempts));
+                    schema,
+                    type,
+                    bits,
+                    symbols,
+                    builder.generate(type, Math.max(budget, builder.reservation(type))),
+                    maxAttempts));
           }
           catch (NativeFailure error)
           {
@@ -740,6 +746,7 @@ public final class LawSpecDataStrategies
     private final Map<String, Object> symbols;
     private final Map<Named, List<Value>> witnesses = new HashMap<>();
     private final Map<Request, Boolean> inhabited = new HashMap<>();
+    private final Map<Named, Integer> reservations = new HashMap<>();
     private final Map<Request, Generator<Value>> generators = new HashMap<>();
     private final Map<String, NativeFactory> factories;
 
@@ -813,9 +820,29 @@ public final class LawSpecDataStrategies
       }
     }
 
+    /**
+     * The nodes a restricted type reserves: the size of its smallest witness, which stands for its
+     * smallest value. The smallest shape of such a type (an empty list in a wrapper that refuses
+     * one) need not be a value, so a budget below this has nothing to generate. A type with no
+     * restriction, or no witness, reserves nothing beyond its smallest shape.
+     */
+    int reservation(Named type)
+    {
+      if (!reservations.containsKey(type))
+      {
+        var seeds = witnesses.get(type);
+        reservations.put(
+            type,
+            seeds == null || schema.isScalar(type) || !schema.restricted(type)
+                ? 0
+                : seeds.stream().mapToInt(LawSpecDataStrategies::nodes).min().orElse(0));
+      }
+      return reservations.get(type);
+    }
+
     private boolean canGenerate(Named type, int budget)
     {
-      if (budget < 1)
+      if (budget < 1 || budget < reservation(type))
       {
         return false;
       }

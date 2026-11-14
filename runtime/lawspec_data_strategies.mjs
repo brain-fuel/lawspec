@@ -184,6 +184,24 @@ export function strategy(
   const arbitraries = new Map();
   const key = (type, available) => JSON.stringify([type, available]);
 
+  // The nodes a restricted type reserves: the size of its smallest witness,
+  // which stands for its smallest value. The smallest shape of such a type
+  // (an empty list in a wrapper that refuses one) need not be a value. A type
+  // with no restriction, or no witness, reserves nothing beyond its shape.
+  function reservation(type)
+  {
+    const constructors = schema.constructors(type);
+    if (
+      constructors === null ||
+      !constructors.some(item => item.predicates.length !== 0)
+    )
+    {
+      return 0;
+    }
+    const found = seeds.get(JSON.stringify(type)) ?? [];
+    return found.length === 0 ? 0 : Math.min(...found.map(seed => seed.cost));
+  }
+
   function minimum(type, limit)
   {
     const id = key(type, limit);
@@ -229,11 +247,13 @@ export function strategy(
     let result;
     if (constructors !== null)
     {
-      result = constructors.some(item =>
-        witnessInstances(item).some(
-          ([fields]) => allocation(fields, available - 1) !== null,
-        ),
-      );
+      result =
+        available >= reservation(type) &&
+        constructors.some(item =>
+          witnessInstances(item).some(
+            ([fields]) => allocation(fields, available - 1) !== null,
+          ),
+        );
     }
     else if (
       type.args.length === 0 ||
@@ -431,7 +451,7 @@ export function strategy(
   // prevent choosing a viable sibling constructor on the next attempt.
   const root =
     index === null
-      ? build(reference, budget)
+      ? build(reference, Math.max(budget, reservation(reference)))
       : indexedArbitrary(
           schema,
           reference,

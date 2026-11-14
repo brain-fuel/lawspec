@@ -152,6 +152,18 @@ remainder is shared out, so every shape stays reachable and generation always
 terminates. List lengths and element budgets vary together, so deep singletons
 are possible and there is no hidden length cap. ref:DEC-structural-size-budget
 
+The minimum of a type with a restriction of its own is not its smallest shape.
+`wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0`
+has the shape of an empty list, two nodes, and no value that small. Such a
+type reserves the size of its smallest witness, the smallest value the
+compiler found for it, so a record that holds one some levels down gives it
+room for a value its restriction accepts. A type without a restriction, or
+without a witness, reserves its smallest shape as before. The JVM runtime
+(Java, Groovy, Clojure) and the Kotlin, Scala, Go, Python and
+JavaScript/TypeScript runtimes do this. The Haskell, Rust, Swift, .NET and
+BEAM runtimes do not yet: there a restricted value that needs more than its
+shape's minimum is drawn only from the witnesses.
+
 ## Custom generators
 
 A [native generator binding](../how-to/custom-codecs-and-generators.md) replaces

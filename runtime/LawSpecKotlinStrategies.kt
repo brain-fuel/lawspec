@@ -182,8 +182,9 @@ object LawSpecKotlinStrategies {
         schema.isScalar(type)
         val builder = Builder(schema, bits, scalar, symbols, maxAttempts, factories)
         witnesses.forEach { builder.addWitness(type, schema.validate(type, it, bits, symbols)) }
+        // The root's own witnesses always fit, whatever budget the caller states.
         val source =
-            requireNotNull(builder.build(type, budget)) {
+            requireNotNull(builder.build(type, maxOf(budget, builder.reservation(type)))) {
                 "no value of ${LawSpecSchema.key(type)} within structural node budget $budget"
             }
         return capture(
@@ -510,6 +511,7 @@ object LawSpecKotlinStrategies {
     ) {
         val witnesses = mutableMapOf<Named, MutableList<Value>>()
         val cache = mutableMapOf<Request, Arb<Value>?>()
+        val reservations = mutableMapOf<Named, Int>()
 
         fun addWitness(type: Named, value: Value) {
             witnesses.getOrPut(type) { mutableListOf() }.add(value)
@@ -536,6 +538,19 @@ object LawSpecKotlinStrategies {
             }
         }
 
+        /**
+         * The nodes a restricted type reserves: the size of its smallest witness, which stands for
+         * its smallest value. The smallest shape of such a type (an empty list in a wrapper that
+         * refuses one) need not be a value, so a budget below this has nothing to generate. A type
+         * with no restriction, or no witness, reserves nothing beyond its smallest shape.
+         */
+        fun reservation(type: Named): Int =
+            reservations.getOrPut(type) {
+                val seeds = witnesses[type].orEmpty()
+                if (schema.isScalar(type) || !schema.restricted(type)) 0
+                else seeds.minOfOrNull { nodes(it) } ?: 0
+            }
+
         fun minimum(type: Named, limit: Int): Int? =
             (1..limit).firstOrNull { build(type, it) != null }
 
@@ -552,7 +567,7 @@ object LawSpecKotlinStrategies {
         }
 
         fun build(type: Named, available: Int): Arb<Value>? {
-            if (available < 1) return null
+            if (available < 1 || available < reservation(type)) return null
             val request = Request(type, available)
             if (cache.containsKey(request)) return cache[request]
             factories[type.name()]?.let { factory ->

@@ -87,6 +87,21 @@ def strategy(
             return False
 
     @cache
+    def reservation(ty):
+        """Return the nodes a restricted type reserves.
+
+        That is the size of its smallest witness, which stands for its
+        smallest value: the smallest shape of such a type (an empty list in
+        a wrapper that refuses one) need not be a value. A type with no
+        restriction, or no witness, reserves nothing beyond its shape."""
+        constructors = schema.constructors(ty)
+        if constructors is None or not any(
+            item.predicates for item in constructors
+        ):
+            return 0
+        return min((cost for cost, _ in seeds.get(ty, ())), default=0)
+
+    @cache
     def minimum(ty, limit):
         return next(
             (cost for cost in range(1, limit + 1) if inhabited(ty, cost)), None
@@ -114,7 +129,7 @@ def strategy(
             return True
         constructors = schema.constructors(ty)
         if constructors is not None:
-            return any(
+            return available >= reservation(ty) and any(
                 allocation(fields, available - 1) is not None
                 for item in constructors
                 for fields, _ in witness_instances(item)
@@ -298,7 +313,8 @@ def strategy(
             valid,
         )
     else:
-        generated = build(reference, budget)
+        # The root's own witnesses always fit, whatever budget is stated.
+        generated = build(reference, max(budget, reservation(reference)))
     # Validate complete candidates and shrink results, including nested index
     # guards. Invalid native factory samples still fail in their checked map.
     return generated.filter(lambda value: valid(reference, value))

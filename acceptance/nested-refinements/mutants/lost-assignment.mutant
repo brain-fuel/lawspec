@@ -1,0 +1,7 @@
+expect: a decision in time assigns someone
+@@ test/fixtures/nested-refinements.lawspec
+<<<<<<<
+  prelude.length (valueOfNonEmptyList decision.assignments)
+=======
+  prelude.length (valueOfNonEmptyList decision.assignments) - 1
+>>>>>>>

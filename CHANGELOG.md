@@ -364,6 +364,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A property test no longer stops with `constructor generation exhausted
+  10000 attempts` (Kotlin, Scala) or `cannot satisfy the generator's
+  condition` (Clojure) when its input holds, some records down, a wrapper
+  whose smallest shape is not a value, such as `NonEmptyList a is List a
+  where length value > 0`. Every runtime shares out an input's node budget by
+  each field's smallest shape, and a non-empty list of records got the two
+  nodes of an empty one, so the only list it could build was the one its
+  wrapper refuses. A type with a restriction of its own now reserves the
+  size of its smallest witness. The runtimes of Java, Groovy, Clojure,
+  Kotlin, Scala, Go, Python, JavaScript and TypeScript do this, and each
+  runs the new `nested-refinements` acceptance suite. The Haskell, Rust,
+  Swift, .NET and BEAM runtimes are unchanged: there such a value is still
+  drawn only from the witnesses the compiler supplies. Haskell and Rust pass
+  the suite as they are; the others were not run on it.
 - Compiling a record with rules no longer takes time exponential in its
   rules. The totality audit doubled its proof term at every binding whose
   value was itself a shared binding, which is the shape of the generated
