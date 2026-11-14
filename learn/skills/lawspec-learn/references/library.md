@@ -571,6 +571,9 @@ end unit
 | `prelude.lines text` | the pieces of a text between line feeds, a `List Text` |
 | `prelude.map function items` | the list of `function item` for each item of a list, in order |
 | `prelude.filter predicate items` | the items of a list the predicate accepts, in order |
+| `prelude.foldLeft step initial items` | the items of a list folded into `initial`, first to last: each step is `step total item` |
+| `prelude.foldRight step initial items` | the items of a list folded into `initial`, last to first: each step is `step item total` |
+| `prelude.concat lists` | the lists of a list joined in order, as `++` would join them |
 
 - Indices count from 0: code points of a text, octets of `Bytes`, items of a
   list.
@@ -684,6 +687,40 @@ end unit
 - A proof does not look inside a `map` or `filter`: a law about one is
   evaluated and tested, and a solver result for one is "unsupported". The
   function's own definedness is still checked for every item.
+
+
+## Folding a list
+
+```lawspec
+unit guide.folding
+
+function add (a :: Integer) (b :: Integer) -> Integer is a + b end function
+
+function minus (a :: Integer) (b :: Integer) -> Integer is a - b end function
+
+function before (x :: Integer) (xs :: List Integer) -> List Integer is Cons x xs end function
+
+law "|folding| is
+  definition :
+    prelude.foldLeft add 0 [1, 2, 3] = 6
+    and prelude.foldLeft minus 10 [1, 2, 3] = 4
+    and prelude.foldRight minus 10 [1, 2, 3] = -8
+    and prelude.foldRight before [] [1, 2, 3] = [1, 2, 3]
+    and prelude.concat [[1, 2], [], [3]] = [1, 2, 3]
+  end definition
+end law
+end unit
+```
+
+- A left fold starts from the first item and gives its step the running
+  result, then the item: `((10 - 1) - 2) - 3`. A right fold starts from the
+  last item and gives its step the item, then the running result:
+  `1 - (2 - (3 - 10))`.
+- The running result may have a type other than the items'.
+- An empty list gives the initial value.
+- The step is written as for `prelude.map`: a definition, a built-in, or
+  either with its first arguments given.
+- Each target runs a fold with its own loop or fold, never by recursion.
 
 ## Case folding and substring predicates
 

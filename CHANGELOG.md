@@ -13,6 +13,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the compiler makes one first-order copy of the definition per function
   named, so generated code and proofs never hold a function value. See
   [a definition that takes a function](docs/reference/language/definitions.md#a-definition-that-takes-a-function).
+- `prelude.foldLeft`, `prelude.foldRight` and `prelude.concat` fold and join
+  lists on every target. See
+  [folding a list](docs/reference/language/sequences.md#folding-a-list).
 
 ## [0.34.1] - 2026-11-16
 

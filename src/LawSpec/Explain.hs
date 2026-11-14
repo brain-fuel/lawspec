@@ -697,6 +697,8 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
         "let" -> (++) <$> visit (field "value" node) <*> children (scoped [field "binder" node]) (field "body" node)
         "match" -> (++) <$> visit (field "value" node) <*> (concat <$> traverse (\b -> children (scoped (arr (field "binders" b))) (field "body" b)) (arr (field "cases" node)))
         k | k `elem` ["allElements", "mapElements", "filterElements"] -> (++) <$> visit (field "value" node) <*> children (scoped [field "binder" node]) (field "predicate" node)
+        "foldElements" -> (\value initial body -> value ++ initial ++ body) <$> visit (field "value" node) <*> visit (field "initial" node) <*>
+          children (scoped [field "accumulator" node, field "binder" node]) (field "body" node)
         "allPayloads" -> (++) <$> visit (field "value" node) <*> (concat <$> traverse (\q -> children (scoped [field "binder" q]) (field "predicate" q)) (arr (field "predicates" node)))
         "field" -> visit (field "value" node)
         "update" -> (++) <$> visit (field "value" node) <*> visit (field "field" node)
@@ -1084,6 +1086,15 @@ terms p view = Terms (\s -> rText . top Term s) (\s -> rText . top Condition s) 
         value <- go (field "value" node)
         predicate <- goIn inner (field "predicate" node)
         Just (plain ("each " <> name <> " in (" <> rText value <> ") that satisfies (" <> rText predicate <> ")") False)
+      "foldElements" -> do
+        let (total, withTotal) = bind (field "accumulator" node) scope reserved
+            (name, inner) = bind (field "binder" node) withTotal reserved
+            order = if str "direction" node == "left" then "first to last" else "last to first"
+        value <- go (field "value" node)
+        initial <- go (field "initial" node)
+        body <- goIn inner (field "body" node)
+        Just (plain ("starting from (" <> rText initial <> "), for each " <> name <> " in (" <> rText value <> ") " <> order <>
+          ", " <> total <> " becomes (" <> rText body <> ")") False)
       "allPayloads" -> do
         value <- go (field "value" node)
         predicates <- traverse (\q -> do

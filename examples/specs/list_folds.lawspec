@@ -153,4 +153,30 @@ law "|a weighted fold agrees with the loop written by hand| is
     end for all
   end definition
 end law
+
+-- concat joins the lists of a list in order.
+function flattened (xss :: List (List Integer)) -> List Integer is prelude.concat xss end function
+
+function flattenedByHand (xss :: List (List Integer)) -> List Integer is
+  first matching case of xss:
+    when Nil then []
+    when Cons xs rest then xs ++ flattenedByHand rest
+  end case
+end function
+
+law "|concat joins the lists in order| is
+  definition :
+    prelude.concat [[1, 2], [], [3]] = [1, 2, 3]
+    and flattened [] = []
+    and flattened [[4], [5, 6]] = [4, 5, 6]
+  end definition
+end law
+
+law "|concat agrees with the joining written by hand| is
+  definition :
+    for all (xss :: List (List Integer)) =>
+      flattened xss = flattenedByHand xss
+    end for all
+  end definition
+end law
 end unit

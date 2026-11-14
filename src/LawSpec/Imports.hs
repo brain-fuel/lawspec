@@ -787,6 +787,18 @@ walkExpr names scope e
           else Apply (Apply stepFunction (Var binder)) (Var accumulator)
     pure (foldr (\(name,value) rest -> MatchExpr value [MatchBranch letTag [name] rest])
       (FoldElementsExpr fromLeft collection' initial' accumulator binder body) captures)
+  -- concat joins the lists of a list in order: a right fold of ++ from the
+  -- empty list. ref:DEC-capability-instances
+  Apply function collection | contextualArticles names,
+      Var "prelude.concat" <- unlocated function -> do
+    collection' <- walkExpr names scope collection
+    let taken = scope ++ exprVars collection'
+        freshNames = ["~lawspecAnyItem" ++ replicate i '_' | i <- [0..],
+          "~lawspecAnyItem" ++ replicate i '_' `notElem` taken]
+        accumulator = head freshNames
+        binder = head (tail freshNames)
+    pure (FoldElementsExpr False collection' (ListLit []) accumulator binder
+      (Apply (Apply (Var "prelude.append") (Var binder)) (Var accumulator)))
   -- Canonical membership is type-directed across finite collections.
   Var "prelude.member" | contextualArticles names -> pure (Var "prelude.member")
   -- Prelude aliases and documentary links share their checked definition.

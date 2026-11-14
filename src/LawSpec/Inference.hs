@@ -1893,9 +1893,14 @@ foldTypes env (FoldElementsExpr _ value initial accumulator binder body) = do
         known <- resolve element
         accumulated <- resolve result
         checkExpr (M.insert binder (Monomorphic known) (M.insert accumulator (Monomorphic accumulated) env)) accumulated body
-  if collectionLiteral value || contextualLiteralArgument initial || literalApplication initial
-    then step >> operands
-    else operands >> step
+      -- Whichever order is tried first, the other is tried when it fails,
+      -- and the first order's fault is the one reported.
+      either' first second = StateT $ \s -> case runStateT first s of
+        Left problem -> either (const (Left problem)) Right (runStateT second s)
+        outcome -> outcome
+  _ <- if collectionLiteral value || contextualLiteralArgument initial || literalApplication initial
+    then either' (step >> operands) (operands >> step)
+    else either' (operands >> step) (step >> operands)
   (,) <$> resolve element <*> resolve result
 foldTypes _ _ = throwC "fold requires a List"
 

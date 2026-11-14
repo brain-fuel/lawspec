@@ -2802,6 +2802,15 @@
       "execution": "deferred"
     },
     {
+      "id": "prelude:concat",
+      "kind": "prelude",
+      "name": "concat",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "prelude:concurrently",
       "kind": "prelude",
       "name": "concurrently",
@@ -7392,45 +7401,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:109: Modelling a host's trim and blank tests",
+      "id": "reference:docs/reference/language/sequences.md:112: Modelling a host's trim and blank tests",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:109: Modelling a host's trim and blank tests",
+      "name": "docs/reference/language/sequences.md:112: Modelling a host's trim and blank tests",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:141: Mapping and filtering a list",
+      "id": "reference:docs/reference/language/sequences.md:144: Mapping and filtering a list",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:141: Mapping and filtering a list",
+      "name": "docs/reference/language/sequences.md:144: Mapping and filtering a list",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:178: Case folding and substring predicates",
+      "id": "reference:docs/reference/language/sequences.md:182: Folding a list",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:178: Case folding and substring predicates",
+      "name": "docs/reference/language/sequences.md:182: Folding a list",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:208: Limits",
+      "id": "reference:docs/reference/language/sequences.md:215: Case folding and substring predicates",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:208: Limits",
+      "name": "docs/reference/language/sequences.md:215: Case folding and substring predicates",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:71: Pieces of a text",
+      "id": "reference:docs/reference/language/sequences.md:245: Limits",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:71: Pieces of a text",
+      "name": "docs/reference/language/sequences.md:245: Limits",
+      "source": "docs/reference/language/sequences.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/sequences.md:74: Pieces of a text",
+      "kind": "reference",
+      "name": "docs/reference/language/sequences.md:74: Pieces of a text",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

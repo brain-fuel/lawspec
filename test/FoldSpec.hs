@@ -3,9 +3,13 @@
 -- node, which the reference evaluator runs. ref:DEC-capability-instances
 module FoldSpec (test_listsFold) where
 
+import Data.Aeson (Value(..), decode, encode, object, (.=))
+import qualified Data.Aeson.KeyMap as K
 import Data.Either (isLeft, isRight)
 import Data.List (isInfixOf)
+import qualified Data.Text as T
 import Test.Hspec
+import qualified LawSpec.Api as API
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.Discharge (dischargeEvidence)
@@ -102,6 +106,25 @@ test_listsFold =
       evaluated (law
         [ "  foldLeft add 0 [1, 2, 3] = 6 and foldRight minus 10 [1, 2, 3] = -8" ])
         `shouldSatisfy` isRight
+    it "joins the lists of a list in order" $
+      evaluated
+        ([ "function flat (xss :: List (List Integer)) -> List Integer is prelude.concat xss end function" ] ++ law
+        [ "  prelude.concat [[1, 2], [], [3]] = [1, 2, 3] and flat [] = [] and flat [[4], [5, 6]] = [4, 5, 6]"
+        , "    and prelude.concat (prelude.map (before 0) [[1], [2]]) = [0, 1, 0, 2]" ])
+        `shouldSatisfy` isRight
+    it "refuses to join a list whose elements are not lists" $
+      program (law ["  prelude.concat [1, 2] = [1, 2]"]) `shouldSatisfy` isLeft
+    it "is explained in words, naming its direction" $ do
+      let explained view statement = case decode (API.dispatch (encode (object
+            [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String), "method" .= ("explain" :: String)
+            , "view" .= (view :: String)
+            , "sources" .= [object ["path" .= ("folds.lawspec" :: String), "content" .=
+                unlines (["unit folds.checked"] ++ helpers ++ law [statement] ++ ["end unit"])]] ]))) of
+            Just (Object response) | Just (String text) <- K.lookup "text" response -> T.unpack text
+            other -> "no text: " ++ show other
+      explained "dev" "  prelude.foldLeft add 0 [1, 2] = 3" `shouldSatisfy` isInfixOf "first to last"
+      explained "dev" "  prelude.foldRight add 0 [1, 2] = 3" `shouldSatisfy` isInfixOf "last to first"
+      explained "eng" "  prelude.foldRight add 0 [1, 2] = 3" `shouldSatisfy` isInfixOf "last to first"
     it "refutes a wrong result" $ do
       evaluated (law ["  prelude.foldLeft add 0 [1, 2] = 4"]) `shouldSatisfy` isLeft
       evaluated (law ["  prelude.foldRight minus 10 [1, 2, 3] = 4"]) `shouldSatisfy` isLeft
