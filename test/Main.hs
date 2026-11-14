@@ -68,6 +68,7 @@ import qualified ProjectNameSpec
 import qualified TargetOptionsSpec
 import qualified ParameterNamesSpec
 import qualified CalendarSpec
+import qualified InstancesSpec
 import qualified ContractRulesSpec
 import qualified FormatsSpec
 import qualified PipeTextSpec
@@ -208,6 +209,7 @@ main = hspec $ do
   ParameterNamesSpec.test_generatedParametersTakeTheirSignaturesNames
   TimeSpec.test_durationsAreExactAndPortable
   CalendarSpec.test_calendarDatesAreCheckedDefinitions
+  InstancesSpec.test_instanceOperationsAreCheckedDefinitions
   FormatsSpec.test_formatsAreTheRecordedGrammars
   ContractRulesSpec.test_recordRulesBecomeCheckedValidators
   PipeTextSpec.test_pipeTextIsDiagnosedWhereItIsWritten

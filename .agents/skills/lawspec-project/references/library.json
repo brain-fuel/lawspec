@@ -5430,45 +5430,45 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:122: Dependencies of generated projects",
+      "id": "reference:docs/reference/language/builtins.md:123: Dependencies of generated projects",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:122: Dependencies of generated projects",
+      "name": "docs/reference/language/builtins.md:123: Dependencies of generated projects",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:143: Async",
+      "id": "reference:docs/reference/language/builtins.md:144: Async",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:143: Async",
+      "name": "docs/reference/language/builtins.md:144: Async",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:155: Limits",
+      "id": "reference:docs/reference/language/builtins.md:156: Limits",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:155: Limits",
+      "name": "docs/reference/language/builtins.md:156: Limits",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:57: Importing a built-in unit",
+      "id": "reference:docs/reference/language/builtins.md:58: Importing a built-in unit",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:57: Importing a built-in unit",
+      "name": "docs/reference/language/builtins.md:58: Importing a built-in unit",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/builtins.md:68: Default handlers",
+      "id": "reference:docs/reference/language/builtins.md:69: Default handlers",
       "kind": "reference",
-      "name": "docs/reference/language/builtins.md:68: Default handlers",
+      "name": "docs/reference/language/builtins.md:69: Default handlers",
       "source": "docs/reference/language/builtins.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -7428,18 +7428,27 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:215: Case folding and substring predicates",
+      "id": "reference:docs/reference/language/sequences.md:215: What the list operations mean",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:215: Case folding and substring predicates",
+      "name": "docs/reference/language/sequences.md:215: What the list operations mean",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/sequences.md:245: Limits",
+      "id": "reference:docs/reference/language/sequences.md:252: Case folding and substring predicates",
       "kind": "reference",
-      "name": "docs/reference/language/sequences.md:245: Limits",
+      "name": "docs/reference/language/sequences.md:252: Case folding and substring predicates",
+      "source": "docs/reference/language/sequences.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/language/sequences.md:282: Limits",
+      "kind": "reference",
+      "name": "docs/reference/language/sequences.md:282: Limits",
       "source": "docs/reference/language/sequences.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

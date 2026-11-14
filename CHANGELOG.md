@@ -19,6 +19,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A definition may require `Filterable`, `Foldable` or `Appendable` of a type
   variable, as it may `Mappable`, and then filter, fold or append values of
   any instance.
+- The built-in unit `lawspec.instances` states what each list operation means
+  as an ordinary recursive definition (`mapList`, `filterList`, `foldLeftList`
+  and the rest). The `native-agreement` acceptance suite tests, on every
+  target, that the target's own loop gives the same result. See
+  [what the list operations mean](docs/reference/language/sequences.md#what-the-list-operations-mean).
 
 ## [0.34.1] - 2026-11-16
 

@@ -44,6 +44,7 @@ import LawSpec.Resources (resourcesUnit, resourcesAlias, resourcesTypes, usesRes
 import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
 import LawSpec.Network (networkUnit, networkSource)
 import LawSpec.Calendar (calendarUnit, calendarSource)
+import LawSpec.Instances (instancesUnit, instancesSource)
 import LawSpec.ContractRules (rulesUnit, rulesAlias, rulesTypes, rulesSource, programUsesRules)
 import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock, clockSource)
 import LawSpec.Refinement
@@ -433,7 +434,9 @@ sourceParsingContext selected sources =
         -- lawspec.network: the secure network handler's module (LawSpec.Network).
         [Source ("<" ++ networkUnit ++ ">") networkSource | any (importsBuiltin networkUnit) [text | Source _ text <- sources]] ++
         -- lawspec.calendar: dates, as checked definitions (LawSpec.Calendar).
-        [Source ("<" ++ calendarUnit ++ ">") calendarSource | any (importsBuiltin calendarUnit) [text | Source _ text <- sources]]
+        [Source ("<" ++ calendarUnit ++ ">") calendarSource | any (importsBuiltin calendarUnit) [text | Source _ text <- sources]] ++
+        -- lawspec.instances: the capability instances' operations (LawSpec.Instances).
+        [Source ("<" ++ instancesUnit ++ ">") instancesSource | any (importsBuiltin instancesUnit) [text | Source _ text <- sources]]
       versionedCollectionSources = [text | Source _ text <- abilityUnits] ++ [clockSource | clock] ++ [caseFoldSource | textFolding]
       candidates = if canonical then usedCollectionsCanonical userTexts versionedCollectionSources
         else usedCollections ([text | Source _ text <- sources] ++ versionedCollectionSources)
@@ -472,7 +475,7 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
   -- Reserved Core identities belong to compiler-provided versioned sources.
   -- A user unit must not manufacture one when its built-in is not injected.
   when canonical $ forM_ sources $ \source -> case sourceUnit source of
-    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : rulesUnit : caseFoldUnit : resourcesUnit : networkUnit : calendarUnit : builtinUnits) ->
+    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : rulesUnit : caseFoldUnit : resourcesUnit : networkUnit : calendarUnit : instancesUnit : builtinUnits) ->
       Left [Diagnostic "reserved-unit" ("the unit " ++ name ++ " is reserved for compiler-provided definitions") Nothing]
     _ -> pure ()
   -- Programs that use a collection get the built-in collections unit.

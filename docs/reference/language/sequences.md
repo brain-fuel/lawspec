@@ -212,6 +212,43 @@ end unit
   either with its first arguments given.
 - Each target runs a fold with its own loop or fold, never by recursion.
 
+## What the list operations mean
+
+Each target runs `map`, `filter`, the folds, `all`, `any`, `length`, `++`
+and `concat` with its own loops. What each one means is an ordinary
+recursive definition in the built-in unit `lawspec.instances`:
+
+| Operation | Definition |
+| --- | --- |
+| `prelude.map f xs` | `mapList f xs`; over an `Either`, `mapEither f value` |
+| `prelude.filter keep xs` | `filterList keep xs` |
+| `prelude.foldLeft step initial xs` | `foldLeftList step initial xs` |
+| `prelude.foldRight step initial xs` | `foldRightList step initial xs` |
+| `prelude.all holds xs`, `prelude.any holds xs` | `allList holds xs`, `anyList holds xs` |
+| `prelude.length xs` | `lengthList xs` |
+| `xs ++ ys` | `appendList xs ys` |
+| `prelude.concat xss` | `concatList xss` |
+
+```lawspec
+unit guide.meaning
+
+import lawspec.instances (filterList)
+
+function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function
+
+law "|filter agrees with its definition| is
+  definition :
+    for all (xs :: List Integer) =>
+      prelude.filter isEven xs = filterList isEven xs
+    end for all
+  end definition
+end law
+end unit
+```
+
+- A target's own loop is tested against the definition, on every target; it
+  is not proved equal to it.
+
 ## Case folding and substring predicates
 
 `prelude.caseFold text` applies Unicode 17.0.0 full default case folding.

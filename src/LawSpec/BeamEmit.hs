@@ -4,6 +4,7 @@
 module LawSpec.BeamEmit (emitBeam, emitBeamWithBindings) where
 
 import LawSpec.Calendar (calendarUnit)
+import LawSpec.Instances (instancesUnit)
 import qualified LawSpec.Core as C
 import LawSpec.Core.Machine (machineActor, machineScenarios)
 import qualified LawSpec.Code.Doc as D
@@ -242,7 +243,7 @@ validatePlan target plan = do
   unless (target /= "gleam" || all (\n -> (not ("lawspec@" `isPrefixOf` n) ||
     n `elem` [E.nativeModule target u | u <- units,
       Abilities.defaultUnit u || C.idText (C.unitId u) `elem`
-        [Resilience.resilienceUnit,Resources.resourcesUnit,Matchers.matchersUnit,rulesUnit,Collections.collectionsUnit,caseFoldUnit,calendarUnit]]) &&
+        [Resilience.resilienceUnit,Resources.resourcesUnit,Matchers.matchersUnit,rulesUnit,Collections.collectionsUnit,caseFoldUnit,calendarUnit,instancesUnit]]) &&
     n `notElem` [E.nativeModule target u ++ "@definitions" | u <- units]) natives)
     (Left "Gleam module names collide with generated modules or the lawspec namespace")
   unless (all ((<= 230) . length) (moduleNames ++ generated ++ natives) &&
