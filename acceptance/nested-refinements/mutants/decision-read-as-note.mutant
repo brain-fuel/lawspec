@@ -1,0 +1,9 @@
+expect: only a note has no workload
+@@ test/fixtures/nested-refinements.lawspec
+<<<<<<<
+    when Decided decision then false
+    when DecidedInTime timed then false
+=======
+    when Decided decision then false
+    when DecidedInTime timed then true
+>>>>>>>

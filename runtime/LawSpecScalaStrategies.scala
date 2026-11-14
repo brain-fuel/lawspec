@@ -144,8 +144,9 @@ object LawSpecScalaStrategies:
     witnesses.foreach(w =>
       builder.addWitness(tpe, schema.validate(tpe, w, bits, symbols))
     )
+    // The root's own witnesses always fit, whatever budget the caller states.
     val source = builder
-      .build(tpe, budget)
+      .build(tpe, budget.max(builder.reservation(tpe)))
       .getOrElse(
         throw IllegalArgumentException(
           s"no value of ${LawSpecSchema.key(tpe)} within structural node budget $budget"
@@ -472,6 +473,7 @@ object LawSpecScalaStrategies:
   ):
     val witnesses = mutable.Map[Named, mutable.ArrayBuffer[Value]]()
     val cache = mutable.Map[Request, Option[Arb[Value]]]()
+    val reservations = mutable.Map[Named, Int]()
 
     def addWitness(tpe: Named, value: Value): Unit =
       witnesses.getOrElseUpdate(tpe, mutable.ArrayBuffer()) += value
@@ -507,6 +509,19 @@ object LawSpecScalaStrategies:
             )
           )
 
+    /** The nodes a restricted type reserves: the size of its smallest witness,
+      * which stands for its smallest value. The smallest shape of such a type
+      * (an empty list in a wrapper that refuses one) need not be a value, so a
+      * budget below this has nothing to generate. A type with no restriction,
+      * or no witness, reserves nothing beyond its smallest shape.
+      */
+    def reservation(tpe: Named): Int =
+      reservations.getOrElseUpdate(
+        tpe,
+        if schema.isScalar(tpe) || !schema.restricted(tpe) then 0
+        else witnesses.get(tpe).flatMap(_.map(nodes).minOption).getOrElse(0)
+      )
+
     def minimum(tpe: Named, limit: Int): Option[Int] =
       (1 to limit).find(n => build(tpe, n).isDefined)
 
@@ -533,7 +548,7 @@ object LawSpecScalaStrategies:
         )
 
     def build(tpe: Named, available: Int): Option[Arb[Value]] =
-      if available < 1 then return None
+      if available < 1 || available < reservation(tpe) then return None
       val request = Request(tpe, available)
       cache.get(request) match
         case Some(known) => return known

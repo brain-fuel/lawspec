@@ -364,6 +364,44 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A property test no longer stops with `constructor generation exhausted
+  10000 attempts` (Kotlin, Scala) or `cannot satisfy the generator's
+  condition` (Clojure) when its input holds, some records down, a wrapper
+  whose smallest shape is not a value, such as `NonEmptyList a is List a
+  where length value > 0`. Every runtime shares out an input's node budget by
+  each field's smallest shape, and a non-empty list of records got the two
+  nodes of an empty one, so the only list it could build was the one its
+  wrapper refuses. A type with a restriction of its own now reserves the
+  size of its smallest witness. The runtimes of Java, Groovy, Clojure,
+  Kotlin, Scala, Go, Python, JavaScript and TypeScript do this, and each
+  runs the new `nested-refinements` acceptance suite. The Haskell, Rust,
+  Swift, .NET and BEAM runtimes are unchanged: there such a value is still
+  drawn only from the witnesses the compiler supplies. Haskell and Rust pass
+  the suite as they are; the others were not run on it.
+- A type used in a data declaration without being imported is refused where
+  it is written, in the unit that writes it: `GoalId is not imported.
+  shop.ids declares it: add it to the import list (import shop.ids (Written,
+  GoalId)) or write ids.GoalId`, or `unknown type: Gaol` when no unit
+  declares it. The message was `field restriction: unknown type constructor`
+  at whichever wrapper the compiler checked first, often in another unit.
+- `Duration` needs no import in a unit that names it only as a constructor's
+  payload (`| Every of type Duration`), as the durations page says. The scan that decides
+  whether a unit uses `lawspec.time` read `type Duration` there as the unit
+  declaring its own `Duration`. The same scan for `Regex`, `Symbol` and
+  `Resource` is corrected likewise.
+- In a definition, a wrapper or refined field given a text literal is checked
+  by evaluating its restriction when that passes the literal through `trim`,
+  `trimAsciiControl`, `append`, `utf8` or `rfc822Uncommented`, as it already
+  was in a law: `Written "No"` is accepted where `Written` requires
+  `length (trim value) > 0`. A literal that breaks the restriction is refused
+  with `constructor field refinement does not hold for the value given`; a
+  value the compiler cannot decide is still `could not be proved`.
+- A reserved word written as the name of a field, parameter or quantified
+  variable (`description :: Text`) gives one error, at the word: `description
+  is a reserved word, so it cannot name a field`, with the list of reserved
+  words. There is no escape; the name has to change. The first message was
+  `unexpected 'd', expecting '}'`, and each later use of the name was
+  reported again.
 - Compiling a record with rules no longer takes time exponential in its
   rules. The totality audit doubled its proof term at every binding whose
   value was itself a shared binding, which is the shape of the generated

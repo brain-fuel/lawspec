@@ -46,7 +46,9 @@ usesMatchers text =
                     then " " else tokenText token | token <- sourceTokens text]
       tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') code)
       pairs = zip3 tokens (drop 1 tokens) (drop 2 tokens)
-      declared = or [keyword `elem` ["type", "wrapper"] && name == "Regex" | (keyword, name) <- zip tokens (drop 1 tokens)]
+      -- `of type Regex` annotates a constructor's value; it declares nothing.
+      declared = or [keyword `elem` ["type", "wrapper"] && name == "Regex" && before /= "of"
+        | (before, keyword, name) <- zip3 ("" : tokens) tokens (drop 1 tokens)]
   in not declared && (or [ (a, b) == ("same", "items") || (a, b, c) == ("contains", "all", "of") || (a, b, c) == ("is", "subset", "of")
                          | (a, b, c) <- pairs ] || any (`elem` tokens)
                            (["regex", "Regex"] ++ ["prelude." ++ operation | (operation,_) <- matcherOperations]))

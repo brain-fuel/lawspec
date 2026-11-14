@@ -40,6 +40,15 @@ test_durationsAreExactAndPortable = describe "durations" $ do
       usesTime "x = 250ms" `shouldBe` True
       usesTime "-- 250ms\nx = 1" `shouldBe` False
       usesTime "wrapper Duration is Int64 end wrapper\nf :: Duration -> Bool\n" `shouldBe` False
+    it "need no import as a constructor's payload" $ do
+      -- (of type Duration) is a use of the name, not a declaration of it.
+      usesTime "type Cadence is one of\n  | Once of type Instant\n  | Every of type Duration\nend type\n" `shouldBe` True
+      usesTime "type Duration is one of | Short | Long end type\ntype Wait is one of | For of type Duration end type\n" `shouldBe` False
+      accepts (unit ["type Cadence is one of", "  | Never", "  | Every of type Duration", "end type"])
+      -- Instant belongs to the clock, which a unit imports.
+      rejects "Instant is not imported. lawspec.time declares it: write import lawspec.time (Instant)"
+        (unit ["type Cadence is one of", "  | Once of type Instant", "  | Every of type Duration", "end type"])
+      accepts (unlines ["unit probe.time", "import lawspec.time (Instant)", "type Cadence is one of", "  | Once of type Instant", "  | Every of type Duration", "end type", "end unit"])
   describe "operators" $ do
     it "add, subtract, scale, divide and compare" $
       accepts (unit [ "law \"|arithmetic| is definition : for all (b :: Bool) => (250ms + 750ms = 1s && 2s - 500ms = 1500ms && 3 * 1s = 3s && prelude.quot 1s 4 = 250ms && 1ms < 1s) = true end for all end definition end law" ])

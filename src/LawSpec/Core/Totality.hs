@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(.., ProofDefinition), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, auditErasedWithRecordInstances, strictLet, operationLet, substituteProof, keyedBy, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (literalHelpers, Proof(..), ProofDefinition(.., ProofDefinition), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, auditErasedWithRecordInstances, strictLet, operationLet, substituteProof, keyedBy, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, when, forM_, foldM, forM)
@@ -516,8 +516,12 @@ walk signatures contracts self provenance facts expression = case expression of
       unless (length fields == length (constructorParameters contract))
         (Left "constructor contract arity mismatch")
       _ <- foldM (\known condition -> do
+        -- What is known may settle the restriction the other way (a literal
+        -- that breaks it): that is a refusal of the value, not a missing proof.
         unless (provesResult signatures contracts provenance known condition)
-          (Left ("constructor field refinement could not be proved: " ++ idText tag))
+          (Left (if provesResult signatures contracts provenance known (Negated condition)
+            then "constructor field refinement does not hold for the value given: " ++ idText tag
+            else "constructor field refinement could not be proved: " ++ idText tag))
         pure (assume True condition known)) facts (instantiateConstructor contract fields)
       pure ()
     pure (nested ++ indexCalls)
@@ -1059,7 +1063,7 @@ linear expression = case expression of
   -- The length of a literal is the number the reference semantics gives it
   -- (helperValue), as a text matcher of literals is decided in textPredicate.
   Opaque "length" [value]
-    | Literal scalar@(SSequence _ _) <- unwrapped value
+    | Just scalar@(SSequence _ _) <- literalScalar value
     , Right count <- helperValue 64 "length" [scalar] >>= exactValue -> Just (R.constant count)
   Opaque name values -> Just (R.variable (Id ("::opaque::" ++ name ++ show (map unwrapped values))))
   -- This is proof normalization only. walk still audits the complete strict
@@ -1113,8 +1117,8 @@ predicate expression = case expression of
   -- Equality with literal text or bytes is a propositional atom, decided
   -- when both sides are literals. It never enters the arithmetic.
   Comparison op a b | op `elem` [Equal, NotEqual], sequenceLiteral a || sequenceLiteral b, faithful a, faithful b ->
-    let equal = case (a, b) of
-          (Literal x, Literal y) -> R.Truth (scalarEqual x y)
+    let equal = case (literalScalar a, literalScalar b) of
+          (Just x, Just y) -> R.Truth (scalarEqual x y)
           _ -> R.Atom (Id ("::equal::" ++ show (sortOn show (map unwrapped [a, b]))))
     in Just (if op == Equal then equal else R.Not equal)
   _ -> Nothing
@@ -1127,8 +1131,9 @@ finiteItems expression = case expression of
   _ -> Nothing
 
 sequenceLiteral :: Proof -> Bool
-sequenceLiteral (Literal (SSequence _ _)) = True
-sequenceLiteral _ = False
+sequenceLiteral value = case literalScalar value of
+  Just (SSequence _ _) -> True
+  _ -> False
 
 -- | The text matchers (LawSpec.Matchers) the Core lowering keeps as atoms.
 textPredicates :: [String]
@@ -1139,18 +1144,28 @@ textPredicates = ["startsWith", "endsWith", "textContains", "regexMatches"]
 -- about the same test, alone or joined with others. On literal values it is
 -- decided by the reference semantics every runtime matches.
 textPredicate :: String -> [Proof] -> Maybe R.Predicate
-textPredicate name values = case mapM literalValue values of
+textPredicate name values = case mapM literalScalar values of
   Just scalars | Right (SBool truth) <- helperValue 64 name scalars -> Just (R.Truth truth)
   _ | all faithful values -> Just (R.Atom (Id ("::predicate::" ++ name ++ show (map unwrapped values))))
     | otherwise -> Nothing
-  where
-    literalValue value = case value of
-      Literal scalar -> Just scalar
-      -- A literal address without its comments (the rfc822Address format)
-      -- is a literal as well.
-      Opaque "rfc822Uncommented" [Literal scalar]
-        | Right uncommented <- helperValue 64 "rfc822Uncommented" [scalar] -> Just uncommented
-      _ -> Nothing
+
+-- | The text helpers whose value on literal text is the text the reference
+-- semantics gives (helperValue), whatever the machine profile.
+literalHelpers :: [String]
+literalHelpers = ["trim", "trimAsciiControl", "rfc822Uncommented", "append", "utf8"]
+
+-- | A closed term's value: a literal, or a text helper of literals (a
+-- trimmed literal, a literal address without its comments). The audit then
+-- decides a restriction on it by evaluation, as a law does, where a helper
+-- of anything else stays an atom.
+literalScalar :: Proof -> Maybe Scalar
+literalScalar expression = case unwrapped expression of
+  Literal scalar -> Just scalar
+  Opaque name values
+    | name `elem` literalHelpers
+    , Just scalars <- mapM literalScalar values
+    , Right value <- helperValue 64 name scalars -> Just value
+  _ -> Nothing
 
 integral :: Proof -> Bool
 integral expression = case expression of

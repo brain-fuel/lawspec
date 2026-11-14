@@ -19,6 +19,11 @@ program body = compileCore 64 defaultGeneration
 refused :: Either [Diagnostic] a -> Bool
 refused = either (any (("could not be proved" `isInfixOf`) . message)) (const False)
 
+-- | What is known settles the restriction against the value: a literal that
+-- breaks it, or a branch whose guard says so.
+refuted :: Either [Diagnostic] a -> Bool
+refuted = either (any (("constructor field refinement does not hold for the value given" `isInfixOf`) . message)) (const False)
+
 pet :: String -> String
 pet predicate = "type Pet is a record{ name :: (v :: Text where " ++ predicate ++ ") } end type\n"
 
@@ -88,12 +93,12 @@ test_matcherFactsAreKeptInAdmission = describe "matcher facts in admission" $ do
       program
         [ pet "v matches regex \"[a-z]+\""
         , "function mk (u :: Unit) -> Pet is Pet record{ name = \"ABC\" } end function" ]
-        `shouldSatisfy` refused
+        `shouldSatisfy` refuted
     it "refuses the guard's own branch when the guard is negated" $
       program
         [ pet "v matches regex \"[a-z]+\""
         , "function mk (n :: Text) -> Pet is if not (n matches regex \"[a-z]+\") then Pet record{ name = n } else Pet record{ name = \"a\" } end if end function" ]
-        `shouldSatisfy` refused
+        `shouldSatisfy` refuted
   describe "membership and tolerance" $ do
     it "proves a field membership from an identical argument refinement" $
       program
@@ -127,7 +132,7 @@ test_matcherFactsAreKeptInAdmission = describe "matcher facts in admission" $ do
       program
         [ "type Pet is a record{ kind :: (v :: Text where v in [\"cat\", \"dog\"]) } end type\n"
         , "function mk (u :: Unit) -> Pet is Pet record{ kind = \"cow\" } end function" ]
-        `shouldSatisfy` refused
+        `shouldSatisfy` refuted
     it "refuses a tolerance the argument can exceed" $
       program
         [ "type Box is a record{ size :: (v :: Int32 where v is within prelude.Int32 2 of prelude.Int32 10) } end type\n"

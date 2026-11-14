@@ -1,0 +1,92 @@
+unit example.nested_refinements
+
+-- A list that must hold something, as a wrapper over any element type.
+wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0
+end wrapper
+
+wrapper Label is Text where prelude.length value > 0 end wrapper
+
+type Choice is a record{
+  id :: Label
+  summary :: Label
+}
+end type
+
+type Assignment is a record{
+  who :: Label
+  what :: Label
+  due :: Maybe Integer
+}
+end type
+
+type Check is a record{
+  expected :: Label
+  observed :: Label
+  worked :: Bool
+}
+end type
+
+-- The restricted lists sit three records below the sum a law draws.
+type Decision is a record{
+  diagnosis :: Label
+  choices :: NonEmptyList Choice
+  chosen :: Label
+  assignments :: NonEmptyList Assignment
+  review :: Maybe Check
+}
+end type
+
+type TimeBudget is a record{
+  minutes :: Integer
+  basis :: Label
+}
+end type
+
+type TimedDecision is a record{
+  time :: TimeBudget
+  decision :: Decision
+}
+end type
+
+type Method is one of
+  | Noted of type Label
+  | Decided of type Decision
+  | DecidedInTime of type TimedDecision
+end type
+
+function assigned (decision :: Decision) -> Integer is
+  prelude.length (valueOfNonEmptyList decision.assignments)
+end function
+
+function workload (method :: Method) -> Integer is
+  first matching case of method:
+    when Noted label then 0
+    when Decided decision then assigned decision
+    when DecidedInTime timed then assigned timed.decision
+  end case
+end function
+
+function isNote (method :: Method) -> Bool is
+  first matching case of method:
+    when Noted label then true
+    when Decided decision then false
+    when DecidedInTime timed then false
+  end case
+end function
+
+law "|a decision in time assigns someone| is
+  definition:
+    for all (timed :: TimedDecision) =>
+      assigned timed.decision >= 1
+    end for all
+  end definition
+end law
+
+law "|only a note has no workload| is
+  definition:
+    for all (method :: Method) =>
+      (workload method = 0) = isNote method
+    end for all
+  end definition
+end law
+end unit

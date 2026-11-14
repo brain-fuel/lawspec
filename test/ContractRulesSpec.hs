@@ -517,5 +517,24 @@ test_recordRulesBecomeCheckedValidators = describe "record rules" $ do
           , "function fixed (u :: Unit) -> Code is Code record{code = \"" ++ value ++ "\"}"
           , "end function" ]
     either (concatMap message) (const "") (check (coded "GB-12")) `shouldBe` ""
-    refused (coded "GB-1234567") "constructor field refinement could not be proved"
-    refused (coded "gb-12") "constructor field refinement could not be proved"
+    refused (coded "GB-1234567") "constructor field refinement does not hold for the value given"
+    refused (coded "gb-12") "constructor field refinement does not hold for the value given"
+  it "decide a wrapper over a text literal by evaluating its restriction" $ do
+    let written value body =
+          [ "function nonblank (text :: Text) -> Bool is prelude.length (prelude.trim text) > 0 end function"
+          , "wrapper Written is Text where nonblank value end wrapper"
+          , "function refusal (flag :: Bool) -> Written is " ++ body value ++ " end function" ]
+        direct value = "Written \"" ++ value ++ "\""
+        joined value = "Written (\"" ++ value ++ "\" ++ \"\")"
+    either (concatMap message) (const "") (check (written "Threshold unmet" direct)) `shouldBe` ""
+    either (concatMap message) (const "") (check (written " No " joined)) `shouldBe` ""
+    -- A literal that breaks the restriction is refused, and the message says so.
+    refused (written "  " direct) "constructor field refinement does not hold for the value given: probe.rules::type::Written::Written"
+    refused (written "" direct) "constructor field refinement does not hold for the value given"
+    refused (written " " joined) "constructor field refinement does not hold for the value given"
+    -- A value that is not closed is still undecided, not refuted.
+    refused
+      [ "function nonblank (text :: Text) -> Bool is prelude.length (prelude.trim text) > 0 end function"
+      , "wrapper Written is Text where nonblank value end wrapper"
+      , "function refusal (text :: Text) -> Written is Written text end function" ]
+      "constructor field refinement could not be proved"

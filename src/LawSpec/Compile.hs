@@ -30,6 +30,7 @@ import LawSpec.Scalar
 import LawSpec.Parser
 import qualified LawSpec.MappingCheck as MappingCheck
 import LawSpec.Imports (resolveImportsWithCollectionDemand)
+import LawSpec.UnknownTypes (unknownFieldTypes)
 import LawSpec.Documentary (resolveDocumentaryReferences)
 import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Harness (elaborateHarness)
@@ -481,6 +482,9 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
    lowered <- Memo.staged "refinements" "" (either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported . checkOperationResults imported) parsed))
    let beforeExpansion = map (qualifyDataNames . MappingCheck.contextualizeMappings) lowered
    (headers0,headerContext)<-Memo.staged "data-types" "" (dataDeclarationHeaders beforeExpansion)
+   -- A field's unresolved type is reported at its use, before the registry
+   -- of every unit's types is first built (for a field restriction, below).
+   unknownFieldTypes origins sources [(unitName unit,imports) | (unit,imports)<-parsedUnits] beforeExpansion headers0
    -- Header slots are for type inference, not index or constructor proofs.
    let headers=[header{Core.dataIndex=Nothing} | header<-headers0]
    forM_ beforeExpansion $ \unit -> forM_ (fieldDefinitionChecks unit unit) $ \check -> do

@@ -88,6 +88,8 @@ helperValue _ "endsWith" [SSequence "Text" t, SSequence "Text" p] = Right (SBool
 helperValue _ "textContains" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isInfixOf p t))
 helperValue _ "regexMatches" [SSequence "Text" p, SSequence "Text" t] = SBool <$> regexMatchesText (map toEnum p) t
 helperValue _ "rfc822Uncommented" [SSequence "Text" t] = Right (SSequence "Text" (map fromEnum (rfc822Uncommented (map toEnum t))))
+helperValue _ "trim" [SSequence "Text" t] = Right (SSequence "Text" (trimText t))
+helperValue _ "trimAsciiControl" [SSequence "Text" t] = Right (SSequence "Text" (trimAsciiControlText t))
 -- BLAKE3-256 of bytes, in its three modes. A derivation context is its
 -- text's UTF-8 bytes.
 helperValue _ "blake3" [SSequence "Bytes" bytes] = Right (bytesScalar (blake3 (B.pack (map fromIntegral bytes))))

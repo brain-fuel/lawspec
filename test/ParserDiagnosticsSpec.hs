@@ -130,3 +130,28 @@ test_parserDiagnostics = describe "parser error recovery" $ do
     mapM_ (\text -> do
       result <- timeout 2000000 (evaluate (length (diagnostics (Source "truncated.lawspec" text))))
       result `shouldSatisfy` maybe False (>0)) inputs
+  it "refuses a reserved word as a declared name once, at the word, and names it" $ do
+    let unit body = Source "reserved.lawspec" (unlines (["unit reserved"] ++ body ++ ["end unit"]))
+        places source = map (fmap (\location -> (line location,column location)) . at) (diagnostics source)
+        says role word source = mapM_ (\err -> do
+          message err `shouldSatisfy` isInfixOf (word ++ " is a reserved word, so it cannot name " ++ role)
+          message err `shouldSatisfy` isInfixOf "no escape"
+          message err `shouldSatisfy` isInfixOf "Reserved words: unit, law,"
+          message err `shouldSatisfy` (not . isInfixOf "expecting")) (diagnostics source)
+        record = unit ["type Risk is a record{", "  description :: Text", "  rationale :: Text", "  level :: Integer", "}", "end type"]
+        payload = unit ["type Risk is one of", "  | Known of type record{ level :: Integer, rationale :: Text }", "end type"]
+        -- Each later use of the name fails for the same reason and is not reported again.
+        parameter = unit ["function describe (description :: Text) -> Text is", "  description ++ description", "end function"]
+        variable = unit ["law named is", "  definition:", "    for all (type :: Integer) => type = type end for all", "  end definition", "end law"]
+    places record `shouldBe` [Just (3,3), Just (4,3)]
+    map (takeWhile (/= ' ') . last . lines . message) (diagnostics record) `shouldBe` ["description", "rationale"]
+    says "a field" "" record
+    places payload `shouldBe` [Just (3,45)]
+    says "a field" "rationale" payload
+    places parameter `shouldBe` [Just (2,20)]
+    says "a parameter" "description" parameter
+    places variable `shouldBe` [Just (4,14)]
+    says "a variable" "type" variable
+    -- A word that only begins like a reserved one is an ordinary name.
+    diagnostics (unit ["type Risk is a record{", "  descriptions :: Text", "  typed :: Integer", "}", "end type"]) `shouldBe` []
+

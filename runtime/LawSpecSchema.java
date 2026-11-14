@@ -349,6 +349,18 @@ public final class LawSpecSchema
             || constructor.indices().stream().anyMatch(LawSpecSchema::isIndexGuard));
   }
 
+  /**
+   * Whether the type states a restriction of its own (a field predicate or an index guard), so
+   * that a value built from valid fields may still not be a value of it.
+   */
+  public boolean restricted(Named type)
+  {
+    var definition = definitions.get(type.name());
+    return definition != null && definition.constructors().stream()
+        .anyMatch(constructor -> !constructor.predicates().isEmpty()
+            || constructor.indices().stream().anyMatch(LawSpecSchema::isIndexGuard));
+  }
+
   private void checkType(TypeRef type, int parameters)
   {
     if (type instanceof Parameter variable)

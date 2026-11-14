@@ -43,8 +43,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
 import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace, isDigit)
-import Data.List (uncons, intercalate, isInfixOf, nub, mapAccumL)
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.List (uncons, intercalate, isInfixOf, isPrefixOf, nub, mapAccumL)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Text.Megaparsec hiding (SourcePos, parse, runParserT, lookAhead)
 import qualified Text.Megaparsec as MP
 import Text.Megaparsec.Char
@@ -103,8 +103,21 @@ runDiagnosticParser origins source environment parser initial =
             Left recovered -> filter (\err -> errorOffset err >= first && not (cascade err))
               (NE.toList (bundleErrors recovered))
             Right _ -> []
-          errors = M.elems (M.fromListWith (\_ old -> old)
+          located = M.elems (M.fromListWith (\_ old -> old)
             [(errorOffset err,err) | err <- NE.toList (bundleErrors original) ++ additional])
+          -- A reserved word refused where it is declared as a name is refused
+          -- once: each later use of that name fails for the same reason.
+          refused = [word | FancyError _ problems <- located, ErrorFail message <- S.toList problems
+            , Just word <- [reservedNameWord message]]
+          errors = [err | err <- located, reservedNameError err
+            || all (`notElem` refused) [wordAt (errorOffset err), wordBefore (errorOffset err)]]
+          reservedNameError err = case err of
+            FancyError _ problems -> or [isJust (reservedNameWord message) | ErrorFail message <- S.toList problems]
+            _ -> False
+          -- The identifier parser fails after the word it read.
+          wordAt offset = takeWhile wordChar (drop offset (content source))
+          wordBefore offset = reverse (takeWhile wordChar (reverse (take offset (content source))))
+          wordChar c = isAlphaNum c || c == '_'
           render positions failure =
             let err = diagnosticError failure
                 (_,next) = reachOffset (errorOffset err) positions
@@ -430,9 +443,42 @@ identRaw :: P String
 identRaw = phraseNameRaw <|> try (do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
 
-  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] ||
-      (x `elem` ["if","then","else","in","when","otherwise","must"])
-    then fail "reserved identifier" else pure x)
+  if x `elem` reservedWords then fail "reserved identifier" else pure x)
+
+-- | The words no name can be (docs/reference/language/syntax.md lists them).
+reservedWords :: [String]
+reservedWords =
+  ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"
+  ,"if","then","else","in","when","otherwise","must"]
+
+-- | The name a field, parameter or variable is declared with. A reserved
+-- word written there, with its type after it, is a lexical error of its own:
+-- it is recorded at the word, as a bad escape is (textChar), and read as the
+-- name, so the declaration parses to its end and no enclosing alternative
+-- reports a different failure (expecting '}') at the same place.
+declaredName :: String -> P String
+declaredName role = ident <|> do
+  offset <- getOffset
+  word <- try (lexeme (do
+    x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
+    if x `elem` reservedWords then pure x else fail "reserved identifier")
+    <* lookAhead (void (symbol "::") <|> try (keyword "of" *> keyword "type")))
+  registerParseError (FancyError offset (S.singleton (ErrorFail (reservedName role word))))
+  pure word
+
+reservedName :: String -> String -> String
+reservedName role word =
+  word ++ reservedNameText ++ role ++ ". A reserved word has no escape: use another name."
+  ++ " Reserved words: " ++ intercalate ", " reservedWords
+
+reservedNameText :: String
+reservedNameText = " is a reserved word, so it cannot name "
+
+-- | The word a reservedName message refuses.
+reservedNameWord :: String -> Maybe String
+reservedNameWord message = case break (== ' ') message of
+  (word, rest) | word `elem` reservedWords, reservedNameText `isPrefixOf` rest -> Just word
+  _ -> Nothing
 
 -- A public prelude operation may coincide with a grammatical word (then).
 -- Qualification identifies that namespace without reserving more user names.
@@ -539,7 +585,7 @@ typeP = recovering (Named "Unit") $ sourceNode "type-expression" (Just . prettyT
   option a' (Arrow a' <$> (symbol "->" *> typeP))
 typeAtom :: P Type
 typeAtom = sourceNode "type-atom" (Just . prettyType) $ anonymousRecordTypeP <|> (Named "Unit" <$ try (symbol "(" *> symbol ")")) <|> try (parens $ do
-    n <- ident; annotationP; t <- typeP
+    n <- declaredName "a variable"; annotationP; t <- typeP
     p <- optional (keyword "where" *> expr)
     pure (Refined n t p))
   <|> parens (do
@@ -592,7 +638,7 @@ anonymousRecordTypeP = do
   pure (Record fields)
   where
     field = sourceNode "record-type-field" (Just . recordFieldLabel) $ do
-      label <- ident
+      label <- declaredName "a field"
       annotationP
       ty <- typeP
       void (optional (sourceNode "record-type-separator" (const Nothing) (symbol ",")))
@@ -607,7 +653,7 @@ recordTypeBody = between delimiterOpen delimiterClose
 
 param :: P (String,Type)
 param = sourceNode "parameter" (Just . fst) $ parens $ do
-  n <- ident; annotationP; t <- typeP
+  n <- declaredName "a variable"; annotationP; t <- typeP
   p <- optional (keyword "where" *> expr)
   pure (n,maybe t (\e -> Refined n t (Just e)) p)
 constraintsP :: P [Constraint]
@@ -1026,7 +1072,7 @@ canonicalRecordP = sourceNode "record-declaration" (const Nothing) $ do
   where typeParameter = sourceNode "type-parameter" Just $
           parens (ident <* annotationP <* sourceNode "type-parameter-kind" (const (Just "Type")) (keyword "Type"))
         field = sourceNode "record-type-field" (Just . fst) $ do
-          label <- ident
+          label <- declaredName "a field"
           annotationP
           ty <- local (M.insert "delimiter:rule-labels" AliasHeader) typeP
           void (optional (sourceNode "record-type-separator" (const Nothing) (symbol ",")))
@@ -2597,7 +2643,7 @@ parameterPatternP = sourceNode "parameter" (\(pattern,_,_) -> case selectionBind
   -- An identifier directly before its annotation keeps the existing binding
   -- meaning, including uppercase locals that shadow prelude conversions. A
   -- parenthesized payload-free constructor is an explicit pattern instead.
-  pattern <- try (SelectionBinding <$> ident <* lookAhead annotationP) <|> selectionPatternP True
+  pattern <- try (SelectionBinding <$> declaredName "a parameter" <* lookAhead annotationP) <|> selectionPatternP True
   unless (irrefutableShape pattern) (fail "a parameter pattern must be irrefutable")
   annotationP
   ty <- typeP
