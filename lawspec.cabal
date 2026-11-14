@@ -983,6 +983,7 @@ library
       LawSpec.Typed.Swift
       LawSpec.Typed.Web
       LawSpec.Unification
+      LawSpec.UnknownTypes
       LawSpec.Version
       LawSpec.WebData
       LawSpec.WebDefinitions

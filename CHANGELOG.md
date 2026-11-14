@@ -378,6 +378,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Swift, .NET and BEAM runtimes are unchanged: there such a value is still
   drawn only from the witnesses the compiler supplies. Haskell and Rust pass
   the suite as they are; the others were not run on it.
+- A type used in a data declaration without being imported is refused where
+  it is written, in the unit that writes it: `GoalId is not imported.
+  shop.ids declares it: add it to the import list (import shop.ids (Written,
+  GoalId)) or write ids.GoalId`, or `unknown type: Gaol` when no unit
+  declares it. The message was `field restriction: unknown type constructor`
+  at whichever wrapper the compiler checked first, often in another unit.
+- `Duration` needs no import in a unit that names it only as a constructor's
+  payload (`| Every of type Duration`), as the durations page says. The scan that decides
+  whether a unit uses `lawspec.time` read `type Duration` there as the unit
+  declaring its own `Duration`. The same scan for `Regex`, `Symbol` and
+  `Resource` is corrected likewise.
 - Compiling a record with rules no longer takes time exponential in its
   rules. The totality audit doubled its proof term at every binding whose
   value was itself a shared binding, which is the shape of the generated

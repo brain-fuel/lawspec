@@ -6519,54 +6519,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/imports-and-packages.md:115: Resolution",
+      "id": "reference:docs/reference/language/imports-and-packages.md:120: Resolution",
       "kind": "reference",
-      "name": "docs/reference/language/imports-and-packages.md:115: Resolution",
+      "name": "docs/reference/language/imports-and-packages.md:120: Resolution",
       "source": "docs/reference/language/imports-and-packages.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/imports-and-packages.md:125: Packages",
+      "id": "reference:docs/reference/language/imports-and-packages.md:130: Packages",
       "kind": "reference",
-      "name": "docs/reference/language/imports-and-packages.md:125: Packages",
+      "name": "docs/reference/language/imports-and-packages.md:130: Packages",
       "source": "docs/reference/language/imports-and-packages.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/imports-and-packages.md:150: Visibility",
+      "id": "reference:docs/reference/language/imports-and-packages.md:155: Visibility",
       "kind": "reference",
-      "name": "docs/reference/language/imports-and-packages.md:150: Visibility",
+      "name": "docs/reference/language/imports-and-packages.md:155: Visibility",
       "source": "docs/reference/language/imports-and-packages.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/imports-and-packages.md:155: Versions",
+      "id": "reference:docs/reference/language/imports-and-packages.md:160: Versions",
       "kind": "reference",
-      "name": "docs/reference/language/imports-and-packages.md:155: Versions",
+      "name": "docs/reference/language/imports-and-packages.md:160: Versions",
       "source": "docs/reference/language/imports-and-packages.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/imports-and-packages.md:166: Several versions of one package",
+      "id": "reference:docs/reference/language/imports-and-packages.md:171: Several versions of one package",
       "kind": "reference",
-      "name": "docs/reference/language/imports-and-packages.md:166: Several versions of one package",
+      "name": "docs/reference/language/imports-and-packages.md:171: Several versions of one package",
       "source": "docs/reference/language/imports-and-packages.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/imports-and-packages.md:193: Packages as contracts",
+      "id": "reference:docs/reference/language/imports-and-packages.md:198: Packages as contracts",
       "kind": "reference",
-      "name": "docs/reference/language/imports-and-packages.md:193: Packages as contracts",
+      "name": "docs/reference/language/imports-and-packages.md:198: Packages as contracts",
       "source": "docs/reference/language/imports-and-packages.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -6591,9 +6591,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/language/imports-and-packages.md:84: Re-exports",
+      "id": "reference:docs/reference/language/imports-and-packages.md:89: Re-exports",
       "kind": "reference",
-      "name": "docs/reference/language/imports-and-packages.md:84: Re-exports",
+      "name": "docs/reference/language/imports-and-packages.md:89: Re-exports",
       "source": "docs/reference/language/imports-and-packages.md",
       "exampleStatus": "deferred",
       "checkedExample": null,

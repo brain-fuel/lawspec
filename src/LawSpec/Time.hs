@@ -90,7 +90,9 @@ usesTime :: String -> Bool
 usesTime text =
   let code = stripComments text
       tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') code)
-      declared = or [keyword `elem` ["type", "wrapper"] && name == "Duration" | (keyword, name) <- zip tokens (drop 1 tokens)]
+      -- `of type Duration` annotates a constructor's value; it declares nothing.
+      declared = or [keyword `elem` ["type", "wrapper"] && name == "Duration" && before /= "of"
+        | (before, keyword, name) <- zip3 ("" : tokens) tokens (drop 1 tokens)]
   in not declared && (any (`elem` tokens) timeTypes || any (`elem` tokens) ["prelude." ++ op | (op, _) <- timeOperations] || any literal tokens)
   where
     literal token = case span isDigit token of

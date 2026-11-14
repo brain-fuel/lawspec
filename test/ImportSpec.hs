@@ -323,3 +323,31 @@ test_importsResolveAcrossUnitsWithoutLeakingAdapters = describe "cross-unit impo
       holds "^1.3.0-beta.1" "1.3.0-beta.2" `shouldBe` True
       holds "^1.3.0-beta.2" "1.3.0-beta.10" `shouldBe` True
       parseVersion "01.2.3" `shouldSatisfy` either (const True) (const False)
+
+    it "refuses a type that is not imported where it is written, and says what to import" $ do
+      let ids = unlines
+            [ "unit shop.ids"
+            , "wrapper GoalId is Text where prelude.length value > 0 end wrapper"
+            , "wrapper Written is Text where prelude.length value > 0 end wrapper"
+            , "end unit" ]
+          goals header field = unlines ([ "unit shop.goals" ] ++ header ++
+            [ "type Goal is a record{", "  note :: Written", "  " ++ field, "}", "end type", "end unit" ])
+          found texts = case compileUnits texts of
+            Left diagnostics -> [(code diagnostic, message diagnostic, fmap (\l -> (file l, line l, column l)) (at diagnostic)) | diagnostic <- diagnostics]
+            Right _ -> []
+      accepts [ids, goals ["import shop.ids (Written, GoalId)"] "id :: GoalId"]
+      accepts [ids, goals ["import shop.ids (Written)"] "id :: ids.GoalId"]
+      -- The use is in the second file, on the field's line; the wrappers of shop.ids are not blamed.
+      found [ids, goals ["import shop.ids (Written)"] "id :: GoalId"] `shouldBe`
+        [("import", "GoalId is not imported. shop.ids declares it: add it to the import list (import shop.ids (Written, GoalId)) or write ids.GoalId", Just ("u1.lawspec", 5, 9))]
+      found [ids, goals ["import shop.ids as names (Written)"] "ids :: List GoalId"] `shouldBe`
+        [("import", "GoalId is not imported. shop.ids declares it: add it to the import list (import shop.ids as names (Written, GoalId)) or write names.GoalId", Just ("u1.lawspec", 5, 15))]
+      found [ids, unlines ["unit shop.goals", "type Goal is one of", "  | Named of type GoalId", "end type", "end unit"]] `shouldBe`
+        [("import", "GoalId is not imported. shop.ids declares it: write import shop.ids (GoalId)", Just ("u1.lawspec", 3, 19))]
+      -- A record written in place as a constructor's payload.
+      found [ids, unlines ["unit shop.goals", "import shop.ids (Written)", "type Goal is one of"
+        , "  | Named of type record{ note :: Written, id :: GoalId }", "end type", "end unit"]] `shouldBe`
+        [("import", "GoalId is not imported. shop.ids declares it: add it to the import list (import shop.ids (Written, GoalId)) or write ids.GoalId", Just ("u1.lawspec", 4, 50))]
+      found [ids, goals ["import shop.ids (Written)"] "id :: Gaol"] `shouldBe`
+        [("data-type", "unknown type: Gaol. No unit of the program declares it, and it is not a built-in type", Just ("u1.lawspec", 5, 9))]
+

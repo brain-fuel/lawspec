@@ -56,6 +56,11 @@ a definition `size`; `domain.Usd` and a local `Usd` are different constructors.
 - An unqualified name listed from two units is an error.
 - Imports are not re-exported unless the unit says so with `export` (below):
   a unit uses only what it imports itself.
+- A type a data declaration names without importing it is an error where it
+  is written. When another unit of the program declares the name, the message
+  says what to write: `GoalId is not imported. shop.ids declares it: add it
+  to the import list (import shop.ids (Written, GoalId)) or write
+  ids.GoalId`. Otherwise it is `unknown type: GoalId`.
 
 In the `1.0-rc.2` language profile, public prelude functions are also available
 unqualified. For example, `member value items` and `prelude.member value items`

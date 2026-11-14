@@ -39,7 +39,9 @@ builtinResourceKind name = stripPrefix (resourcesUnit ++ "::type::") name >>= (`
 usesResources :: String -> Bool
 usesResources text =
   let tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') (stripComments text))
-      declared = [name | (keyword, name) <- zip tokens (drop 1 tokens), keyword `elem` ["type", "wrapper", "handle"]]
+      -- `of type T` annotates a constructor's value; it declares nothing.
+      declared = [name | (before, keyword, name) <- zip3 ("" : tokens) tokens (drop 1 tokens)
+        , keyword `elem` ["type", "wrapper", "handle"], before /= "of"]
   in any (\(t, _) -> t `elem` tokens && t `notElem` declared) kinds
   where
     stripComments = unlines . map takeComment . lines
