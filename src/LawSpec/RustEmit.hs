@@ -618,9 +618,11 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                  n : _ -> n
                  [] -> "handler") | ability <- uses])
             handlerBindings = [binding (n ++ ": " ++ handlerType ability) (handlerValue ability) | (n, ability) <- zip handlerNames uses]
-            call = invoke ("adapter::" ++ declarationName d)
-              ([Doc.text ("&*" ++ n) | n <- handlerNames] ++ map (Doc.text . native) argumentNames)
-            plain = if declarationAsync d then invoke "ls::block_on" [call] else call
+            -- (the adapter's call keeps its structure, so that block_on's
+            -- single argument is laid out as the nested call rustfmt sees)
+            call = RL.call ("adapter::" ++ declarationName d)
+              ([RL.atom ("&*" ++ n) | n <- handlerNames] ++ map (RL.atom . native) argumentNames)
+            plain = RL.expr (if declarationAsync d then RL.call "ls::block_on" [call] else call)
             -- An adapter that fails with E: its native code calls ls::fail
             -- with a native E (or panics with what lawspec.edn maps).
             called = case (failureType, [a | a@(AbilityRef _ [_]) <- declarationUses d, isFail a]) of
