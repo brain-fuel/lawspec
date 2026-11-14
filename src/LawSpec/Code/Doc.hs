@@ -894,7 +894,9 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
     -- following suffixes. Literal contents remain opaque to the renderer.
     fits :: Int -> Work -> Bool
     fits _ [] = True
-    fits column ((_, _, margin, _):_) | column > margin = False
+    -- (each text is measured against its own margin: a line that fills a
+    -- full-width block ends at its line break, whatever narrower margin
+    -- the block's closing line has)
     fits column ((indentation, mode, margin, current):rest) = case current of
       Empty -> fits column rest
       LayoutChoice pretty compact -> fits column ((indentation, mode, margin, chooseLayout pretty compact):rest)
