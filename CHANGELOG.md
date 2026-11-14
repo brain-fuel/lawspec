@@ -384,6 +384,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GoalId)) or write ids.GoalId`, or `unknown type: Gaol` when no unit
   declares it. The message was `field restriction: unknown type constructor`
   at whichever wrapper the compiler checked first, often in another unit.
+- A signature or quantified variable that names a type the unit neither
+  declares nor imports is refused with `unknown type: Gaol`, at the
+  declaration for a signature. The messages were `functions require one or
+  more concrete value inputs and a value result`, with no place, and
+  `unsupported quantified type: Named "Gaol"`.
 - `Duration` needs no import in a unit that names it only as a constructor's
   payload (`| Every of type Duration`), as the durations page says. The scan that decides
   whether a unit uses `lawspec.time` read `type Duration` there as the unit

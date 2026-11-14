@@ -350,4 +350,12 @@ test_importsResolveAcrossUnitsWithoutLeakingAdapters = describe "cross-unit impo
         [("import", "GoalId is not imported. shop.ids declares it: add it to the import list (import shop.ids (Written, GoalId)) or write ids.GoalId", Just ("u1.lawspec", 4, 50))]
       found [ids, goals ["import shop.ids (Written)"] "id :: Gaol"] `shouldBe`
         [("data-type", "unknown type: Gaol. No unit of the program declares it, and it is not a built-in type", Just ("u1.lawspec", 5, 9))]
+      -- A signature and a quantified variable name the unknown type too.
+      let unknown name = name ++ ": unknown type: Gaol. This unit neither declares nor imports it; if another unit declares it, add it to that unit's import list"
+      found [unlines ["unit shop.goals", "function f (g :: Gaol) -> Int32 is 1 end function", "end unit"]] `shouldBe`
+        [("declaration", unknown "f", Just ("u0.lawspec", 2, 1))]
+      found [unlines ["unit shop.goals", "h :: Int32 -> Gaol", "end unit"]] `shouldBe`
+        [("declaration", unknown "h", Just ("u0.lawspec", 2, 1))]
+      map (\(_, text, _) -> text) (found [unlines ["unit shop.goals", "law \"|x| is", "  definition : for all (g :: Gaol) => true end for all end definition", "end law", "end unit"]])
+        `shouldSatisfy` any (isInfixOf "unknown type: Gaol. This unit neither declares nor imports it")
 

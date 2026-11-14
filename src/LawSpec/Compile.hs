@@ -54,7 +54,7 @@ import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import Data.Maybe (listToMaybe)
 import qualified Data.Map.Strict as M
 import Data.List (nub, intercalate, uncons)
-import Data.Char (isLower)
+import Data.Char (isUpper, isLower)
 import Data.List (isSuffixOf, isPrefixOf, isInfixOf, stripPrefix)
 import qualified Data.Set as Set
 import System.IO.Unsafe (unsafePerformIO)
@@ -220,8 +220,30 @@ validType _ = False
 scalar :: Type -> Bool
 scalar (Arrow _ _) = False
 scalar t = validType t
+-- | The type names a signature writes that nothing resolved: a resolved data
+-- type carries its unit, so a bare capitalized name that is no value type is
+-- one the unit neither declares nor imports.
+unknownNames :: (Type -> Bool) -> [Type] -> [String]
+unknownNames known = nub . concatMap names
+  where
+    names ty = case ty of
+      Named name | bare name, not (known ty) -> [name]
+      Applied _ argument -> names argument
+      Application _ arguments -> concatMap names arguments
+      Arrow argument result -> names argument ++ names result
+      Refined _ base _ -> names base
+      Qualified _ base -> names base
+      CheckedType _ base -> names base
+      _ -> []
+    bare name = maybe False (isUpper . fst) (uncons name) && not ("::" `isInfixOf` name) && '.' `notElem` name
+-- | Why a quantified variable's type is refused: a name nothing resolved is
+-- said to be unknown, by name.
+quantifiedTypeRefusal :: (Type -> Bool) -> Type -> String
+quantifiedTypeRefusal known ty = case unknownNames known [ty] of
+  name : _ -> "unknown type: " ++ name ++ ". This unit neither declares nor imports it; if another unit declares it, add it to that unit's import list"
+  [] -> "unsupported quantified type: " ++ show ty
 validateUnit :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
-validateUnit sourceTypes dataTypes bits u = either (Left . pure . (\m -> Diagnostic "declaration" m Nothing)) Right $ do
+validateUnit sourceTypes dataTypes bits u = either (Left . pure . located) Right $ do
   let checkTypes = typeCheck sourceTypes dataTypes bits
   unique "constructor" [dataConstructorName c | d <- LawSpec.Model.dataTypes u, c <- dataTypeConstructors d]
   unique "function" (map fst (functions u)); unique "law" (map lawName (laws u))
@@ -236,7 +258,10 @@ validateUnit sourceTypes dataTypes bits u = either (Left . pure . (\m -> Diagnos
           _ -> x) id) (result:args))
         (Left (n ++ ": an ability operation takes and gives concrete values"))
       else unless (not (null args) && all (if n `elem` map functionName (functionDefinitions u) then valueType checkTypes else concreteValue checkTypes) (result:args))
-        (Left (n ++ ": functions require one or more concrete value inputs and a value result"))
+        (Left (case unknownNames checkTypes (result:args) of
+          -- A name no scope of the unit resolved is the likelier mistake.
+          name : _ -> n ++ ": unknown type: " ++ name ++ ". This unit neither declares nor imports it; if another unit declares it, add it to that unit's import list"
+          [] -> n ++ ": functions require one or more concrete value inputs and a value result"))
   forM_ (laws u) $ \l -> do
     mapM_ (metadataText (map fst (parameters l ++ functions u))) [description l, rationale l]
     forM_ (examples l) $ \ex ->
@@ -249,6 +274,11 @@ validateUnit sourceTypes dataTypes bits u = either (Left . pure . (\m -> Diagnos
       unless (all (valueType checkTypes) (result:args)) (Left "law parameters must be values or curried functions between value types")
     unless (all (\(Capability _ t) -> valueType checkTypes t) (requirements l)) (Left "capability requires a value type")
     unless (all (validTypeWithData checkTypes . snd) (parameters l) && all (\(Capability _ t) -> validTypeWithData checkTypes t) (requirements l)) (Left "unsupported type")
+  where
+    -- An unknown type is reported at the declaration that names it.
+    located message = Diagnostic "declaration" message $ case break (== ':') message of
+      (name, _ : rest) | "unknown type: " `isPrefixOf` drop 1 rest -> spanStart <$> lookup name (declarationSpans u)
+      _ -> Nothing
 
 -- A Regex is made from a literal in the portable dialect (LawSpec.Regex),
 -- checked here, and laws do not quantify over Regex: LawSpec never makes one
@@ -571,13 +601,13 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
        body <- resolveAssertion body0
        forM_ (assertionInputs body) $ \input -> do
          unless (valueType checkTypes (inputType input) || (symbolic && valueType checkTypes (abstractType (inputType input))))
-           (throwC ("unsupported quantified type: " ++ show (inputType input)))
+           (throwC (quantifiedTypeRefusal checkTypes (inputType input)))
          when (not symbolic && not (concreteValue checkTypes (inputType input)))
            (throwC "executable logical binders must have a concrete value type")
        argumentChecks <- mapM resolveExpr argumentChecks0
        checkedInputs <- forM bs $ \v -> do
          t <- resolve (inputType v)
-         unless (valueType checkTypes t || (symbolic && valueType checkTypes (abstractType t))) (throwC ("unsupported quantified type: " ++ show t))
+         unless (valueType checkTypes t || (symbolic && valueType checkTypes (abstractType t))) (throwC (quantifiedTypeRefusal checkTypes t))
          when (not symbolic && not (concreteValue checkTypes t)) (throwC "executable inputs must have a concrete value type")
          pure v{inputType=t}
        -- One recording holds one value, so a law that quantifies cannot
