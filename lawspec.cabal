@@ -754,6 +754,7 @@ library
       LawSpec.Core.Semantics
       LawSpec.Core.SizeChange
       LawSpec.Core.Smt
+      LawSpec.Core.SmtInstances
       LawSpec.Core.Stages
       LawSpec.Core.Total
       LawSpec.Core.Totality
@@ -1241,6 +1242,7 @@ test-suite lawspec-test
       ServiceSpec
       SessionsPythonSpec
       SmtDataSpec
+      SmtInstancesSpec
       SmtNumericSpec
       SmtReceiptSpec
       SmtRecursionSpec

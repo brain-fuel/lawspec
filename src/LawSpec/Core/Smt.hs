@@ -18,6 +18,7 @@ import qualified Data.ByteString as B
 import LawSpec.Common (Diagnostic, InputDomain(..), Location, Quantification(..))
 import LawSpec.Core
 import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.SmtInstances (Instance(..), Written(..), instanceOf, instanceKey, instanceArguments)
 import LawSpec.Core.Types (builtinDataDeclarations)
 import LawSpec.CorePersist ()
 import LawSpec.Digest (digestHex, digestString)
@@ -347,10 +348,25 @@ data Work = Work { nextName :: Int, visited :: Int, required :: Encoding
                  -- written out, for triggers.
                  , unshared :: M.Map String String
                  -- The integer constants that build exact inputs.
-                 , extraConstants :: [(String, String)] }
+                 , extraConstants :: [(String, String)]
+                 -- The collection operations met so far, each as a
+                 -- definition in groups, by what makes two the same.
+                 , instances :: M.Map String Id
+                 -- Whether what is encoded is the conclusion of an assumed
+                 -- law, which may be stated more weakly than it was proved.
+                 , concluding :: Bool }
+
+-- | The conclusion of an assumed law.
+concluded :: Encode a -> Encode a
+concluded action = do
+  outer <- gets concluding
+  modify (\w -> w{concluding = True})
+  result <- action
+  modify (\w -> w{concluding = outer})
+  pure result
 
 start :: Encoding -> Program -> Recursion -> Work
-start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty []
+start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty [] M.empty False
 
 -- | With recursive definitions, the solver options that keep unfolding
 -- bounded (as Dafny sets them: no model-based quantifier instantiation, so
@@ -785,6 +801,7 @@ expression program active scope source = do
   where
     recurse=expression program active scope
     node expected types=case expressionNode source of
+      _ | Just found <- instanceOf source -> instanceCall program active scope found
       -- Data (lawspec-smtlib-v2). A construction is defined when its fields
       -- are and the datum is well formed: its field refinements hold.
       Construct tag fields -> do
@@ -912,9 +929,7 @@ expression program active scope source = do
         terms <- mapM recurse arguments
         let ok = both (map defined terms)
             textual = [t | t <- terms, termSort t == StringSort]
-        let lists = [ty | a <- arguments, let ty = expressionType a, isList ty]
-            isList ty = case ty of Constructor "List" [_] -> True; _ -> False
-        if null textual && not (null lists) then listHelper program builtin (head lists) terms ok else do
+        do
          when (null textual) (lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " with these arguments); no uninterpreted replacement was introduced")))
          case (builtin, terms) of
            (Length, [t]) -> pure (Term IntegerSort (app "div" [app "str.len" [value t], "4"]) ok)
@@ -1053,6 +1068,98 @@ binary op a b = do
           magnitude=app "div" [absolute x,absolute y]
           q=choose (app "xor" [app "<" [x,"0"],app "<" [y,"0"]]) (app "-" [magnitude]) magnitude
       pure (Term IntegerSort q (both [total,app "distinct" [y,"0"]]))
+
+-- | A collection operation: a call of its capability instance's definition
+-- for the function written here (LawSpec.Core.SmtInstances), declared once
+-- for every place that writes the same function. Admission proved nothing
+-- about that function, so the call is defined where the function is defined
+-- on each element it is applied to: a second function over the list, which
+-- Z3 unfolds itself (as it does well-formedness; a datum is finite). Where
+-- the function is defined on every value of its inputs' types, that is
+-- enough, and needs no induction. ref:DEC-capability-instances
+instanceCall :: Program -> [Id] -> Scope -> Instance -> Encode Term
+instanceCall program active scope found = do
+  let key = instanceKey found
+  existing <- gets (M.lookup key . instances)
+  name <- case existing of
+    Just known' -> pure known'
+    Nothing -> do
+      n <- gets (M.size . instances)
+      let name = Id ("lawspec.instances::" ++ instanceOperation found ++ "#" ++ show n)
+      modify (\w -> w{instances = M.insert key name (instances w), groups = M.insert name [instanceDefinition found name] (groups w)})
+      pure name
+  term <- recursiveCall program active scope name (instanceArguments found)
+  -- The conclusion of an assumed law (a hypothesis, a cited law) is stated
+  -- without it: what is assumed is then no more than what was proved, since
+  -- definedness only ever strengthens a certificate, and Z3 has no second
+  -- function to unfold under the assumption's quantifier. Its guard keeps
+  -- it, where a weaker guard would assume more.
+  assumed <- gets concluding
+  total <- if assumed then pure "true" else
+    maybe (pure "true") (instanceDefined program active scope found name) (instanceFunction found)
+  pure term{defined = both (filter (/= "true") [defined term, total])}
+
+instanceDefined :: Program -> [Id] -> Scope -> Instance -> Id -> Written -> Encode String
+instanceDefined program active scope found name written = do
+  types <- gets known
+  let bits = programMachineBits program
+      parameters = definitionArguments (instanceDefinition found name)
+      names = ["lawspec_argument_" ++ show i | i <- [0 .. length parameters - 1]]
+      symbol = "|lawspec_defined " ++ idText name ++ "|"
+      listType = expressionType (last (instanceOperands found))
+      list = last names
+      trivial text = all (`elem` ["and", "true"]) (words (map (\c -> if c `elem` ("()" :: String) then ' ' else c) text))
+      (binders, body) = case written of
+        OfElement _ binder b -> ([binder], b)
+        Step _ accumulator binder b -> ([accumulator, binder], b)
+  -- On every value of the binders' types.
+  rows <- forM binders $ \b -> do
+    s <- sortOf program (binderType b)
+    n <- fresh
+    base <- lift (domain bits (binderType b) n)
+    pure (b, s, n, base)
+  everywhere <- expression program active (foldr (\(b, s, n, _) -> M.insert (binderId b) (Term s n "true")) scope rows) body
+  if trivial (defined everywhere) then pure "true" else do
+    -- On each element of this list.
+    sorts <- mapM (sortOf program . binderType) parameters
+    nil <- lift (constructorOf types listType (Id "List::Nil"))
+    cons <- lift (constructorOf types listType (Id "List::Cons"))
+    done <- gets (any (symbol `isInfixOf`) . functionText)
+    unless done $ do
+      outer <- gets fuel
+      modify (\w -> w{fuel = ""})
+      let captured = M.fromList [(i, Term s n "true") | (Expr _ (Local i) _, s, n) <- zip3 (instanceCaptures found) sorts names]
+          captureNames = take (length (instanceCaptures found)) names
+          element = app (selectorSymbol listType cons 0) [list]
+          rest = app (selectorSymbol listType cons 1) [list]
+          bound binder text = do
+            s <- sortOf program (binderType binder)
+            pure (binderId binder, Term s text "true")
+      step <- case written of
+        OfElement stops binder b -> do
+          local <- bound binder element
+          applied <- expression program active (uncurry M.insert local captured) b
+          base <- lift (domain bits (binderType binder) element)
+          let onward = app symbol (captureNames ++ [rest])
+          pure (both [base, defined applied, if stops then app "=>" [value applied, onward] else onward])
+        Step fromLeft accumulator binder b -> do
+          let start = names !! length (instanceCaptures found)
+              folded = app (functionSymbol name) (captureNames ++ [start, rest])
+          local <- bound binder element
+          carried <- bound accumulator (if fromLeft then start else folded)
+          applied <- expression program active (uncurry M.insert carried (uncurry M.insert local captured)) b
+          base <- lift (domain bits (binderType binder) element)
+          pure (both ([base, defined applied] ++
+            [app symbol (captureNames ++ [if fromLeft then value applied else start, rest])]))
+      modify (\w -> w{fuel = outer})
+      modify (\w -> w{functionText = functionText w ++
+        ["(define-fun-rec " ++ symbol ++ " (" ++ unwords ["(" ++ n ++ " " ++ sortText s ++ ")" | (n, s) <- zip names sorts] ++ ") Bool " ++
+         choose (tester listType nil list) "true" step ++ ")\n"]})
+    arguments <- mapM (expression program active scope) (instanceArguments found)
+    pure (eitherOf
+      [ "(forall (" ++ unwords ["(" ++ n ++ " " ++ sortText s ++ ")" | (_, s, n, _) <- rows] ++ ") " ++
+          app "=>" [both [base | (_, _, _, base) <- rows], defined everywhere] ++ ")"
+      , app symbol (map value arguments) ])
 
 call :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
 call program active scope name arguments = do
@@ -1310,7 +1417,7 @@ inductionTasks program mode law input lemmas = do
           -- and for these other inputs.
           let here = M.insert (binderId x) p scope
           guardHere <- forM outer $ \o -> positive <$> restrictions program [] here (quantifiedPredicates o)
-          specific <- proposition program [] here rest
+          specific <- concluded (proposition program [] here rest)
           pure [ app "=>" [both [range, positive guardAlone], general]
                , app "=>" [both (range : guardHere), positive specific] ]
         cited <- plain $ forM lemmas $ \l -> closure program M.empty (propertyParameters l ++ propertyInputs l) (propertyBody l)
@@ -1369,7 +1476,7 @@ closure program scope quantifiers body = do
       _ -> lift (domain (programMachineBits program) (binderType b) n)
     restricted <- restrictions program [] local (quantifiedPredicates q)
     pure (base, restricted)
-  result <- proposition program [] local body
+  result <- concluded (proposition program [] local body)
   made <- gets (drop before . triggers)
   inScope <- gets bound
   modify (\w -> w{bound = drop (length rows) (bound w)})
@@ -1495,35 +1602,6 @@ regexTerm regex = case regex of
             [x] -> x
             xs -> app "re.union" xs
       pure (if itemNegated then app "re.diff" [scalarCharacter, union] else union)
-
--- | prelude.length and ++ over a List: functions defined by structural
--- recursion over the list datatype, once per element type, with
--- define-funs-rec (each terminates, as every SMT datum is finite).
-listHelper :: Program -> Builtin -> Type -> [Term] -> String -> Encode Term
-listHelper program builtin ty terms ok = do
-  types <- gets known
-  s <- sortOf program ty
-  nil <- lift (constructorOf types ty (Id "List::Nil"))
-  cons <- lift (constructorOf types ty (Id "List::Cons"))
-  let name kind = "|lawspec_list_" ++ kind ++ " " ++ typeSymbol ty ++ "|"
-      isNil x = tester ty nil x
-      headOf x = app (selectorSymbol ty cons 0) [x]
-      tailOf x = app (selectorSymbol ty cons 1) [x]
-      listSort = sortText s
-      define :: String -> String -> Encode ()
-      define kind text = do
-        done <- gets (any (name kind `isInfixOf`) . functionText)
-        unless done (modify (\w -> w{functionText = functionText w ++ [text]}))
-  case (builtin, terms) of
-    (Length, [xs]) -> do
-      define "length" ("(define-funs-rec ((" ++ name "length" ++ " ((x " ++ listSort ++ ")) Int)) ((ite " ++ isNil "x" ++
-        " 0 (+ 1 (" ++ name "length" ++ " " ++ tailOf "x" ++ ")))))\n")
-      pure (Term IntegerSort (app (name "length") [value xs]) ok)
-    (Append, [xs, ys]) -> do
-      define "append" ("(define-funs-rec ((" ++ name "append" ++ " ((x " ++ listSort ++ ") (y " ++ listSort ++ ")) " ++ listSort ++ ")) ((ite " ++
-        isNil "x" ++ " y (" ++ constructorSymbol ty cons ++ " " ++ headOf "x" ++ " (" ++ name "append" ++ " " ++ tailOf "x" ++ " y)))))\n")
-      pure (Term s (app (name "append") [value xs, value ys]) ok)
-    _ -> lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " over a list); no uninterpreted replacement was introduced"))
 
 -- | Rational and Decimal inputs are quantified exactly: a rational as an
 -- integer over a positive integer, so a witness is never irrational; a

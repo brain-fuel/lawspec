@@ -25,6 +25,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   target, that the target's own loop gives the same result. See
   [what the list operations mean](docs/reference/language/sequences.md#what-the-list-operations-mean).
 
+### Changed
+
+- The solver reasons about `prelude.map`, `prelude.filter`, `prelude.all`,
+  `prelude.any`, `prelude.contains`, the folds, `prelude.concat`, and
+  `prelude.length` and `++` on lists, through each operation's definition in
+  `lawspec.instances`: by unfolding on a list that is written out, and by
+  induction over any list. These laws were reported unsupported before.
+
 ## [0.34.1] - 2026-11-16
 
 ### Added

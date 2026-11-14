@@ -69,6 +69,7 @@ import qualified TargetOptionsSpec
 import qualified ParameterNamesSpec
 import qualified CalendarSpec
 import qualified InstancesSpec
+import qualified SmtInstancesSpec
 import qualified ContractRulesSpec
 import qualified FormatsSpec
 import qualified PipeTextSpec
@@ -210,6 +211,7 @@ main = hspec $ do
   TimeSpec.test_durationsAreExactAndPortable
   CalendarSpec.test_calendarDatesAreCheckedDefinitions
   InstancesSpec.test_instanceOperationsAreCheckedDefinitions
+  SmtInstancesSpec.test_solverUsesInstanceDefinitions
   FormatsSpec.test_formatsAreTheRecordedGrammars
   ContractRulesSpec.test_recordRulesBecomeCheckedValidators
   PipeTextSpec.test_pipeTextIsDiagnosedWhereItIsWritten
