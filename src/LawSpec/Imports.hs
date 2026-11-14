@@ -765,6 +765,28 @@ walkExpr names scope e
     -- Captured arguments are strict, even for an empty collection, and are
     -- evaluated once before drawing any elements or invoking the predicate.
     pure (foldr (\(name,value) body -> MatchExpr value [MatchBranch letTag [name] body]) iteration captures)
+  -- A fold's step is resolved before its accumulator and element binders are
+  -- introduced. Its captured arguments are evaluated once, before the list
+  -- and the initial value.
+  Apply prefix collection | contextualArticles names,
+      Apply stepped initial <- unlocated prefix,
+      Apply function step <- unlocated stepped,
+      Var operation <- unlocated function, operation `elem` ["prelude.foldLeft", "prelude.foldRight"] -> do
+    step' <- walkExpr names scope step
+    initial' <- walkExpr names scope initial
+    collection' <- walkExpr names scope collection
+    let taken = scope ++ exprVars step' ++ exprVars initial' ++ exprVars collection'
+        freshNames = ["~lawspecAnyItem" ++ replicate i '_' | i <- [0..],
+          "~lawspecAnyItem" ++ replicate i '_' `notElem` taken]
+        accumulator = head freshNames
+        binder = head (tail freshNames)
+        (stepFunction, captures, _) = preparePredicate step' (drop 2 freshNames)
+        fromLeft = operation == "prelude.foldLeft"
+        body = if fromLeft
+          then Apply (Apply stepFunction (Var accumulator)) (Var binder)
+          else Apply (Apply stepFunction (Var binder)) (Var accumulator)
+    pure (foldr (\(name,value) rest -> MatchExpr value [MatchBranch letTag [name] rest])
+      (FoldElementsExpr fromLeft collection' initial' accumulator binder body) captures)
   -- Canonical membership is type-directed across finite collections.
   Var "prelude.member" | contextualArticles names -> pure (Var "prelude.member")
   -- Prelude aliases and documentary links share their checked definition.
@@ -793,6 +815,9 @@ walkExpr names scope e
     MapElementsExpr <$> walkExpr names scope value <*> pure binder <*> walkExpr names (binder : scope) predicate
   FilterElementsExpr value binder predicate ->
     FilterElementsExpr <$> walkExpr names scope value <*> pure binder <*> walkExpr names (binder : scope) predicate
+  FoldElementsExpr fromLeft value initial accumulator binder body ->
+    FoldElementsExpr fromLeft <$> walkExpr names scope value <*> walkExpr names scope initial <*> pure accumulator <*> pure binder <*>
+      walkExpr names (accumulator : binder : scope) body
   AllPayloadsExpr value predicates -> AllPayloadsExpr <$> walkExpr names scope value <*>
     forM predicates (\(binder, body) -> (,) binder <$> walkExpr names (binder : scope) body)
   Binary op a b -> do

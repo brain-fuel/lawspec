@@ -196,6 +196,10 @@ data Node
   -- elements the Bool body accepts, in order. ref:DEC-list-map-filter
   | MapElements Expr Binder Expr
   | FilterElements Expr Binder Expr
+  -- | The list's elements folded into the initial value by the body, which
+  -- sees the accumulator and one element: from the first element when the
+  -- flag is set, from the last otherwise. ref:DEC-capability-instances
+  | FoldElements Bool Expr Expr Binder Binder Expr
   -- Execution-only finite search. The body returns -1 (false), 0 (unknown)
   -- or 1 (true); each item is evaluated once, stopping at a decisive result.
   | SearchElements Bool Expr Binder Expr
@@ -680,6 +684,7 @@ children Expr{expressionNode=node} = case node of
   AllElements value _ predicate -> [value,predicate]
   MapElements value _ body -> [value,body]
   FilterElements value _ predicate -> [value,predicate]
+  FoldElements _ value initial _ _ body -> [value,initial,body]
   SearchElements _ value _ predicate -> [value,predicate]
   AllPayloads value predicates -> value : map snd predicates
   Construct _ es -> es
@@ -713,6 +718,7 @@ mapChildren f e = e { expressionNode = case expressionNode e of
   AllElements value binder body -> AllElements (f value) binder (f body)
   MapElements value binder body -> MapElements (f value) binder (f body)
   FilterElements value binder body -> FilterElements (f value) binder (f body)
+  FoldElements fromLeft value initial accumulator binder body -> FoldElements fromLeft (f value) (f initial) accumulator binder (f body)
   SearchElements universal value binder body -> SearchElements universal (f value) binder (f body)
   AllPayloads value predicates -> AllPayloads (f value) [(b, f x) | (b, x) <- predicates]
   ExternalCall n args -> ExternalCall n (map f args)
@@ -784,6 +790,7 @@ traverseChildren f e = (\node -> e { expressionNode = node }) <$> case expressio
   AllElements value binder body -> AllElements <$> f value <*> pure binder <*> f body
   MapElements value binder body -> MapElements <$> f value <*> pure binder <*> f body
   FilterElements value binder body -> FilterElements <$> f value <*> pure binder <*> f body
+  FoldElements fromLeft value initial accumulator binder body -> FoldElements fromLeft <$> f value <*> f initial <*> pure accumulator <*> pure binder <*> f body
   SearchElements universal value binder body -> SearchElements universal <$> f value <*> pure binder <*> f body
   AllPayloads value predicates -> AllPayloads <$> f value <*> traverse (\(b, x) -> (,) b <$> f x) predicates
   ExternalCall n args -> ExternalCall n <$> traverse f args
@@ -829,6 +836,8 @@ freeBinders e = case expressionNode e of
     filter (/= binderId binder) (freeBinders body)
   FilterElements value binder predicate -> freeBinders value ++
     filter (/= binderId binder) (freeBinders predicate)
+  FoldElements _ value initial accumulator binder body -> freeBinders value ++ freeBinders initial ++
+    filter (`notElem` [binderId accumulator,binderId binder]) (freeBinders body)
   SearchElements _ value binder predicate -> freeBinders value ++
     filter (/= binderId binder) (freeBinders predicate)
   AllPayloads value predicates -> freeBinders value ++ concat

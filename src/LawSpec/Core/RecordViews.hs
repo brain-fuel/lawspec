@@ -149,6 +149,7 @@ runViews canonical declarations convert outer wanted source =
       AllElements value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
       MapElements value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
       FilterElements value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
+      FoldElements _ value initial accumulator bound body -> uses name value + uses name initial + if name `elem` [binderId accumulator,binderId bound] then 0 else uses name body
       SearchElements _ value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
       AllPayloads value predicates -> uses name value + sum [uses name body | (bound,body)<-predicates,binderId bound/=name]
       _ -> sum (map (uses name) (children expression))
@@ -214,6 +215,11 @@ runViews canonical declarations convert outer wanted source =
         value'<-go scope value
         predicate'<-go (M.insert (binderId bound) (binderType bound) scope) predicate
         pure original{expressionNode=FilterElements value' bound predicate'}
+      FoldElements fromLeft value initial accumulator bound body -> do
+        value'<-go scope value
+        initial'<-go scope initial
+        body'<-go (M.insert (binderId accumulator) (binderType accumulator) (M.insert (binderId bound) (binderType bound) scope)) body
+        pure original{expressionNode=FoldElements fromLeft value' initial' accumulator bound body'}
       SearchElements universal value bound predicate -> do
         value'<-go scope value
         predicate'<-go (M.insert (binderId bound) (binderType bound) scope) predicate

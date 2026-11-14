@@ -371,6 +371,7 @@ infer env (FilterElementsExpr value binder predicate) = do
   known <- resolve element
   checkExpr (M.insert binder (Monomorphic known) env) (Named "Bool") predicate
   Applied "List" <$> resolve known
+infer env e@(FoldElementsExpr _ _ _ _ _ _) = snd <$> foldTypes env e
 infer env (MatchExpr value branches) = do
   scopes <- matchScopes env value branches
   result <- Variable . ("match:" ++) <$> fresh
@@ -1044,6 +1045,9 @@ typedExpressionWithSchemesContext context declarations bits env e = do
           collection <- infer context value >>= resolve
           sequence [descend (Just collection) value]
         FilterElementsExpr value _ _ -> sequence [descend (Just t) value]
+        FoldElementsExpr _ value initial _ _ _ -> do
+          (element,_) <- foldTypes context e
+          sequence [descend (Just (Applied "List" element)) value, descend (Just t) initial]
         MatchExpr value branches@[MatchBranch tag [name] _] | tag == letTag -> do
           scopes <- matchScopesWithResult context (Just t) value branches
           case scopes of
@@ -1151,6 +1155,10 @@ typedExpressionWithSchemesContext context declarations bits env e = do
             body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
             pure [TypedCase "" [(binder,element)] body]
           _ -> throwC "filter requires a List"
+        FoldElementsExpr _ _ _ accumulator binder body -> do
+          (element,_) <- foldTypes context e
+          step <- go (M.insert binder (Monomorphic element) (M.insert accumulator (Monomorphic t) context)) (Just t) body
+          pure [TypedCase "" [(accumulator,t),(binder,element)] step]
         -- A let binds this occurrence's inferred value. Inferring it again
         -- would give a polymorphic constructor such as Nothing a different
         -- type variable, losing the body context that fixes its payload type.
@@ -1380,6 +1388,7 @@ normal (AllPayloadsExpr value predicates) = AllPayloadsExpr (normal value) [(bin
 normal (AllElementsExpr value binder predicate) = AllElementsExpr (normal value) binder (normal predicate)
 normal (MapElementsExpr value binder predicate) = MapElementsExpr (normal value) binder (normal predicate)
 normal (FilterElementsExpr value binder predicate) = FilterElementsExpr (normal value) binder (normal predicate)
+normal (FoldElementsExpr fromLeft value initial accumulator binder body) = FoldElementsExpr fromLeft (normal value) (normal initial) accumulator binder (normal body)
 normal (MatchExpr value branches) = MatchExpr (normal value) [MatchBranch tag names (normal body) | MatchBranch tag names body <- branches]
 normal (ListLit xs) = ListLit (map normal xs)
 normal (Apply f x) | Compose a b <- unlocated f = normal (Apply a (Apply b x))
@@ -1864,6 +1873,31 @@ eitherMap (MapElementsExpr value binder body) =
   in MatchExpr value [MatchBranch "Either::Left" [failure] (ConstructLit "Either::Left" [Var failure]),
        MatchBranch "Either::Right" [binder] (ConstructLit "Either::Right" [body])]
 eitherMap expression = expression
+
+-- | A fold's element type and its result type, which is its accumulator's and
+-- its initial value's. A literal list or initial value takes its type from
+-- the step, so the step is checked first then.
+foldTypes :: Env -> Expr -> C (Type,Type)
+foldTypes env (FoldElementsExpr _ value initial accumulator binder body) = do
+  element <- Variable . ("iteration:" ++) <$> fresh
+  result <- Variable . ("fold:" ++) <$> fresh
+  let operands = do
+        listed
+        checkExpr env result initial
+      -- An operand that has a type of its own, but not a List's, is named as
+      -- the fault.
+      listed = StateT $ \s -> case runStateT (checkExpr env (Applied "List" element) value) s of
+        Left problem | Right _ <- runStateT (infer env value) s -> Left ("fold requires a List: " ++ problem)
+        outcome -> outcome
+      step = do
+        known <- resolve element
+        accumulated <- resolve result
+        checkExpr (M.insert binder (Monomorphic known) (M.insert accumulator (Monomorphic accumulated) env)) accumulated body
+  if collectionLiteral value || contextualLiteralArgument initial || literalApplication initial
+    then step >> operands
+    else operands >> step
+  (,) <$> resolve element <*> resolve result
+foldTypes _ _ = throwC "fold requires a List"
 
 iterationTypes :: Env -> Expr -> String -> Expr -> C (Type,Type)
 iterationTypes env value binder predicate = do

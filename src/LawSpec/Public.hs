@@ -95,6 +95,10 @@ viewIn names e = object ["type" .= typeView (C.expressionType e),"origin" .= ori
     C.FilterElements value binder predicate -> object
       ["kind" .= str "filterElements", "value" .= expr value, "binder" .= binderView binder,
        "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
+    C.FoldElements fromLeft value initial accumulator binder body -> object
+      ["kind" .= str "foldElements", "direction" .= str (if fromLeft then "left" else "right"), "value" .= expr value,
+       "initial" .= expr initial, "accumulator" .= binderView accumulator, "binder" .= binderView binder,
+       "body" .= viewIn (M.insert (C.binderId accumulator) (C.binderName accumulator) (M.insert (C.binderId binder) (C.binderName binder) names)) body]
     C.SearchElements universal value binder predicate -> object
       ["kind" .= str "searchElements", "universal" .= universal, "value" .= expr value, "binder" .= binderView binder,
        "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
@@ -149,6 +153,9 @@ textIn names e = case C.expressionNode e of
     " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
   C.FilterElements value binder predicate -> "filterElements (" ++ go value ++ ") (" ++ C.binderName binder ++
     " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
+  C.FoldElements fromLeft value initial accumulator binder body -> (if fromLeft then "foldLeftElements" else "foldRightElements") ++
+    " (" ++ go value ++ ") (" ++ go initial ++ ") (" ++ C.binderName accumulator ++ " " ++ C.binderName binder ++
+    " -> " ++ textIn (M.insert (C.binderId accumulator) (C.binderName accumulator) (M.insert (C.binderId binder) (C.binderName binder) names)) body ++ ")"
   C.SearchElements universal value binder predicate -> "searchElements " ++ show universal ++ " (" ++ go value ++ ") (" ++ C.binderName binder ++
     " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
   C.AllPayloads value predicates -> "allPayloads (" ++ go value ++ ") [" ++ unwords

@@ -97,6 +97,7 @@ expression source = case source of
   S.AllElementsExpr value _ predicate -> expression value ++ expression predicate
   S.MapElementsExpr value _ predicate -> expression value ++ expression predicate
   S.FilterElementsExpr value _ predicate -> expression value ++ expression predicate
+  S.FoldElementsExpr _ value initial _ _ body -> expression value ++ expression initial ++ expression body
   S.AllPayloadsExpr value predicates -> expression value ++ concatMap (expression . snd) predicates
   _ -> []
 

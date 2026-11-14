@@ -123,6 +123,7 @@ railwayExprWithShadowed shadowed e = evalState (go e) 0
       AllElementsExpr a n b -> (\x y -> AllElementsExpr x n y) <$> go a <*> go b
       MapElementsExpr a n b -> (\x y -> MapElementsExpr x n y) <$> go a <*> go b
       FilterElementsExpr a n b -> (\x y -> FilterElementsExpr x n y) <$> go a <*> go b
+      FoldElementsExpr l a i m n b -> (\x y z -> FoldElementsExpr l x y m n z) <$> go a <*> go i <*> go b
       AllPayloadsExpr a fs -> AllPayloadsExpr <$> go a <*> mapM (\(n, x) -> (,) n <$> go x) fs
       Binary op a b -> Binary op <$> go a <*> go b
       Unary op a -> Unary op <$> go a
@@ -229,6 +230,7 @@ names expression = case expression of
   AllElementsExpr a n b -> n : names a ++ names b
   MapElementsExpr a n b -> n : names a ++ names b
   FilterElementsExpr a n b -> n : names a ++ names b
+  FoldElementsExpr _ a i m n b -> m : n : names a ++ names i ++ names b
   AllPayloadsExpr a fs -> names a ++ concat [n : names x | (n, x) <- fs]
   Binary _ a b -> names a ++ names b
   Unary _ a -> names a

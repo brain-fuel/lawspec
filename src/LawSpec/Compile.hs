@@ -7,6 +7,7 @@ module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWi
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
+import LawSpec.CapabilityTable (capabilityNames)
 import LawSpec.Model
 import LawSpec.SourceOrigins (SourceOriginMap)
 import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..),SyntaxReference(..))
@@ -92,6 +93,9 @@ closedCheck definitions (MapElementsExpr value binder predicate) = closedCheck d
   closedCheck definitions (replaceExprVars [(binder,BoolLit False)] predicate)
 closedCheck definitions (FilterElementsExpr value binder predicate) = closedCheck definitions value &&
   closedCheck definitions (replaceExprVars [(binder,BoolLit False)] predicate)
+closedCheck definitions (FoldElementsExpr _ value initial accumulator binder body) = closedCheck definitions value &&
+  closedCheck definitions initial &&
+  closedCheck definitions (replaceExprVars [(accumulator,BoolLit False),(binder,BoolLit False)] body)
 closedCheck definitions (MatchExpr value branches) = closedCheck definitions value && all
   (\(MatchBranch _ names body) -> closedCheck definitions (replaceExprVars [(n, BoolLit False) | n <- names] body)) branches
 closedCheck definitions (ListLit xs) = all (closedCheck definitions) xs
@@ -330,6 +334,7 @@ checkRegexes u = do
       AllElementsExpr v _ p -> [v, p]
       MapElementsExpr v _ p -> [v, p]
       FilterElementsExpr v _ p -> [v, p]
+      FoldElementsExpr _ v i _ _ b -> [v, i, b]
       AllPayloadsExpr v ps -> v : map snd ps
       Binary _ a b -> [a, b]
       Unary _ a -> [a]
@@ -927,6 +932,7 @@ resolveExpr (AllPayloadsExpr value predicates) = AllPayloadsExpr <$> resolveExpr
 resolveExpr (AllElementsExpr value binder predicate) = AllElementsExpr <$> resolveExpr value <*> pure binder <*> resolveExpr predicate
 resolveExpr (MapElementsExpr value binder predicate) = MapElementsExpr <$> resolveExpr value <*> pure binder <*> resolveExpr predicate
 resolveExpr (FilterElementsExpr value binder predicate) = FilterElementsExpr <$> resolveExpr value <*> pure binder <*> resolveExpr predicate
+resolveExpr (FoldElementsExpr fromLeft value initial accumulator binder body) = FoldElementsExpr fromLeft <$> resolveExpr value <*> resolveExpr initial <*> pure accumulator <*> pure binder <*> resolveExpr body
 resolveExpr (MatchExpr value branches) = MatchExpr <$> resolveExpr value <*> mapM
   (\(MatchBranch tag names body) -> MatchBranch tag names <$> resolveExpr body) branches
 resolveExpr (ListLit xs) = ListLit <$> mapM resolveExpr xs
@@ -1045,7 +1051,7 @@ inferDefinitionTemplates sourceTypes declarations bits unit = do
       unless (all (parameterType checkTypes . snd) parameters)
         (Left "definition parameters and result require value types, or functions between value types")
       forM_ declared $ \(Capability name ty) -> do
-        unless (name `elem` ["Eq","Integer","Ordered","Bounded","Keyed","Mappable"])
+        unless (name `elem` capabilityNames)
           (Left ("unknown capability: " ++ name))
         unless (valueType checkTypes ty && all (`elem` bound) (variables ty))
           (Left "capability mentions an invalid or unbound type")
@@ -1098,6 +1104,7 @@ inferDefinitionTemplates sourceTypes declarations bits unit = do
       AllElementsExpr value _ predicate -> annotations value ++ annotations predicate
       MapElementsExpr value _ predicate -> annotations value ++ annotations predicate
       FilterElementsExpr value _ predicate -> annotations value ++ annotations predicate
+      FoldElementsExpr _ value initial _ _ body -> annotations value ++ annotations initial ++ annotations body
       MatchExpr value branches -> annotations value ++ concat
         [annotations body | MatchBranch _ _ body <- branches]
       _ -> []

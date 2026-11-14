@@ -158,6 +158,7 @@ renderExpression declarations bits named external expression = render scopedTerm
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
+      FoldElements {} -> Left "a fold of a list is not emitted for Scala yet"
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)

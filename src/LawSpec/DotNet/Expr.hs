@@ -113,6 +113,7 @@ render context root = evalStateT (go context root) 0
       C.AllElements _ b _ -> [b]
       C.MapElements _ b _ -> [b]
       C.FilterElements _ b _ -> [b]
+      C.FoldElements _ _ _ a b _ -> [a, b]
       C.SearchElements _ _ b _ -> [b]
       C.AllPayloads _ ps -> map fst ps
       C.Match _ cs -> concatMap C.caseBinders cs
@@ -170,6 +171,7 @@ render context root = evalStateT (go context root) 0
         argument <- go ctx subject
         body <- go ctx predicate
         pure (call "Runtime" "filterElements" [argument, Lambda [(local (C.binderId binder), tValue)] tValue body])
+      C.FoldElements {} -> lift $ Left "a fold of a list is not emitted for .NET yet"
       C.SearchElements universal subject binder predicate -> do
         argument <- go ctx subject
         body <- go ctx predicate

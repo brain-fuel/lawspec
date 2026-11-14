@@ -13,6 +13,7 @@ import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Regex (parseRegex)
 import Control.Monad.Trans.Class (lift)
 import qualified Data.List.NonEmpty as NE
+import LawSpec.CapabilityTable (capabilityNames)
 import LawSpec.Model
 import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Memo (Table, memoized, newPersistentTable)
@@ -658,7 +659,7 @@ param = sourceNode "parameter" (Just . fst) $ parens $ do
   pure (n,maybe t (\e -> Refined n t (Just e)) p)
 constraintsP :: P [Constraint]
 constraintsP = option [] (keyword "requires" *> some (sourceNode "capability" (\(Capability name _) -> Just name) $ do
-  n <- choice [name <$ keyword name | name <- ["Eq","Integer","Ordered","Bounded","Keyed","Mappable"]]
+  n <- choice [name <$ keyword name | name <- capabilityNames]
   Capability n <$> typeAtom))
 refinementP :: P Refinement
 refinementP = blockP "refinement" $ do
@@ -1810,6 +1811,7 @@ expressionSyntax expression = case expression of
   AllElementsExpr _ _ _ -> ("all-elements",Nothing)
   MapElementsExpr _ _ _ -> ("map-elements",Nothing)
   FilterElementsExpr _ _ _ -> ("filter-elements",Nothing)
+  FoldElementsExpr _ _ _ _ _ _ -> ("fold-elements",Nothing)
   AllPayloadsExpr _ _ -> ("all-payloads",Nothing)
   Binary operator _ _ -> ("binary",Just operator)
   Unary operator _ -> ("unary",Just operator)

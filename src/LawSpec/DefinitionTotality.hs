@@ -274,6 +274,20 @@ auditCollected context declarations constructors bits unit templates = do
             body <- proof owner integers (M.insert name binder scope) predicate
             pure (T.Opaque "filter-elements" [T.AllElements scrutinee binder (T.TypedDomain domains body)])
           _ -> lift (Left "invalid typed List predicate")
+        -- The body is checked for every element and any accumulator of its type.
+        S.FoldElementsExpr _ _ _ _ _ _ -> case (operands,S.typedCases typed) of
+          ([value,initial],[S.TypedCase _ [(accumulatorName,accumulatorType),(name,ty)] step]) -> do
+            scrutinee <- recur value
+            start <- recur initial
+            accumulatorIndex <- nextProofSite
+            index <- nextProofSite
+            let accumulator = C.Id (C.idText owner ++ "::accumulator::" ++ show (accumulatorIndex :: Int))
+                binder = C.Id (C.idText owner ++ "::element::" ++ show (index :: Int))
+                domains = concat [T.integerAssumptions bits bound primitive
+                  | (bound,S.Named primitive) <- [(accumulator,S.baseType accumulatorType),(binder,S.baseType ty)]]
+            body <- proof owner integers (M.insert accumulatorName accumulator (M.insert name binder scope)) step
+            pure (T.Opaque "fold-elements" [start,T.AllElements scrutinee binder (T.TypedDomain domains body)])
+          _ -> lift (Left "invalid typed List fold")
         -- let x = e in body: e is checked, and the body knows x is e.
         S.MatchExpr _ [S.MatchBranch tag _ _] | tag == S.letTag, [value] <- operands,
           [S.TypedCase _ [(name, _)] body] <- S.typedCases typed -> do

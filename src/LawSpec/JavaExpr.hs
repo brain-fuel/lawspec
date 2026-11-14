@@ -171,6 +171,7 @@ renderExpressionWithSchema schemaName declarations bits reference typeKey named 
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
+      FoldElements {} -> Left "a fold of a list is not emitted for Java yet"
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)

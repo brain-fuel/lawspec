@@ -349,6 +349,7 @@ exprRefs owners e = typeRefs (expressionType e) ++ case expressionNode e of
   AllElements list binder body -> go list ++ typeRefs (binderType binder) ++ go body
   MapElements list binder body -> go list ++ typeRefs (binderType binder) ++ go body
   FilterElements list binder body -> go list ++ typeRefs (binderType binder) ++ go body
+  FoldElements _ list initial accumulator binder body -> go list ++ go initial ++ typeRefs (binderType accumulator) ++ typeRefs (binderType binder) ++ go body
   SearchElements _ list binder body -> go list ++ typeRefs (binderType binder) ++ go body
   Project c _ value -> owner c ++ go value
   Update c _ value field -> owner c ++ go value ++ go field

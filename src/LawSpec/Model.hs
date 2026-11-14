@@ -60,7 +60,7 @@ data RecordField = RecordField
   { recordFieldLabel :: String, recordFieldBinding :: String, recordFieldType :: Type }
   deriving (Eq, Show, Generic)
 instance ToJSON RecordField
-data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | RecordLit [(String,Expr)] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | MapElementsExpr Expr String Expr | FilterElementsExpr Expr String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
+data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | RecordLit [(String,Expr)] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | MapElementsExpr Expr String Expr | FilterElementsExpr Expr String Expr | FoldElementsExpr Bool Expr Expr String String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
 data MatchBranch = MatchBranch String [String] Expr deriving (Eq, Show, Generic)
 data TypedCase = TypedCase String [(String,Type)] TypedExpr deriving (Eq, Show, Generic)
 data Definition = Forall [(String, Type)] Definition | Equal Expr Expr | Holds Expr | Implies Expr Definition | And Definition Definition | Invoke String [Expr] | Exists [(String, Type)] Definition | Not Definition deriving (Eq, Show, Generic)
@@ -647,6 +647,7 @@ prettyExpr (AllPayloadsExpr value predicates) = "allPayloads (" ++ prettyExpr va
 prettyExpr (AllElementsExpr value binder predicate) = "allElements (" ++ prettyExpr value ++ ") (" ++ binder ++ " -> " ++ prettyExpr predicate ++ ")"
 prettyExpr (MapElementsExpr value binder predicate) = "mapElements (" ++ prettyExpr value ++ ") (" ++ binder ++ " -> " ++ prettyExpr predicate ++ ")"
 prettyExpr (FilterElementsExpr value binder predicate) = "filterElements (" ++ prettyExpr value ++ ") (" ++ binder ++ " -> " ++ prettyExpr predicate ++ ")"
+prettyExpr (FoldElementsExpr fromLeft value initial accumulator binder body) = (if fromLeft then "foldLeftElements" else "foldRightElements") ++ " (" ++ prettyExpr value ++ ") (" ++ prettyExpr initial ++ ") (" ++ accumulator ++ " " ++ binder ++ " -> " ++ prettyExpr body ++ ")"
 prettyExpr (MatchExpr value [MatchBranch tag [name] body]) | tag == letTag =
   "let " ++ name ++ " = " ++ prettyExpr value ++ " in " ++ prettyExpr body ++ " end let"
 prettyExpr (MatchExpr value branches) = "first matching case of " ++ prettyExpr value ++ ": " ++ concat
@@ -753,6 +754,10 @@ substituteExpr extra onType env expression = case expression of
   FilterElementsExpr value binder predicate ->
     let (name,body) = bound binder predicate
     in FilterElementsExpr (go value) name body
+  -- A fold binds its accumulator and its element in the body alone.
+  FoldElementsExpr fromLeft value initial accumulator binder body ->
+    let ([accumulator',binder'],body') = boundAll [accumulator,binder] body
+    in FoldElementsExpr fromLeft (go value) (go initial) accumulator' binder' body'
   MatchExpr value branches -> MatchExpr (go value)
     [let active = filter ((`notElem` names) . fst) env
          forbidden = extra ++ concatMap (exprVars . snd) active
@@ -782,6 +787,18 @@ substituteExpr extra onType env expression = case expression of
           name = if binder `elem` forbidden then fresh else binder
           renamed = if name == binder then body else replaceExprVars [(binder,Var name)] body
       in (name,substituteExpr extra onType active renamed)
+    boundAll binders body =
+      let active = filter ((`notElem` binders) . fst) env
+          forbidden = extra ++ concatMap (exprVars . snd) active
+          used = exprVars body ++ forbidden ++ map fst env ++ binders
+          names = rename used binders
+          rename _ [] = []
+          rename taken (binder:rest) =
+            let fresh = head [binder ++ replicate i '_' | i <- [1..], binder ++ replicate i '_' `notElem` taken]
+                name = if binder `elem` forbidden then fresh else binder
+            in name : rename (name : taken) rest
+          renamed = replaceExprVars [(binder,Var name) | (binder,name) <- zip binders names, name /= binder] body
+      in (names,substituteExpr extra onType active renamed)
 
 bridgeType :: TypedExpr -> Type
 bridgeType e = maybe (expressionType e) id (requiredConversion e)
@@ -909,6 +926,7 @@ mapExprTypes f e = case e of
   AllElementsExpr value binder predicate -> AllElementsExpr (go value) binder (go predicate)
   MapElementsExpr value binder predicate -> MapElementsExpr (go value) binder (go predicate)
   FilterElementsExpr value binder predicate -> FilterElementsExpr (go value) binder (go predicate)
+  FoldElementsExpr fromLeft value initial accumulator binder body -> FoldElementsExpr fromLeft (go value) (go initial) accumulator binder (go body)
   MatchExpr value branches -> MatchExpr (go value) [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
   ListLit xs -> ListLit (map go xs)
   Apply a b -> Apply (go a) (go b)
@@ -927,6 +945,7 @@ exprVars (AllPayloadsExpr value predicates) = exprVars value ++ concat [filter (
 exprVars (AllElementsExpr value binder predicate) = exprVars value ++ filter (/= binder) (exprVars predicate)
 exprVars (MapElementsExpr value binder predicate) = exprVars value ++ filter (/= binder) (exprVars predicate)
 exprVars (FilterElementsExpr value binder predicate) = exprVars value ++ filter (/= binder) (exprVars predicate)
+exprVars (FoldElementsExpr _ value initial accumulator binder body) = exprVars value ++ exprVars initial ++ filter (`notElem` [accumulator,binder]) (exprVars body)
 exprVars (MatchExpr value branches) = exprVars value ++ concat
   [[n | n <- exprVars body, n `notElem` names] | MatchBranch _ names body <- branches]
 exprVars (ListLit xs) = concatMap exprVars xs
@@ -1028,6 +1047,7 @@ stripLocations e = case unlocated e of
   AllElementsExpr value binder predicate -> AllElementsExpr (go value) binder (go predicate)
   MapElementsExpr value binder predicate -> MapElementsExpr (go value) binder (go predicate)
   FilterElementsExpr value binder predicate -> FilterElementsExpr (go value) binder (go predicate)
+  FoldElementsExpr fromLeft value initial accumulator binder body -> FoldElementsExpr fromLeft (go value) (go initial) accumulator binder (go body)
   MatchExpr value branches -> MatchExpr (go value) [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
   ListLit xs -> ListLit (map go xs)
   Apply a b -> Apply (go a) (go b)
@@ -1081,6 +1101,7 @@ typeVariableNames ty = nub $ case ty of
       AllElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
       MapElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
       FilterElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
+      FoldElementsExpr _ value initial _ _ body -> expressionVariables value ++ expressionVariables initial ++ expressionVariables body
       AllPayloadsExpr value predicates -> expressionVariables value ++ concatMap (expressionVariables . snd) predicates
       _ -> []
 

@@ -6,7 +6,7 @@ module LawSpec.Core.Eval
   , evaluateValueM, evaluateAdmittedValueM, evaluateValuePropositionM, validateValueWithContractsM
   , evaluateValue, evaluateValuePure, evaluateValueProposition, validateValueWithContracts
   ) where
-import Control.Monad (forM)
+import Control.Monad (foldM, forM)
 import Control.Monad.Except (MonadError, liftEither, throwError, catchError)
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Common (Location(..), Span(..))
@@ -142,6 +142,16 @@ evaluateWithAdmissionM admitted tick registry bits adapter bindings = run (M.fro
         pure [checked | accepted])
         (throwError . (("List element " ++ show index ++ ": ") ++))
       pure (listValue (binderType binder) (concat kept))
+    -- A left fold takes the elements first to last, a right fold last to first.
+    FoldElements fromLeft value initial accumulator binder body -> do
+      items <- go value >>= liftEither . listItems
+      start <- go initial
+      let indexed = zip [0 :: Int ..] items
+          step total (index,item) = catchError (do
+            checked <- validateValueWithContractsM tick registry bits (binderType binder) item
+            run (M.insert (binderId accumulator) total (M.insert (binderId binder) checked env)) body)
+            (throwError . (("List element " ++ show index ++ ": ") ++))
+      foldM step start (if fromLeft then indexed else reverse indexed)
     SearchElements universal value binder predicate -> do
       items <- go value >>= liftEither . listItems
       let decisive = if universal then -1 else 1

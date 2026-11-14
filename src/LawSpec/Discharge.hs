@@ -508,6 +508,7 @@ callees e = case expressionNode e of
   AllElements value _ body -> callees value ++ callees body
   MapElements value _ body -> callees value ++ callees body
   FilterElements value _ body -> callees value ++ callees body
+  FoldElements _ value initial _ _ body -> callees value ++ callees initial ++ callees body
   AllPayloads value predicates -> callees value ++ concatMap (callees . snd) predicates
   Binary _ _ a b -> callees a ++ callees b
   Unary _ a -> callees a

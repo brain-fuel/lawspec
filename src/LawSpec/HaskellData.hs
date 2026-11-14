@@ -360,6 +360,7 @@ emitHaskellSchemaWithProfile bits layout declarations = do
       C.AllElements _ binder _ -> [C.binderId binder]
       C.MapElements _ binder _ -> [C.binderId binder]
       C.FilterElements _ binder _ -> [C.binderId binder]
+      C.FoldElements _ _ _ accumulator binder _ -> [C.binderId accumulator, C.binderId binder]
       C.AllPayloads _ predicates -> map (C.binderId . fst) predicates
       C.Match _ branches -> concatMap (map C.binderId . C.caseBinders) branches
       _ -> []) ++ concatMap nestedIds (C.children term)

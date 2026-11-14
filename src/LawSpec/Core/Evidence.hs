@@ -147,6 +147,7 @@ mentions name e = case expressionNode e of
   AllElements value _ body -> mentions name value || mentions name body
   MapElements value _ body -> mentions name value || mentions name body
   FilterElements value _ body -> mentions name value || mentions name body
+  FoldElements _ value initial _ _ body -> mentions name value || mentions name initial || mentions name body
   AllPayloads value predicates -> mentions name value || any (mentions name . snd) predicates
   Binary _ _ a b -> mentions name a || mentions name b
   Unary _ a -> mentions name a

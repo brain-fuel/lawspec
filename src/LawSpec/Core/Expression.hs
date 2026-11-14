@@ -51,6 +51,7 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     AllElements value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
     MapElements value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
     FilterElements value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
+    FoldElements _ value initial _ _ _ -> mapM_ (validateExpressionWithRegistry registry bits declarations scope) [value,initial]
     SearchElements _ value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
     AllPayloads value _ -> validateExpressionWithRegistry registry bits declarations scope value
     -- A let's body sees its binder; the Let case below checks both.
@@ -140,6 +141,18 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
           (M.insert (binderId binder) (binderType binder) scope) predicate
         requireType "Bool" predicate) predicates
       pure (scalarType "Bool")
+    FoldElements _ value initial accumulator binder body -> do
+      case expressionTypeOf value of
+        Constructor "List" [TypeArgument element] ->
+          unless (binderType binder == element) (Left "list fold binder type mismatch")
+        _ -> Left "fold of elements requires a List"
+      unless (binderType accumulator == expressionTypeOf initial) (Left "list fold accumulator type mismatch")
+      unless (M.notMember (binderId accumulator) scope && M.notMember (binderId binder) scope &&
+        binderId accumulator /= binderId binder) (Left "duplicate list fold binder identity")
+      validateExpressionWithRegistry registry bits declarations
+        (M.insert (binderId accumulator) (binderType accumulator) (M.insert (binderId binder) (binderType binder) scope)) body
+      unless (expressionTypeOf body == binderType accumulator) (Left "list fold body type mismatch")
+      pure (binderType accumulator)
     Local n -> maybe (Left ("unbound core binder: " ++ idText n)) Right (M.lookup n scope)
     Project tag index value -> do
       fields <- Types.constructorFieldsFor registry (expressionTypeOf value) tag

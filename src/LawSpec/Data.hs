@@ -254,6 +254,7 @@ qualifyDataNames unit = unit
       S.AllElementsExpr value binder predicate -> S.AllElementsExpr (expr value) binder (expr predicate)
       S.MapElementsExpr value binder predicate -> S.MapElementsExpr (expr value) binder (expr predicate)
       S.FilterElementsExpr value binder predicate -> S.FilterElementsExpr (expr value) binder (expr predicate)
+      S.FoldElementsExpr fromLeft value initial accumulator binder body -> S.FoldElementsExpr fromLeft (expr value) (expr initial) accumulator binder (expr body)
       S.MatchExpr value branches -> S.MatchExpr (expr value)
         [S.MatchBranch (qualify constructors tag) names (expr body) | S.MatchBranch tag names body <- branches]
       S.ListLit xs -> S.ListLit (map expr xs)
@@ -458,6 +459,10 @@ inlineFieldDefinitions context headers bits unit = structured{S.dataTypes=map de
           let fields=callbackFields scope expected expression
           in S.FilterElementsExpr (recur value) name
             (unfold depth active ((name,callbackType fields 0 name):scope) (Just (S.Named "Bool")) predicate)
+        S.FoldElementsExpr fromLeft value start accumulator name body->
+          let fields=callbackFields scope expected expression
+          in S.FoldElementsExpr fromLeft (recur value) (unfold depth active scope expected start) accumulator name
+            (unfold depth active ((accumulator,callbackType fields 0 accumulator):(name,callbackType fields 0 name):scope) expected body)
         S.AllPayloadsExpr value predicates->
           let fields=callbackFields scope expected expression
           in S.AllPayloadsExpr (recur value)

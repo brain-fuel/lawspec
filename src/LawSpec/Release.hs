@@ -80,6 +80,8 @@ releasing callees operations = go
       AllElements value binder body -> go tainted value || go (bindIf value [binder] tainted) body
       MapElements value binder body -> go tainted value || go (bindIf value [binder] tainted) body
       FilterElements value binder body -> go tainted value || go (bindIf value [binder] tainted) body
+      FoldElements _ value initial accumulator binder body -> go tainted value || go tainted initial ||
+        go (bindIf initial [accumulator] (bindIf value [accumulator,binder] tainted)) body
       SearchElements _ value binder body -> go tainted value || go (bindIf value [binder] tainted) body
       AllPayloads value predicates -> go tainted value || or [go (bindIf value [b] tainted) x | (b, x) <- predicates]
       _ -> any (go tainted) (children e)

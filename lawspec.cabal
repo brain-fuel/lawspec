@@ -699,6 +699,7 @@ library
       LawSpec.Calendar
       LawSpec.Capabilities
       LawSpec.CapabilityCheck
+      LawSpec.CapabilityTable
       LawSpec.CaseFold
       LawSpec.CaseFoldData
       LawSpec.CaseFoldNames
@@ -1184,6 +1185,7 @@ test-suite lawspec-test
       FiniteSearchLoopSpec
       FixtureSource
       FlowSpec
+      FoldSpec
       FormatsSpec
       FunctionParameterSpec
       GadtSpec

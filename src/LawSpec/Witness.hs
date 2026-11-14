@@ -73,6 +73,7 @@ witnessPlan plan@Plan{..}
       AllElements xs binder predicate -> e { expressionNode = AllElements (expr xs) binder (expr predicate) }
       MapElements xs binder predicate -> e { expressionNode = MapElements (expr xs) binder (expr predicate) }
       FilterElements xs binder predicate -> e { expressionNode = FilterElements (expr xs) binder (expr predicate) }
+      FoldElements fromLeft xs initial accumulator binder body -> e { expressionNode = FoldElements fromLeft (expr xs) (expr initial) accumulator binder (expr body) }
       AllPayloads x predicates -> e { expressionNode = AllPayloads (expr x) [(b, expr p) | (b, p) <- predicates] }
       ExternalCall name args -> e { expressionNode = ExternalCall name (map expr args) }
       Binary op evidence a b -> e { expressionNode = Binary op evidence (expr a) (expr b) }

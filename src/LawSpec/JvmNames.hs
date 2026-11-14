@@ -193,6 +193,7 @@ jvmScopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x
       C.AllElements v b body -> freeLocals v `S.union` S.delete (C.binderId b) (freeLocals body)
       C.MapElements v b body -> freeLocals v `S.union` S.delete (C.binderId b) (freeLocals body)
       C.FilterElements v b body -> freeLocals v `S.union` S.delete (C.binderId b) (freeLocals body)
+      C.FoldElements _ v i a b body -> S.unions [freeLocals v, freeLocals i, S.delete (C.binderId a) (S.delete (C.binderId b) (freeLocals body))]
       C.SearchElements _ v b body -> freeLocals v `S.union` S.delete (C.binderId b) (freeLocals body)
       C.AllPayloads v ps -> S.unions (freeLocals v : [S.delete (C.binderId b) (freeLocals x) | (b, x) <- ps])
       C.Match v cs -> S.unions (freeLocals v : [freeLocals (C.caseBody c) `S.difference` S.fromList (map C.binderId (C.caseBinders c)) | c <- cs])
@@ -206,6 +207,8 @@ jvmScopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x
         in e { C.expressionNode = C.MapElements (go scope value) b' (go inner body0) }
       C.FilterElements value b body -> let ([b'], body0, inner) = bindAll scope [b] body
         in e { C.expressionNode = C.FilterElements (go scope value) b' (go inner body0) }
+      C.FoldElements fromLeft value initial a b body -> let ([a', b'], body0, inner) = bindAll scope [a, b] body
+        in e { C.expressionNode = C.FoldElements fromLeft (go scope value) (go scope initial) a' b' (go inner body0) }
       C.SearchElements universal value b body -> let ([b'], body0, inner) = bindAll scope [b] body
         in e { C.expressionNode = C.SearchElements universal (go scope value) b' (go inner body0) }
       C.AllPayloads value ps -> e { C.expressionNode = C.AllPayloads (go scope value)
@@ -230,6 +233,7 @@ jvmScopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x
       C.AllElements v b body | C.binderId b == from -> e { C.expressionNode = C.AllElements (renameFree from to v) b body }
       C.MapElements v b body | C.binderId b == from -> e { C.expressionNode = C.MapElements (renameFree from to v) b body }
       C.FilterElements v b body | C.binderId b == from -> e { C.expressionNode = C.FilterElements (renameFree from to v) b body }
+      C.FoldElements l v i a b body | from `elem` [C.binderId a, C.binderId b] -> e { C.expressionNode = C.FoldElements l (renameFree from to v) (renameFree from to i) a b body }
       C.SearchElements universal v b body | C.binderId b == from -> e { C.expressionNode = C.SearchElements universal (renameFree from to v) b body }
       _ -> C.mapChildren (renameFree from to) e
     freshIds e = [C.binderId b | b <- introduced e, '\x1f' `elem` C.idText (C.binderId b)] ++ concatMap freshIds (C.children e)
@@ -238,6 +242,7 @@ jvmScopedNames named whole = (renamed, M.fromList [(i, drop 1 (dropWhile (/= '\x
       C.AllElements _ b _ -> [b]
       C.MapElements _ b _ -> [b]
       C.FilterElements _ b _ -> [b]
+      C.FoldElements _ _ _ a b _ -> [a, b]
       C.SearchElements _ _ b _ -> [b]
       C.AllPayloads _ ps -> map fst ps
       C.Match _ cs -> concatMap C.caseBinders cs

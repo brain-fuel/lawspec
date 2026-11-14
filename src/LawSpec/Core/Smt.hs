@@ -985,6 +985,7 @@ nodeName node = case node of
   AllElements {} -> "every element"
   MapElements {} -> "map over a list"
   FilterElements {} -> "filter of a list"
+  FoldElements {} -> "fold of a list"
   AllPayloads {} -> "every payload"
   Perform operation _ -> "operation " ++ operationName operation
   Handle {} -> "handled ability"

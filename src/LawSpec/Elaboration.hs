@@ -372,6 +372,16 @@ lowerResolvedTree capabilities context projections dataTypes declared bits origi
           body <- lowerWith ((name,C.binderId binder):bound) predicate
           pure (node t (C.FilterElements scrutinee binder body))
         _ -> Left "invalid typed List filter"
+      S.FoldElementsExpr fromLeft _ _ _ _ _ -> case (operands,cases) of
+        ([value,initial],[S.TypedCase _ [(accumulatorName,accumulatorType),(name,fieldType)] step]) -> do
+          scrutinee <- lower value
+          start <- lower initial
+          let identity label = C.Id (C.idText origin ++ "::match::" ++ show (length bound) ++ "::fold::" ++ label)
+          accumulator <- C.Binder (identity ("accumulator::" ++ accumulatorName)) accumulatorName <$> coreType accumulatorType
+          binder <- C.Binder (identity name) name <$> coreType fieldType
+          body <- lowerWith ((accumulatorName,C.binderId accumulator):(name,C.binderId binder):bound) step
+          pure (node t (C.FoldElements fromLeft scrutinee start accumulator binder body))
+        _ -> Left "invalid typed List fold"
       -- let x = e in body.
       S.MatchExpr _ [S.MatchBranch tag _ _] | tag == S.letTag, [value] <- operands, [S.TypedCase _ [(name, fieldType)] body] <- cases -> do
         valueCore <- lower value
@@ -1014,6 +1024,7 @@ performOperations (Operations operations handlers) = go
       C.AllElements value binder predicate -> C.AllElements (go value) binder (go predicate)
       C.MapElements value binder predicate -> C.MapElements (go value) binder (go predicate)
       C.FilterElements value binder predicate -> C.FilterElements (go value) binder (go predicate)
+      C.FoldElements fromLeft value initial accumulator binder body -> C.FoldElements fromLeft (go value) (go initial) accumulator binder (go body)
       C.SearchElements universal value binder predicate -> C.SearchElements universal (go value) binder (go predicate)
       C.AllPayloads value predicates -> C.AllPayloads (go value) [(b, go p) | (b, p) <- predicates]
       C.Local identity -> C.Local identity

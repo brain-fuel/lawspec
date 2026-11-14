@@ -375,6 +375,7 @@ instantiateExpression substitutions = go
       AllElements value field predicate -> AllElements (go value) (binder field) (go predicate)
       MapElements value field predicate -> MapElements (go value) (binder field) (go predicate)
       FilterElements value field predicate -> FilterElements (go value) (binder field) (go predicate)
+      FoldElements fromLeft value initial accumulator field body -> FoldElements fromLeft (go value) (go initial) (binder accumulator) (binder field) (go body)
       SearchElements universal value field predicate -> SearchElements universal (go value) (binder field) (go predicate)
       AllPayloads value predicates -> AllPayloads (go value)
         [(binder field,go predicate) | (field,predicate) <- predicates]

@@ -120,6 +120,7 @@ renderWith asynchronous ts declarations width reference key outerLocal external 
       AllElements _ binder _ -> [binder]
       MapElements _ binder _ -> [binder]
       FilterElements _ binder _ -> [binder]
+      FoldElements _ _ _ accumulator binder _ -> [accumulator, binder]
       SearchElements _ _ binder _ -> [binder]
       AllPayloads _ predicates -> map fst predicates
       Match _ cases -> concatMap caseBinders cases
@@ -151,6 +152,7 @@ renderWith asynchronous ts declarations width reference key outerLocal external 
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
+      FoldElements {} -> Left "a fold of a list is not emitted for JavaScript or TypeScript yet"
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)

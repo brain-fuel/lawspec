@@ -298,6 +298,12 @@ proofExpression schema bits = proof
       -- for every element, as a predicate over the elements is.
       MapElements value binder body -> T.Opaque "map-elements" [elements value binder body]
       FilterElements value binder predicate -> T.Opaque "filter-elements" [elements value binder predicate]
+      -- A fold is an atom of its list, initial value and body; the body is
+      -- checked for every element and any accumulator of its type.
+      FoldElements _ value initial accumulator binder body -> T.Opaque "fold-elements"
+        [proof initial, T.AllElements (proof value) (binderId binder) (T.TypedDomain (concat
+          [T.integerAssumptions bits (binderId bound) name | bound <- [accumulator,binder], Constructor name [] <- [binderType bound]])
+          (proof body))]
       AllElements value binder predicate -> elements value binder predicate
       -- Search is introduced only in an execution plan. It is never an
       -- admission shortcut or an uninterpreted replacement in a proof goal.

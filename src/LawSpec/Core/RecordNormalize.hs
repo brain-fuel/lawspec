@@ -377,6 +377,7 @@ normalizeExpression original = do
     AllElements value bound predicate -> AllElements value <$> binder bound <*> pure predicate
     MapElements value bound predicate -> MapElements value <$> binder bound <*> pure predicate
     FilterElements value bound predicate -> FilterElements value <$> binder bound <*> pure predicate
+    FoldElements fromLeft value initial accumulator bound body -> FoldElements fromLeft value initial <$> binder accumulator <*> binder bound <*> pure body
     SearchElements universal value bound predicate -> SearchElements universal value <$> binder bound <*> pure predicate
     AllPayloads value predicates -> AllPayloads value <$> mapM (\(bound,predicate) -> (,) <$> binder bound <*> pure predicate) predicates
     Convert conversion target value -> Convert conversion <$> ty target <*> pure value

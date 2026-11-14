@@ -269,6 +269,9 @@ prettyExprWith readable local = prettyExpr' where
     local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
   C.FilterElements value binder predicate -> "filterElements (" ++ prettyExpr' value ++ ") (" ++
     local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
+  C.FoldElements fromLeft value initial accumulator binder body -> (if fromLeft then "foldLeftElements" else "foldRightElements") ++
+    " (" ++ prettyExpr' value ++ ") (" ++ prettyExpr' initial ++ ") (" ++
+    local (C.binderId accumulator) ++ " " ++ local (C.binderId binder) ++ " -> " ++ prettyExpr' body ++ ")"
   C.SearchElements universal value binder predicate -> "searchElements " ++ show universal ++ " (" ++ prettyExpr' value ++ ") (" ++
     local (C.binderId binder) ++ " -> " ++ prettyExpr' predicate ++ ")"
   C.AllPayloads value predicates -> "allPayloads (" ++ prettyExpr' value ++ ") [" ++
@@ -373,6 +376,7 @@ expressionBinders term = (case C.expressionNode term of
   C.AllElements _ binder _ -> [binder]
   C.MapElements _ binder _ -> [binder]
   C.FilterElements _ binder _ -> [binder]
+  C.FoldElements _ _ _ accumulator binder _ -> [accumulator,binder]
   C.SearchElements _ _ binder _ -> [binder]
   C.AllPayloads _ predicates -> map fst predicates
   C.Match _ cases -> concatMap C.caseBinders cases

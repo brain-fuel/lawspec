@@ -761,6 +761,8 @@ splitHandled e = case e of
   AllElementsExpr v b p -> let (o, rs) = splitHandled v; (p', ps) = splitHandled p in (AllElementsExpr o b p', rs ++ ps)
   MapElementsExpr v b p -> let (o, rs) = splitHandled v; (p', ps) = splitHandled p in (MapElementsExpr o b p', rs ++ ps)
   FilterElementsExpr v b p -> let (o, rs) = splitHandled v; (p', ps) = splitHandled p in (FilterElementsExpr o b p', rs ++ ps)
+  FoldElementsExpr l v i a b p -> let (o, rs) = splitHandled v; (i', is) = splitHandled i; (p', ps) = splitHandled p
+    in (FoldElementsExpr l o i' a b p', rs ++ is ++ ps)
   _ -> (e, [])
   where
     both k a b = let (oa, ra) = splitHandled a; (ob, rb) = splitHandled b in (k oa ob, ra ++ rb)

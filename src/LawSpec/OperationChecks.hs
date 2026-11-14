@@ -71,6 +71,8 @@ rewrite table bound expression = case expression of
   AllElementsExpr value binder body -> AllElementsExpr (recur value) binder (rewrite table (binder : bound) body)
   MapElementsExpr value binder body -> MapElementsExpr (recur value) binder (rewrite table (binder : bound) body)
   FilterElementsExpr value binder body -> FilterElementsExpr (recur value) binder (rewrite table (binder : bound) body)
+  FoldElementsExpr fromLeft value initial accumulator binder body -> FoldElementsExpr fromLeft (recur value) (recur initial) accumulator binder
+    (rewrite table (accumulator : binder : bound) body)
   AllPayloadsExpr value predicates -> AllPayloadsExpr (recur value)
     [(binder, rewrite table (binder : bound) body) | (binder, body) <- predicates]
   Binary op a b -> Binary op (recur a) (recur b)

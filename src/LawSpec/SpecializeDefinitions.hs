@@ -194,6 +194,11 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
                 FilterElementsExpr <$> rewriteTree local value <*> pure name <*>
                   rewriteTree (Set.insert name local) predicate
               _ -> lift (Left "invalid typed List predicate during specialization")
+            FoldElementsExpr fromLeft _ _ _ _ _ -> case (operands tree,typedCases tree) of
+              ([value,initial],[TypedCase _ [(accumulator,_),(name,_)] body]) ->
+                FoldElementsExpr fromLeft <$> rewriteTree local value <*> rewriteTree local initial <*> pure accumulator <*> pure name <*>
+                  rewriteTree (Set.insert accumulator (Set.insert name local)) body
+              _ -> lift (Left "invalid typed List fold during specialization")
             MatchExpr _ _ -> case operands tree of
               [value] -> do
                 value' <- rewriteTree local value

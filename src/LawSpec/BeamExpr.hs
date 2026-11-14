@@ -40,6 +40,7 @@ renderExpressionWithConstruction width reference key construct initialSchema sym
       C.AllElements _ b _ -> [b]
       C.MapElements _ b _ -> [b]
       C.FilterElements _ b _ -> [b]
+      C.FoldElements _ _ _ a b _ -> [a, b]
       C.SearchElements _ _ b _ -> [b]
       C.AllPayloads _ ps -> map fst ps
       C.Match _ cs -> concatMap C.caseBinders cs
@@ -95,6 +96,7 @@ renderExpressionWithConstruction width reference key construct initialSchema sym
             argument <- render value
             body <- render predicate
             pure (E.remote "lists" "filter" [E.lambda [bound body binder] body,argument])
+          C.FoldElements {} -> Left "a fold of a list is not emitted for BEAM yet"
           C.SearchElements universal value binder predicate -> do
             argument <- render value
             body <- render predicate

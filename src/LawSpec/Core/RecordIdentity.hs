@@ -196,6 +196,12 @@ expressionValue scope expression = do
       (types,inner) <- bind scope [binder]
       predicate' <- expressionValue inner predicate
       pure (tag "filter-elements" [value',toJSON types,predicate'])
+    FoldElements fromLeft value initial accumulator binder body -> do
+      value' <- go value
+      initial' <- go initial
+      (types,inner) <- bind scope [accumulator,binder]
+      body' <- expressionValue inner body
+      pure (tag "fold-elements" [toJSON fromLeft,value',initial',toJSON types,body'])
     SearchElements universal value binder predicate -> do
       value' <- go value
       (types,inner) <- bind scope [binder]
@@ -288,6 +294,7 @@ expressionTypeVariables expression = typeVariables (expressionType expression) +
       AllElements _ binder _ -> typeVariables (binderType binder)
       MapElements _ binder _ -> typeVariables (binderType binder)
       FilterElements _ binder _ -> typeVariables (binderType binder)
+      FoldElements _ _ _ accumulator binder _ -> typeVariables (binderType accumulator) ++ typeVariables (binderType binder)
       SearchElements _ _ binder _ -> typeVariables (binderType binder)
       AllPayloads _ predicates -> concatMap (typeVariables . binderType . fst) predicates
       Let binder _ _ -> typeVariables (binderType binder)
@@ -317,6 +324,7 @@ expressionDependencies expression = typeDependencies (expressionType expression)
       AllElements _ binder _ -> typeDependencies (binderType binder)
       MapElements _ binder _ -> typeDependencies (binderType binder)
       FilterElements _ binder _ -> typeDependencies (binderType binder)
+      FoldElements _ _ _ accumulator binder _ -> typeDependencies (binderType accumulator) ++ typeDependencies (binderType binder)
       SearchElements _ _ binder _ -> typeDependencies (binderType binder)
       AllPayloads _ predicates -> concatMap (typeDependencies . binderType . fst) predicates
       Let binder _ _ -> typeDependencies (binderType binder)
@@ -478,6 +486,7 @@ mapExpressionTypes transform expression = expression
       AllElements value binder predicate -> AllElements value (bound binder) predicate
       MapElements value binder predicate -> MapElements value (bound binder) predicate
       FilterElements value binder predicate -> FilterElements value (bound binder) predicate
+      FoldElements fromLeft value initial accumulator binder body -> FoldElements fromLeft value initial (bound accumulator) (bound binder) body
       SearchElements universal value binder predicate -> SearchElements universal value (bound binder) predicate
       AllPayloads value predicates -> AllPayloads value [(bound binder,predicate) | (binder,predicate) <- predicates]
       Convert conversion ty value -> Convert conversion (transform ty) value
@@ -509,6 +518,7 @@ renameExpression parameters fields expression = expression
       AllElements value bound predicate -> AllElements (go value) (binder bound) (under [bound] predicate)
       MapElements value bound predicate -> MapElements (go value) (binder bound) (under [bound] predicate)
       FilterElements value bound predicate -> FilterElements (go value) (binder bound) (under [bound] predicate)
+      FoldElements fromLeft value initial accumulator bound body -> FoldElements fromLeft (go value) (go initial) (binder accumulator) (binder bound) (under [accumulator,bound] body)
       SearchElements universal value bound predicate -> SearchElements universal (go value) (binder bound) (under [bound] predicate)
       AllPayloads value predicates -> AllPayloads (go value) [(binder bound,under [bound] predicate) | (bound,predicate) <- predicates]
       _ -> node (expressionNode (mapChildren go expression)) }

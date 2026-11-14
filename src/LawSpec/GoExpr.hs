@@ -297,6 +297,7 @@ renderExpressionWithContext declarations width schema ref key local external = r
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
+      FoldElements {} -> Left "a fold of a list is not emitted for Go yet"
       AllPayloads value predicates -> do
         argument <- render value
         reference <- ref (expressionType value)

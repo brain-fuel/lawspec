@@ -544,6 +544,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
       MapElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
       FilterElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
+      FoldElements _ value initial accumulator binder body -> nestedBinders value ++ nestedBinders initial ++ [accumulator, binder] ++ nestedBinders body
       Let binder value body -> nestedBinders value ++ [binder] ++ nestedBinders body
       AllPayloads value predicates -> nestedBinders value ++ concat
         [binder : nestedBinders predicate | (binder,predicate) <- predicates]

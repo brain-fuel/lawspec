@@ -448,6 +448,11 @@ rewrite at flows sequential expression = case expression of
     (xs', bs) <- rewrite at flows sequential xs
     p' <- shadowed [n] (rewrite at flows False p)
     pure (FilterElementsExpr xs' n p', bs)
+  FoldElementsExpr l xs i m n p -> do
+    (xs', bs) <- rewrite at flows sequential xs
+    (i', is) <- rewrite at flows sequential i
+    p' <- shadowed [m, n] (rewrite at flows False p)
+    pure (FoldElementsExpr l xs' i' m n p', bs ++ is)
   _ -> pure (expression, [])
   where
     two k a b = do

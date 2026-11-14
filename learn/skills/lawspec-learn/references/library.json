@@ -2937,6 +2937,24 @@
       "execution": "deferred"
     },
     {
+      "id": "prelude:foldLeft",
+      "kind": "prelude",
+      "name": "foldLeft",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "prelude:foldRight",
+      "kind": "prelude",
+      "name": "foldRight",
+      "source": "src/LawSpec/PreludeNames.hs",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
       "id": "prelude:fromEither",
       "kind": "prelude",
       "name": "fromEither",

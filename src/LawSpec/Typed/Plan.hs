@@ -252,6 +252,7 @@ typedPlanOf performing scalars declarations units = TypedPlan
       -- A map or filter of a list runs on the portable path.
       MapElements {} -> False
       FilterElements {} -> False
+      FoldElements {} -> False
       SearchElements {} -> False
       AllPayloads _ _ -> False
       Local _ -> True
@@ -333,6 +334,7 @@ normalize d =
       AllElements _ b _ -> [binderId b]
       MapElements _ b _ -> [binderId b]
       FilterElements _ b _ -> [binderId b]
+      FoldElements _ _ _ a b _ -> [binderId a, binderId b]
       AllPayloads _ ps -> map (binderId . fst) ps
       _ -> []) ++ concatMap boundIn (children e)
     strip table callTable e =
@@ -347,6 +349,7 @@ normalize d =
             AllElements v b p -> AllElements v (binder b) p
             MapElements v b p -> MapElements v (binder b) p
             FilterElements v b p -> FilterElements v (binder b) p
+            FoldElements l v i a b p -> FoldElements l v i (binder a) (binder b) p
             other -> other
       in e { expressionNode = node, expressionOrigin = GeneratedFrom (Id "") }
 
