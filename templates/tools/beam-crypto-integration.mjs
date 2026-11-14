@@ -53,7 +53,7 @@ async function call(verb, flags = [], options = {}) {
   return {...result, ...(flags.includes('--json') ? {json: JSON.parse(result.stdout)} : {})};
 }
 const layoutFlags = minify ? ['--minify'] : [];
-await call('init', ['--no-install', '--target', language, '--project', project, '--machine-bits', String(bits), ...layoutFlags]);
+await call('init', ['--no-install', '--name', 'lawspec-example', '--target', language, '--project', project, '--machine-bits', String(bits), ...layoutFlags]);
 const lock = {erlang: 'rebar.lock', elixir: 'mix.lock', gleam: 'manifest.toml'}[language];
 await cp(path.join(repo, 'test/locks', language, lock), path.join(project, lock));
 const dependencies = process.env.LAWSPEC_BEAM_DEPENDENCIES;

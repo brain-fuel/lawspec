@@ -386,7 +386,8 @@ public final class Crypto
     public @@SharedSecret@@ decapsulate(
         @@ExchangeSecretKey@@ secretKey, @@Ciphertext@@ ciphertext)
     {
-      return new @@SharedSecret@@(mlKem768Decapsulate(secretKey.value(), ciphertext.value()));
+      return new @@SharedSecret@@(
+          mlKem768Decapsulate(secretKey.value(), ciphertext.value()));
     }
   }
 
@@ -409,7 +410,9 @@ public final class Crypto
 
     @Override
     public java.lang.Boolean verify(
-        @@VerifyingKey@@ verifyingKey, byte[] message, @@SignatureBytes@@ signature)
+        @@VerifyingKey@@ verifyingKey,
+        byte[] message,
+        @@SignatureBytes@@ signature)
     {
       return mlDsa65Verify(verifyingKey.value(), message, signature.value());
     }
@@ -439,7 +442,9 @@ public final class Crypto
 
     @Override
     public java.lang.Boolean verify(
-        @@VerifyingKey@@ verifyingKey, byte[] message, @@SignatureBytes@@ signature)
+        @@VerifyingKey@@ verifyingKey,
+        byte[] message,
+        @@SignatureBytes@@ signature)
     {
       return slhDsaVerify(verifyingKey.value(), message, signature.value(), new byte[0]);
     }
@@ -455,13 +460,15 @@ public final class Crypto
     }
 
     @Override
-    public @@AeadKey@@ deriveAeadKey(@@SharedSecret@@ sharedSecret, byte[] keyContext)
+    public @@AeadKey@@ deriveAeadKey(
+        @@SharedSecret@@ sharedSecret, byte[] keyContext)
     {
       return new @@AeadKey@@(shake256(concat(sharedSecret.value(), keyContext), 32));
     }
 
     @Override
-    public @@Sealed@@ seal(@@AeadKey@@ key, byte[] plaintext, byte[] associatedData)
+    public @@Sealed@@ seal(
+        @@AeadKey@@ key, byte[] plaintext, byte[] associatedData)
     {
       byte[] nonce = randomBytes(12);
       return new @@Sealed@@(
