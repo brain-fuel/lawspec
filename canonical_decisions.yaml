@@ -2168,3 +2168,41 @@ DEC-masking:
   opened: 0.34.0
   decided: 0.34.0
   refs: [blake3-spec, blake3-test-vectors, blake3sum]
+
+DEC-function-parameters:
+  status: decided
+  question: May a definition take a function as a parameter, and what reaches Core, the targets and the solver?
+  answer: |
+    Owner decision, 2026-11-13. Any definition may take function parameters. Each call must pass a function known where the call is written: a named definition, a partial application of one, a composition of such, or the caller's own function parameter. Every such call is specialised to its function arguments before Core, as generic definitions are already specialised to their types, so Core, the evaluator, every target and the solver see only first-order definitions; a function value that survives specialisation remains an error.
+    Precedent. SPARK's higher-order library is a set of generics instantiated per function, and its Higher_Order_Specialization annotation makes GNATprove specialise a call for the value of its access-to-function parameter, with globals read by that function as its captured values (spark-higher-order-library, spark-higher-order-specialization). Lean 4 marks List.all and List.any @[specialize] so the compiler does the same (lean-list-basic). Why3 lifts a lambda-term to a new symbol whose extra arguments are its free variables and shares canonical forms such as the identity (why3-eliminate-epsilon). LawSpec follows these: captured values become leading value parameters of the specialised copy, evaluated once at the call, and equal function arguments share one copy.
+    Not adopted. A general apply symbol over closure values (Dafny's ApplyN, Liquid Haskell's smt_apply; dafny-prelude, liquid-haskell-refinement-reflection) is needed only when functions are stored or chosen at run time, and brings generated beta and extensionality instances; LawSpec has no such values.
+    Status: implemented on the capabilities branch for 0.35 (SpecializeDefinitions, DefinitionTotality; FunctionParameterSpec and the function-parameters acceptance suite on every target). A copy is named for its definition and the functions passed.
+  opened: 0.35.0
+  decided: 0.35.0
+  refs: [spark-higher-order-library, spark-higher-order-specialization, lean-list-basic, why3-eliminate-epsilon, dafny-prelude, liquid-haskell-refinement-reflection]
+
+DEC-capability-instances:
+  status: decided
+  question: Where is the meaning of a capability's operations for an instance, and which capabilities group the collection operations?
+  answer: |
+    Owner decision, 2026-11-13: collection features hang off the capabilities, not off List. Capabilities remain a built-in set. Each instance's operations are LawSpec definitions in a built-in unit, structurally recursive where the type is. Mappable carries map (List, Either with its failure type given). Filterable carries filter. Foldable carries foldLeft, foldRight, all, any and length. Appendable carries ++ and the empty value (List, Text, Bytes). concat flattens a list of lists by folding ++; Text's join keeps its meaning. User-declared instances, and then user-declared capabilities, are roadmap items and are not part of this decision's implementation.
+    One operation has two views. Inference and lowering keep the Core nodes (MapElements, FilterElements, AllElements, and fold nodes), so the evaluator and every target keep their native operations (DEC-list-map-filter). The instance definition is the operation's meaning: the solver translates a node by specialising the instance definition to the node's body (DEC-function-parameters) and sending it through the existing encoding of recursive definitions (DEC-smt-recursive-definitions, DEC-smt-induction). The List-only length and append helper is removed in favour of the same path. An instance without a definition the solver can read keeps an explicit unsupported result.
+    Precedent. Lean 4 keeps a simple logical definition and a separate runtime version joined by a proved equation (@[csimp], lean-list-basic). Why3's standard library defines map, for_all, length, append and the folds by recursion over the list (why3-stdlib-list). Z3's own seq.map and seq.foldl were not adopted: there is no filter, all or any, the guide says they behave like recursive unfolding (z3-sequences), and on Z3 5.1.0 the identity, composition and fold-over-append laws came back unknown in a trial on 2026-11-13.
+    Trust boundary. Native operations are not proved equal to the instance definitions. An acceptance suite compares them on every target, and that evidence is reported as tested. A right fold uses the target's own right fold where it has one and otherwise a loop over the reversed list or descending indices, never generated recursion.
+    Status: decided, not implemented. Planned for 0.35.
+  opened: 0.35.0
+  decided: 0.35.0
+  refs: [lean-list-basic, why3-stdlib-list, z3-sequences, z3, DEC-mappable-capability, DEC-list-map-filter, DEC-function-parameters, DEC-smt-recursive-definitions, DEC-smt-induction, REQ-honest-evidence]
+
+DEC-capability-laws:
+  status: decided
+  question: What do a capability's laws mean for an instance, and when are they proved?
+  answer: |
+    Owner decision, 2026-11-13. Each capability states its laws once (for Mappable, identity and composition; likewise for Filterable, Foldable and Appendable, and the interactions of map, filter, length and ++). Every built-in instance is checked against them; nothing is assumed. The solver proves a law with its function parameters left as arbitrary functions, whose results are restricted to their type's refinement, by the existing induction tasks; the test layers also run the law on a fixed set of sample functions per element type. A law the solver does not settle is reported as tested or unknown and cannot be cited.
+    Proofs are run only when something substantive changes. A receipt is keyed by the semantic identity of the law, the instance definitions, the encoding version and the solver version; LawSpec's own ci produces the receipts for the built-in instances and they ship with the compiler, so a user's proof cites a proved class law as a lemma without proving it again. This extends DEC-smt-induction, under which cited laws must be laws of the same unit.
+    Precedent. Lean 4 separates Functor from LawfulFunctor, a structure of proofs supplied per instance (lean-lawful-functor). Cloning a Why3 module turns its axioms into lemmas to prove for the instantiation, and lemmas already proved in the cloned module are not proved again (why3-clone). Idris 1's VerifiedFunctor went unused and Idris 2 keeps per-type lemmas such as mapFusion instead (idris1-verified-interfaces, idris2-data-list), so the law set is kept to laws proofs actually cite.
+    Trust boundary. The translation, the induction schema generator and Z3, as for other proofs, plus the receipt key: a shipped receipt is trusted to belong to the definitions it names because the key is recomputed from them.
+    Status: decided, not implemented. Planned for 0.35.
+  opened: 0.35.0
+  decided: 0.35.0
+  refs: [lean-lawful-functor, why3-clone, idris1-verified-interfaces, idris2-data-list, DEC-capability-instances, DEC-smt-induction, REQ-honest-evidence]

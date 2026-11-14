@@ -6,7 +6,9 @@ import Control.Monad.State.Strict
 import Control.Monad (forM, forM_, unless, when, foldM, zipWithM)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
-import Data.List (sortOn)
+import Data.List (sortOn, dropWhileEnd, intercalate)
+import LawSpec.Naming (functionCopyMarker)
+import LawSpec.Digest (digestHex, digestString)
 import qualified LawSpec.Dependencies as Identity
 import qualified LawSpec.Elaboration as Elaboration
 import qualified LawSpec.SourceContext as Source
@@ -64,7 +66,12 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
       where
         owned = filter ((== unitName originalUnit) . owner) properties
         definitions = functionDefinitions originalUnit
-        generic = [functionName d | d <- definitions, not (null (typeVariables (definitionType d)))]
+        -- A definition with a function parameter is specialized to the
+        -- functions each call names, as a generic one is to its types.
+        -- ref:DEC-function-parameters
+        higher = [functionName d | d <- definitions, any (isFunction . snd) (functionArguments d)]
+        generic = [functionName d | d <- definitions,
+          not (null (typeVariables (definitionType d))) || functionName d `elem` higher]
         environment = definitionEnvironment originalUnit
         process = do
           -- Concrete definitions are roots even if no property calls them.
@@ -156,6 +163,12 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
         rewriteTree local tree = do
           expression <- case expression tree of
             Located span inner -> Located span <$> rewriteTree local tree{expression=inner, requiredConversion=Nothing}
+            Apply _ _ | (headTree, arguments) <- spine tree, Var name <- unlocated (expression headTree)
+                      , name `elem` higher, name `Set.notMember` local ->
+              higherCall local name (expressionType headTree) arguments
+            Var name | name `elem` higher, name `Set.notMember` local ->
+              lift (Left (name ++ " takes a function parameter, so a call must give it: " ++
+                "a definition, a partial application or a composition"))
             Var name | name `elem` generic, name `Set.notMember` local ->
               Var <$> ensure name (expressionType tree)
             AllPayloadsExpr _ _ -> case operands tree of
@@ -209,11 +222,60 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
           -- elaborated again (notably empty containers and phantom parameters).
           let target = maybe (expressionType tree) id (requiredConversion tree)
           pure (case target of Arrow _ _ -> expression; _ -> Annotate expression target)
+        -- The application's head and its arguments in order.
+        spine tree = case (unlocated (expression tree), operands tree) of
+          (Apply _ _, [function, argument]) -> let (headTree, arguments) = spine function in (headTree, arguments ++ [argument])
+          (Annotate _ (Arrow _ _), [inner]) -> spine inner
+          _ -> (tree, [])
+        -- A call of a definition with function parameters becomes a call of
+        -- the copy made for those functions. A function argument is a
+        -- definition, a partial application or a composition; the values it
+        -- holds are evaluated here and passed first.
+        higherCall local name concrete arguments = do
+          template <- lift $ maybe (Left ("unknown definition: " ++ name)) Right
+            (lookup name [(functionName d,d) | d <- definitions])
+          let parameters = functionArguments template
+              needed = length (dropWhileEnd (not . isFunction . snd) parameters)
+          when (length arguments < needed) (lift (Left (name ++ " takes a function parameter, so a call must give it")))
+          let (given, later) = splitAt (length parameters) arguments
+              paired = zip parameters given
+          (functions, captures) <- lift (foldM (\(done, held) ((parameter, ty), argument) ->
+            if not (isFunction ty) then Right (done, held) else do
+              (shape, values) <- abstractFunction (length held) argument
+              Right (done ++ [(parameter, shape)], held ++ values)) ([], []) paired)
+          let captureTypes = [(captured, maybe (expressionType value) id (requiredConversion value)) | (captured, value) <- captures]
+              signature = show ([(parameter, stripLocations shape) | (parameter, shape) <- functions], map (prettyType . snd) captureTypes)
+          generated <- ensureWith name concrete (Just (functions, captureTypes, signature))
+          held <- mapM (rewriteTree local . snd) captures
+          values <- mapM (rewriteTree local) ([argument | ((_, ty), argument) <- paired, not (isFunction ty)] ++ later)
+          pure (foldl Apply (Var generated) (held ++ values))
+        -- The function an argument names, with each value it holds replaced
+        -- by a parameter of the copy.
+        abstractFunction :: Int -> TypedExpr -> Either String (Expr, [(String, TypedExpr)])
+        abstractFunction offset tree
+          | not (isFunction (expressionType tree)) =
+              let captured = "lawspecCaptured" ++ show offset in Right (Var captured, [(captured, tree)])
+          | otherwise = case (unlocated (expression tree), operands tree) of
+              (Var function, []) -> Right (Var function, [])
+              (Apply _ _, [function, argument]) -> do
+                (shape, held) <- abstractFunction offset function
+                (value, more) <- abstractFunction (offset + length held) argument
+                Right (Apply shape value, held ++ more)
+              (Compose _ _, [outer, inner]) -> do
+                (first, held) <- abstractFunction offset outer
+                (second, more) <- abstractFunction (offset + length held) inner
+                Right (Compose first second, held ++ more)
+              (Annotate _ _, [inner]) -> abstractFunction offset inner
+              _ -> Left "a function argument must be a definition, a partial application or a composition"
         ensure :: String -> Type -> Specialize String
-        ensure name concrete = do
+        ensure name concrete = ensureWith name concrete Nothing
+        ensureWith :: String -> Type -> Maybe ([(String, Expr)], [(String, Type)], String) -> Specialize String
+        ensureWith name concrete functionArgumentsGiven = do
           unless (closed concrete) (lift (Left ("ambiguous definition instance: " ++ name ++ " :: " ++ prettyType concrete)))
-          fingerprint <- lift (instanceSuffix concrete)
-          let key = (name,fingerprint)
+          typeFingerprint <- lift (instanceSuffix concrete)
+          let fingerprint = typeFingerprint ++ maybe "" (\(_, _, signature) -> take 12 (digestHex (digestString signature))) functionArgumentsGiven
+              (functionsGiven, captured) = maybe ([], []) (\(functions, held, _) -> (functions, held)) functionArgumentsGiven
+              key = (name,fingerprint)
           existing <- gets (M.lookup key . instances)
           case existing of
             Just (Instance generated _ _ _) -> pure generated
@@ -239,21 +301,31 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
                   requirements = [Capability capability (replace ty) | Capability capability ty <- functionRequirements template]
               forM_ requirements $ \requirement -> unless (satisfies requirement)
                 (lift (Left ("unsatisfied specialization capability: " ++ show requirement)))
-              generated <- if name `elem` generic then allocate name fingerprint else pure name
-              let definition = template
+              -- A copy made for functions is named after them as well
+              -- (each for double: eachDouble), so that copies at the same
+              -- types read differently in generated code.
+              let named = [phraseNativeName (unqualified function)
+                    | (_, shape) <- functionsGiven, function <- exprVars shape, function `notElem` map fst captured]
+                  unqualified = reverse . takeWhile (/= '.') . reverse
+                  stem = phraseNativeName name ++ (if null named then "" else functionCopyMarker ++ intercalate "_" named)
+              generated <- if name `elem` generic then allocate stem fingerprint else pure name
+              let given = map fst functionsGiven
+                  firstOrder arguments = captured ++ [(n,replace ty) | (n,ty) <- arguments, n `notElem` given]
+                  inlined = replaceExprVars functionsGiven . mapExprTypes replace
+                  definition = template
                     { functionName = generated
                     , functionTemplate = case functionTemplate template of Just original -> Just original; _ -> Just name
-                    , functionArguments = [(n,replace ty) | (n,ty) <- functionArguments template]
+                    , functionArguments = firstOrder (functionArguments template)
                     , functionResult = replace (functionResult template)
                     , functionRequirements = requirements
-                    , functionBody = mapExprTypes replace (functionBody template)
+                    , functionBody = inlined (functionBody template)
                     }
               boundary <- lift $ case [c | c <- contracts originalUnit, contractName c == name] of
                 [] -> definitionContractFor definition
-                [c] -> pure c{contractArguments=[(n,replace ty) | (n,ty) <- contractArguments c],
+                [c] -> pure c{contractArguments=firstOrder (contractArguments c),
                   contractResult=(fst (contractResult c),replace (snd (contractResult c))),
-                  contractPreconditions=map (mapExprTypes replace) (contractPreconditions c),
-                  contractPostconditions=map (mapExprTypes replace) (contractPostconditions c)}
+                  contractPreconditions=map inlined (contractPreconditions c),
+                  contractPostconditions=map inlined (contractPostconditions c)}
                 _ -> Left ("duplicate definition contract: " ++ name)
               let instantiated = boundary{contractName=generated}
                   attached = if null (contractPreconditions instantiated) && null (contractPostconditions instantiated)
@@ -275,7 +347,7 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
         allocate :: String -> String -> Specialize String
         allocate name suffix = do
           used <- gets occupied
-          let stem = phraseNativeName name
+          let stem = name
               candidate = head (filter (`Set.notMember` used)
                 ["lawspec_" ++ stem ++ replicate count '_' ++ "_" ++ suffix | count <- [0..]])
           modify (\state -> state{occupied=Set.insert candidate (occupied state)})
@@ -376,6 +448,11 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
     assertionExpressions (AssertAll bodies) = concatMap assertionExpressions bodies
     assertionExpressions (AssertNot body) = assertionExpressions body
     assertionExpressions (AssertQuantified _ input body) = inputRefinements input ++ assertionExpressions body
+
+isFunction :: Type -> Bool
+isFunction ty = case baseType ty of
+  Arrow _ _ -> True
+  _ -> False
 
 -- Constants normally contain no calls. Set notation uses the ordinary checked
 -- builder, including when nested in a record or constructor; retain the same

@@ -187,6 +187,49 @@ end unit
 - A call must fix what `m` is. A function result, an annotated value or a
   list literal does; a bare `Right 1` leaves the failure type open.
 
+### A definition that takes a function
+
+A parameter can be a function between values, written with its type:
+`(f :: a -> b)`. The body applies it like any definition.
+
+```lawspec
+unit guide.functionParameters
+
+function double (n :: Integer) -> Integer is n * 2 end function
+
+function scaled (factor :: Integer) (n :: Integer) -> Integer is factor * n end function
+
+function each (f :: a -> b) (xs :: List a) -> List b is
+  first matching case of xs:
+    when Nil then []
+    when Cons x rest then Cons (f x) (each f rest)
+  end case
+end function
+
+law "|each call names its function| is
+  definition :
+    each double [1, 2] = [2, 4]
+    and each (scaled 3) [1, 2] = [3, 6]
+    and each (double . double) [1] = [4]
+  end definition
+end law
+end unit
+```
+
+- A call gives the function where the call is written. It can be a
+  definition, a definition applied to some of its arguments, a composition
+  of these, or the caller's own function parameter.
+- Each call specializes the definition to the function it names: the
+  generated code has one plain function for `each double`, and another for
+  `each (scaled 3)` that takes the `3` as its first argument. Calls that
+  name the same function share one. No target receives a function value.
+- The arguments of a partial application are evaluated once, at the call.
+- A function parameter takes and returns values, not functions. A
+  definition cannot return a function or store one in a value.
+- The definition is checked once for types, termination and definedness,
+  for every function it could be given. A definition that nothing calls
+  emits no code.
+
 ## Refined parameters and results
 
 Parameters and results may carry refinements. The compiler proves the body's

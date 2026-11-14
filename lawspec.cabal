@@ -278,6 +278,7 @@ extra-source-files:
     examples/specs/failures.lawspec
     examples/specs/finite_data.lawspec
     examples/specs/flow_stack.lawspec
+    examples/specs/function_parameters.lawspec
     examples/specs/gadt_expressions.lawspec
     examples/specs/generation.lawspec
     examples/specs/handler_bindings.lawspec
@@ -1184,6 +1185,7 @@ test-suite lawspec-test
       FixtureSource
       FlowSpec
       FormatsSpec
+      FunctionParameterSpec
       GadtSpec
       GeneratedTestSizeSpec
       GenericDefinitionSpec

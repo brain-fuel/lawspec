@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A definition may take a function as a parameter, `(f :: a -> b)`. A call
+  names the function (a definition, a partial application or a composition),
+  and the compiler makes one first-order copy of the definition per function
+  named, so generated code and proofs never hold a function value. See
+  [a definition that takes a function](docs/reference/language/definitions.md#a-definition-that-takes-a-function).
+
 ## [0.34.1] - 2026-11-16
 
 ### Added

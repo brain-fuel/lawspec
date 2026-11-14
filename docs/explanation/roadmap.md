@@ -255,6 +255,38 @@ becomes the default once the platform and application acceptance in
 [the host SDK reference](../reference/host-sdk.md) is met. The first port
 checkpoint, manifest admission and version selection, shipped in 0.33.
 
+### 0.35: collection operations through capabilities, and proofs about them
+
+A definition may take a function as a parameter. Each call names the function
+where the call is written, and the compiler makes a first-order copy for it, so
+targets and the solver never see a function value. The built-in capabilities
+gain definitions: each instance's operations are written in LawSpec. `Mappable`
+keeps `map`; `Filterable` carries `filter`; `Foldable` carries `foldLeft`,
+`foldRight`, `all`, `any` and `length`; `Appendable` carries `++`. `concat`
+flattens a list of lists. Targets keep their native operations, and an
+acceptance suite checks that each agrees with its definition.
+
+The solver reads those definitions, so a law about `map`, `filter`, `all`,
+`any`, `length`, `++`, `concat` or a fold gets a proof result where it is
+"unsupported" today. Each capability states its laws once. They are proved for
+every built-in instance when LawSpec is built, the results ship with the
+compiler, and a proof may cite them. See `DEC-function-parameters`,
+`DEC-capability-instances` and `DEC-capability-laws`.
+
+The same release lets the solver take two kinds of data it refuses today, each
+of which blocks laws that never read the value concerned: a record with a
+`Rational` field, and a wrapper with a type parameter. Both were found writing
+the `fiveps` package, where they and the list operations account for most of
+its unproved laws. `prelude.trim` in a restriction is a separate question and
+is not part of 0.35.
+
+### Later: instances and capabilities written by a program
+
+After 0.35, a program may declare its own type an instance of a built-in
+capability by giving the definitions, with the capability's laws checked for
+it. After that, a program may declare its own capabilities with operations and
+laws.
+
 ### Folio
 
 Folio remains to emit documentation pages, and is deferred by the owner until

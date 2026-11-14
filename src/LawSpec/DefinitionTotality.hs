@@ -4,7 +4,7 @@ module LawSpec.DefinitionTotality (auditTemplates, auditTemplatesWithContext, au
 
 import Control.Monad.State.Strict
 import Control.Monad (foldM, forM, forM_, when)
-import Data.List (stripPrefix, isInfixOf, isPrefixOf)
+import Data.List (stripPrefix, isInfixOf, isPrefixOf, partition)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Model as S
 import qualified LawSpec.Core as C
@@ -137,23 +137,29 @@ auditCollected context declarations constructors bits unit templates = do
         (S.functionName definition ++ ": " ++ message)
         (Just (spanStart (S.functionSpan definition))))) Right $ do
       let name = identity (S.functionName definition)
+          -- A function parameter is not a value of the proof: a call
+          -- through it is an opaque total step, and a call of this
+          -- definition passes only its values. ref:DEC-function-parameters
+          valueArguments = [argument | argument@(_,ty) <- S.functionArguments definition, not (isFunction ty)]
           parameters = [(n,C.Id (C.idText name ++ "::argument::" ++ show i)) |
-            (i,(n,_)) <- zip [0::Int ..] (S.functionArguments definition)]
+            (i,(n,_)) <- zip [0::Int ..] valueArguments]
+          functionScope = M.fromList [(n,C.Id (C.idText name ++ "::function::" ++ n)) |
+            (n,ty) <- S.functionArguments definition, isFunction ty]
           integerVariables = ["@" ++ n | S.Capability "Integer" (S.Variable n) <- S.functionRequirements definition]
       contract <- definitionContractFor definition
       let result = C.Id (C.idText name ++ "::result")
-          argumentScope = M.fromList parameters
+          argumentScope = M.union (M.fromList parameters) functionScope
           resultScope = M.insert (fst (S.contractResult contract)) result argumentScope
       ((expression,pre,post,measures),state) <- flip runStateT (ProofState 0 M.empty []) $ (,,,)
         <$> proof name integerVariables argumentScope body
         <*> mapM (proof name integerVariables argumentScope) preconditions
         <*> mapM (proof name integerVariables resultScope) postconditions
         <*> mapM (proof name integerVariables argumentScope) (statedMeasures body)
-      records <- concat <$> mapM (\((_,name),(_,ty)) -> recordDomain name ty) (zip parameters (S.functionArguments definition))
+      records <- concat <$> mapM (\((_,name),(_,ty)) -> recordDomain name ty) (zip parameters valueArguments)
       pure (T.MeasuredDefinition name (S.functionName definition)
         (Just (spanStart (S.functionSpan definition))) (map snd parameters) expression
         (concat [T.integerAssumptions bits name primitive
-          | ((_,name),(_,ty)) <- zip parameters (S.functionArguments definition)
+          | ((_,name),(_,ty)) <- zip parameters valueArguments
           , S.Named primitive <- [S.baseType ty]] ++ records) measures,
         T.ProofContract name result pre post,state)
     -- The `decreases` measures the parser placed at the head of the body.
@@ -360,9 +366,16 @@ auditCollected context declarations constructors bits unit templates = do
             helper owner typed integers builtin operands values
           (S.Var name, arguments) | name `elem` operations, M.notMember name scope ->
             T.Sequence <$> mapM recur arguments
+          -- A call through a function parameter: the function is total,
+          -- as only audited definitions are passed, and its result is
+          -- unknown here. ref:DEC-function-parameters
+          (S.Var name, arguments) | M.member name scope ->
+            T.Opaque "function-parameter" <$> mapM recur arguments
           (S.Var name, arguments) -> do
-            when (M.member name scope) (lift (Left "higher-order call in a total definition"))
-            T.Call (identity name) <$> mapM recur arguments
+            let (functions, values) = partition (isFunction . S.expressionType) arguments
+            captured <- concat <$> mapM capturedValues functions
+            called <- T.Call (identity name) <$> mapM recur values
+            pure (if null captured then called else T.Sequence (captured ++ [called]))
           _ -> lift (Left "unresolved higher-order definition call")
         _ -> lift (Left "unresolved expression in total-definition proof")
       converted <- case S.requiredConversion typed of
@@ -372,6 +385,11 @@ auditCollected context declarations constructors bits unit templates = do
         S.Named name | isInteger name || name `elem` integers -> T.Integral converted
         _ -> converted)
       where
+        -- The values a function argument holds (the arguments of a partial
+        -- application), which are evaluated where the call is written.
+        capturedValues argument
+          | isFunction (S.expressionType argument) = concat <$> mapM capturedValues (S.operands argument)
+          | otherwise = pure <$> proof owner integers scope argument
         literal value = case S.expressionType typed of
           S.Named name | primitive name /= Nothing ->
             T.Literal <$> lift (convertScalar bits name value)
@@ -540,6 +558,11 @@ auditCollected context declarations constructors bits unit templates = do
       _ -> False
 
 -- | The text of a string literal, through its source location.
+isFunction :: S.Type -> Bool
+isFunction ty = case S.baseType ty of
+  S.Arrow _ _ -> True
+  _ -> False
+
 literalText :: S.Expr -> Maybe String
 literalText e = case e of
   S.Located _ inner -> literalText inner

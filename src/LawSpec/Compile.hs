@@ -257,7 +257,9 @@ validateUnit sourceTypes dataTypes bits u = either (Left . pure . located) Right
           Variable v | "ability:" `isPrefixOf` v -> Named "Int32"
           _ -> x) id) (result:args))
         (Left (n ++ ": an ability operation takes and gives concrete values"))
-      else unless (not (null args) && all (if n `elem` map functionName (functionDefinitions u) then valueType checkTypes else concreteValue checkTypes) (result:args))
+      else unless (not (null args) && (if n `elem` map functionName (functionDefinitions u)
+          then valueType checkTypes result && all (parameterType checkTypes) args
+          else all (concreteValue checkTypes) (result:args)))
         (Left (case unknownNames checkTypes (result:args) of
           -- A name no scope of the unit resolved is the likelier mistake.
           name : _ -> n ++ ": unknown type: " ++ name ++ ". This unit neither declares nor imports it; if another unit declares it, add it to that unit's import list"
@@ -974,6 +976,12 @@ valueType _ (Arrow _ _) = False
 valueType check t = validTypeWithData check t
 
 concreteValue :: (Type -> Bool) -> Type -> Bool
+-- | A value, or a curried function whose arguments and result are values.
+parameterType :: (Type -> Bool) -> Type -> Bool
+parameterType check t = case t of
+  Arrow a b -> valueType check a && parameterType check b
+  _ -> valueType check t
+
 concreteValue check t = valueType check t && concrete (baseType t)
   where
     concrete (Variable _) = False
@@ -1029,8 +1037,13 @@ inferDefinitionTemplates sourceTypes declarations bits unit = do
           -- lexical precedence.
           environment = M.union locals globals
       unique "definition argument" (map fst parameters)
-      unless (all (valueType checkTypes) (functionResult d : map snd parameters))
-        (Left "definition parameters and result require value types")
+      -- A parameter may be a function between value types; every call
+      -- names it, and specialization leaves a first-order copy.
+      -- ref:DEC-function-parameters
+      unless (valueType checkTypes (functionResult d))
+        (Left "definition parameters and result require value types: the result is not a value")
+      unless (all (parameterType checkTypes . snd) parameters)
+        (Left "definition parameters and result require value types, or functions between value types")
       forM_ declared $ \(Capability name ty) -> do
         unless (name `elem` ["Eq","Integer","Ordered","Bounded","Keyed","Mappable"])
           (Left ("unknown capability: " ++ name))

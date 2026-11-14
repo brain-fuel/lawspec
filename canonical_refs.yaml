@@ -1075,3 +1075,51 @@ json-schema-validation:
   kind: article
   title: "JSON Schema Validation 2020-12 (pattern, maxLength, enum; regular expressions)"
   locator: https://json-schema.org/draft/2020-12/json-schema-validation
+lean-lawful-functor:
+  kind: code
+  title: "Lean 4 core, Init/Control/Lawful/Basic.lean: LawfulFunctor, LawfulApplicative, LawfulMonad"
+  locator: https://github.com/leanprover/lean4/blob/master/src/Init/Control/Lawful/Basic.lean
+lean-list-basic:
+  kind: code
+  title: "Lean 4 core, Init/Data/List/Basic.lean: map, filter, all, any, foldl, foldr with @[specialize] and @[csimp]"
+  locator: https://github.com/leanprover/lean4/blob/master/src/Init/Data/List/Basic.lean
+why3-clone:
+  kind: documentation
+  title: "Why3 language reference: module cloning turns axioms into lemmas"
+  locator: https://why3.org/doc/syntaxref.html
+why3-eliminate-epsilon:
+  kind: code
+  title: "Why3, src/transform/eliminate_epsilon.ml: lambda-terms lifted to symbols over their free variables"
+  locator: https://github.com/AdaCore/why3/blob/master/src/transform/eliminate_epsilon.ml
+why3-stdlib-list:
+  kind: documentation
+  title: "Why3 standard library, list: Length, Append, Map, Quant, FoldLeft, FoldRight"
+  locator: https://why3.org/stdlib/list.html
+spark-higher-order-library:
+  kind: documentation
+  title: "SPARK User's Guide, SPARK libraries: SPARK.Higher_Order and functional containers"
+  locator: https://docs.adacore.com/spark2014-docs/html/ug/en/source/spark_libraries.html
+spark-higher-order-specialization:
+  kind: documentation
+  title: "SPARK User's Guide, additional Annotate pragmas: Higher_Order_Specialization, Automatic_Instantiation"
+  locator: https://docs.adacore.com/spark2014-docs/html/ug/en/appendix/additional_annotate_pragmas.html
+idris1-verified-interfaces:
+  kind: code
+  title: "Idris 1 contrib, Interfaces/Verified.idr: VerifiedFunctor"
+  locator: https://hackage.haskell.org/package/idris-1.3.1/candidate/src/libs/contrib/Interfaces/Verified.idr
+idris2-data-list:
+  kind: code
+  title: "Idris 2 base, Data/List.idr: mapFusion, mapAppend, lengthMap, filterAppend"
+  locator: https://github.com/idris-lang/Idris2/blob/main/libs/base/Data/List.idr
+z3-sequences:
+  kind: documentation
+  title: "Z3 guide, Sequences: seq.map and seq.foldl behave like recursive function unfolding"
+  locator: https://microsoft.github.io/z3guide/docs/theories/Sequences
+liquid-haskell-refinement-reflection:
+  kind: paper
+  title: "Vazou et al., Refinement Reflection: Complete Verification with SMT"
+  locator: https://arxiv.org/abs/1610.04641
+dafny-prelude:
+  kind: code
+  title: "Dafny, DafnyPrelude.bpl: HandleType and the ApplyN, RequiresN, ReadsN functions"
+  locator: https://github.com/dafny-lang/dafny/blob/master/Source/DafnyCore/DafnyPrelude.bpl

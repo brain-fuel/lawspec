@@ -6,7 +6,7 @@
 module LawSpec.Naming
   ( Casing(..), NameKind(..), nameWords, cased, casingFor, escapeKeyword, reservedFor
   , nativeIdentifier, Scope, emptyScope, scopeWith, claim, claimAll, uniqueNames
-  , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, sourceDefinitionName, typeWords
+  , testName, exampleTestSuffix, boundaryTestSuffix, displayLabel, localIdentifier, readableDefinitionName, sourceDefinitionName, functionCopyMarker, typeWords
   , ParameterName(..), parameterWords, typeHeadWords, parameterIdentifier, parameterNames, parameterNamesWith
   , declarationParameterNames, operationParameterNames, handlerParameterNames, sourceParameterNames, positionalParameters, positionalNames, suffixedNames, paddedNames, helperNames, fieldCodecNames, fieldHelperNames
   ) where
@@ -188,8 +188,25 @@ localIdentifier target name = nativeIdentifier target ValueName (made (dropWhile
 readableDefinitionName :: String -> [C.Type] -> String
 readableDefinitionName name arguments = case stripPrefix "lawspec_" name of
   Just rest | (digits@(_ : _), '_' : base) <- span isHexDigit (reverse rest), length digits >= 8 ->
-    intercalate "_" (filter (not . null) (map (map toLower) (nameWords (reverse base)) ++ concatMap typeWords arguments))
+    intercalate "_" (filter (not . null) (map (map toLower) (concatMap nameWords (copyParts (reverse base))) ++ concatMap typeWords arguments))
   _ -> name
+  where
+    copyParts text = case breakOn functionCopyMarker text of
+      Just (definition, functions) -> [definition, functions]
+      Nothing -> [text]
+
+-- | In the name of a copy made for the functions a call names
+-- (lawspec_each_lawspecFor_double_9e2e…, from SpecializeDefinitions), what
+-- separates the definition from those functions. A reader sees
+-- each_double_list_int32; text about the spec says each.
+-- ref:DEC-function-parameters
+functionCopyMarker :: String
+functionCopyMarker = "_lawspecFor_"
+
+breakOn :: String -> String -> Maybe (String, String)
+breakOn marker text = case [(take i text, drop (i + length marker) text) | i <- [0 .. length text - length marker], marker `isPrefixOf` drop i text] of
+  found : _ -> Just found
+  [] -> Nothing
 
 -- | A called definition's name as the spec writes it, for text about a law:
 -- a specialised copy (lawspec_lawspecCollectionsSetOf_9446af497e0eb47e) is
@@ -200,7 +217,7 @@ sourceDefinitionName name = unaliased (unspecialised name)
   where
     unspecialised n = case stripPrefix "lawspec_" n of
       Just rest | (digits@(_ : _), '_' : base) <- span isHexDigit (dropWhile (== '_') (reverse rest)), length digits >= 8 ->
-        reverse base
+        maybe (reverse base) fst (breakOn functionCopyMarker (reverse base))
       _ -> n
     unaliased n = case stripPrefix "lawspecCollections" n of
       Just (c : cs) | isUpper c -> toLower c : cs
