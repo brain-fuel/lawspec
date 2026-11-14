@@ -16,6 +16,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `prelude.foldLeft`, `prelude.foldRight` and `prelude.concat` fold and join
   lists on every target. See
   [folding a list](docs/reference/language/sequences.md#folding-a-list).
+- A definition may require `Filterable`, `Foldable` or `Appendable` of a type
+  variable, as it may `Mappable`, and then filter, fold or append values of
+  any instance.
 
 ## [0.34.1] - 2026-11-16
 

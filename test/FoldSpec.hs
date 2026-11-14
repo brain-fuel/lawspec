@@ -125,6 +125,36 @@ test_listsFold =
       explained "dev" "  prelude.foldLeft add 0 [1, 2] = 3" `shouldSatisfy` isInfixOf "first to last"
       explained "dev" "  prelude.foldRight add 0 [1, 2] = 3" `shouldSatisfy` isInfixOf "last to first"
       explained "eng" "  prelude.foldRight add 0 [1, 2] = 3" `shouldSatisfy` isInfixOf "last to first"
+    it "filters any Filterable type through one definition" $
+      evaluated
+        ([ "function evens (values :: m Integer) -> m Integer requires Filterable m is prelude.filter isEven values end function" ] ++ law
+        [ "  evens [1, 2, 3, 4] = [2, 4]" ]) `shouldSatisfy` isRight
+    it "folds any Foldable type through one definition" $
+      evaluated
+        ([ "function summed (values :: m Integer) -> Integer requires Foldable m is prelude.foldLeft add 0 values end function" ] ++ law
+        [ "  summed [1, 2, 3] = 6 and summed [] = 0" ]) `shouldSatisfy` isRight
+    it "appends any Appendable type through one definition" $
+      evaluated
+        ([ "function twice (x :: a) -> a requires Appendable a is x ++ x end function" ] ++ law
+        [ "  twice [1] = [1, 1] and twice \"ab\" = \"abab\"" ]) `shouldSatisfy` isRight
+    it "requires the capability of the type variable" $ do
+      program
+        ([ "function twice (x :: a) -> a is x ++ x end function" ] ++ law ["  twice [1] = [1, 1]"])
+        `shouldSatisfy` failsWith "Appendable"
+      program
+        ([ "function evens (values :: m Integer) -> m Integer is prelude.filter isEven values end function" ] ++ law ["  evens [2] = [2]"])
+        `shouldSatisfy` failsWith "Filterable"
+      program
+        ([ "function summed (values :: m Integer) -> Integer is prelude.foldLeft add 0 values end function" ] ++ law ["  summed [1] = 1"])
+        `shouldSatisfy` failsWith "Foldable"
+    it "rejects a type that is not an instance" $ do
+      program
+        ([ "function twice (x :: a) -> a requires Appendable a is x ++ x end function" ] ++ law ["  twice 1 = 2"])
+        `shouldSatisfy` failsWith "Appendable"
+      program
+        ([ "function summed (values :: m Integer) -> Integer requires Foldable m is prelude.foldLeft add 0 values end function" ] ++ law
+        [ "  summed (prelude.at 0 [1]) = 1" ])
+        `shouldSatisfy` isLeft
     it "refutes a wrong result" $ do
       evaluated (law ["  prelude.foldLeft add 0 [1, 2] = 4"]) `shouldSatisfy` isLeft
       evaluated (law ["  prelude.foldRight minus 10 [1, 2, 3] = 4"]) `shouldSatisfy` isLeft

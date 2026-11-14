@@ -366,11 +366,10 @@ infer env e@(MapElementsExpr value binder body) = do
       result <- infer (M.insert binder (Monomorphic element) env) body >>= resolve
       pure (mapped result)
 infer env (FilterElementsExpr value binder predicate) = do
-  element <- Variable . ("iteration:" ++) <$> fresh
-  checkExpr env (Applied "List" element) value
+  (element, rebuilt) <- capableElements "Filterable" env value
   known <- resolve element
   checkExpr (M.insert binder (Monomorphic known) env) (Named "Bool") predicate
-  Applied "List" <$> resolve known
+  rebuilt <$> resolve known
 infer env e@(FoldElementsExpr _ _ _ _ _ _) = snd <$> foldTypes env e
 infer env (MatchExpr value branches) = do
   scopes <- matchScopes env value branches
@@ -900,7 +899,11 @@ builtin env n args
   -- Sequences: Text, Bytes and List (LawSpec.Core's Append ... Join).
   | n == "append", [a,b] <- args = do
       t <- infer env a >>= resolve
-      sequenceOnly n t
+      -- A definition's own type variable is appended to by its Appendable
+      -- capability. ref:DEC-capability-instances
+      case t of
+        Named ('@':_) -> require "Appendable" t
+        _ -> sequenceOnly n t
       checkExpr env t b
       resolve t
   | n == "slice", [from,to,x] <- args = do
@@ -1047,7 +1050,13 @@ typedExpressionWithSchemesContext context declarations bits env e = do
         FilterElementsExpr value _ _ -> sequence [descend (Just t) value]
         FoldElementsExpr _ value initial _ _ _ -> do
           (element,_) <- foldTypes context e
-          sequence [descend (Just (Applied "List" element)) value, descend (Just t) initial]
+          collection <- infer context value >>= resolve
+          -- A List takes the fold's element type, which an empty literal
+          -- has only from the step.
+          let operand = case baseType collection of
+                Application n [_, _] | n == constructorApplicationName -> collection
+                _ -> Applied "List" element
+          sequence [descend (Just operand) value, descend (Just t) initial]
         MatchExpr value branches@[MatchBranch tag [name] _] | tag == letTag -> do
           scopes <- matchScopesWithResult context (Just t) value branches
           case scopes of
@@ -1150,8 +1159,8 @@ typedExpressionWithSchemesContext context declarations bits env e = do
               mapped <- go (M.insert binder (Monomorphic element) context) (Just result) body
               pure [TypedCase "" [(binder,element)] mapped]
             _ -> throwC "map requires a List, an Either or a Mappable type"
-        FilterElementsExpr _ binder predicate -> case t of
-          Applied "List" element -> do
+        FilterElementsExpr _ binder predicate -> case mappedResult t of
+          Just element -> do
             body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
             pure [TypedCase "" [(binder,element)] body]
           _ -> throwC "filter requires a List"
@@ -1886,7 +1895,7 @@ foldTypes env (FoldElementsExpr _ value initial accumulator binder body) = do
         checkExpr env result initial
       -- An operand that has a type of its own, but not a List's, is named as
       -- the fault.
-      listed = StateT $ \s -> case runStateT (checkExpr env (Applied "List" element) value) s of
+      listed = StateT $ \s -> case runStateT (capableElements "Foldable" env value >>= unify element . fst) s of
         Left problem | Right _ <- runStateT (infer env value) s -> Left ("fold requires a List: " ++ problem)
         outcome -> outcome
       step = do
@@ -1903,6 +1912,23 @@ foldTypes env (FoldElementsExpr _ value initial accumulator binder body) = do
     else either' (operands >> step) (step >> operands)
   (,) <$> resolve element <*> resolve result
 foldTypes _ _ = throwC "fold requires a List"
+
+-- | The element type of a filter's or a fold's operand, and its type rebuilt
+-- around another element. The operand is a List, or a value of a type
+-- constructor variable, which then needs the capability.
+-- ref:DEC-capability-instances
+capableElements :: String -> Env -> Expr -> C (Type, Type -> Type)
+capableElements capability env value = do
+  known <- StateT $ \s -> Right (either (const Nothing) (Just . fst) (runStateT (infer env value >>= resolve) s), s)
+  case baseType <$> known of
+    Just (Application n [constructor, element]) | n == constructorApplicationName -> do
+      _ <- infer env value
+      require capability constructor
+      pure (element, \result -> Application constructorApplicationName [constructor, result])
+    _ -> do
+      element <- Variable . ("iteration:" ++) <$> fresh
+      checkExpr env (Applied "List" element) value
+      pure (element, Applied "List")
 
 iterationTypes :: Env -> Expr -> String -> Expr -> C (Type,Type)
 iterationTypes env value binder predicate = do

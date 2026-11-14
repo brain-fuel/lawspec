@@ -179,4 +179,24 @@ law "|concat agrees with the joining written by hand| is
     end for all
   end definition
 end law
+
+-- One definition for every type with the capability.
+function evensOf (values :: m Integer) -> m Integer requires Filterable m is
+  prelude.filter isEven values
+end function
+
+function summed (values :: m Integer) -> Integer requires Foldable m is
+  prelude.foldLeft add 0 values
+end function
+
+function repeated (x :: a) -> a requires Appendable a is x ++ x end function
+
+law "|a definition may require a collection capability| is
+  definition :
+    evensOf [1, 2, 3, 4] = [2, 4]
+    and summed [1, 2, 3] = 6
+    and repeated [1, 2] = [1, 2, 1, 2]
+    and repeated "ab" = "abab"
+  end definition
+end law
 end unit

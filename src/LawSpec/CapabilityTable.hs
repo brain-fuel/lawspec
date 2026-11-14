@@ -31,6 +31,7 @@ instances =
       _ -> False
     -- A whole type built with the constructor, such as List a.
     applied name ty = case ty of
+      Applied applied' _ -> applied' == name
       Application applied' [_] -> applied' == name
       _ -> False
     scalar name ty = ty == Named name

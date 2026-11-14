@@ -182,8 +182,17 @@ end unit
   generated code has one function for lists and one for the `Either`.
 - The variable takes one argument, written on the same line: `m a`,
   `m Integer`, or `(m a)` inside another type.
-- `Mappable` is built in. A program cannot declare its own instance, and
-  `prelude.filter` takes a `List` only.
+- `Mappable` is built in, as are `Filterable` (`prelude.filter`), `Foldable`
+  (`prelude.foldLeft`, `prelude.foldRight`) and `Appendable` (`++`). A
+  program cannot declare its own instance.
+
+| Capability | Of | Instances |
+| --- | --- | --- |
+| `Mappable m` | a type constructor | `List`, `Either e` |
+| `Filterable m` | a type constructor | `List` |
+| `Foldable m` | a type constructor | `List` |
+| `Appendable a` | a type | `List a`, `Text`, `Bytes` |
+
 - A call must fix what `m` is. A function result, an annotated value or a
   list literal does; a bare `Right 1` leaves the failure type open.
 
