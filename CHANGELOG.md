@@ -32,6 +32,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `prelude.length` and `++` on lists, through each operation's definition in
   `lawspec.instances`: by unfolding on a list that is written out, and by
   induction over any list. These laws were reported unsupported before.
+- The solver takes a record with a `Rational` or `Decimal` field, and a
+  wrapper with a type parameter whose rule calls a list operation. A proof
+  about such a record covers every value the field can hold; a law that
+  claims some value exists states that the field is exact.
 
 ## [0.34.1] - 2026-11-16
 

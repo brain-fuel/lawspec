@@ -19,6 +19,15 @@ import qualified LawSpec.Api as API
 definitions :: [String]
 definitions =
   [ "import lawspec.instances (mapList, filterList, foldLeftList, foldRightList, allList, lengthList, appendList)"
+  , "type Reading is a record{"
+  , "  amount :: Rational"
+  , "  count :: Int32"
+  , "}"
+  , "end type"
+  , "wrapper Several (a :: Type) is List a where prelude.length value > 0"
+  , "end wrapper"
+  , "function doubled (reading :: Reading) -> Rational is reading.amount + reading.amount end function"
+  , "function size (several :: Several Int32) -> Integer is prelude.length (valueOfSeveral several) end function"
   , "function lowered (n :: Int32) -> Int32 is if n > 0 then n - 1 else n end if end function"
   , "function positive (n :: Int32) -> Bool is n > 0 end function"
   , "function capped (limit :: Int32) (n :: Int32) -> Int32 is if n > limit then limit else n end if end function"
@@ -44,6 +53,13 @@ laws =
   , law "append is appendList" "for all (xs :: List Int32) => xs ++ [1] = appendList xs [1] end for all"
   , law "foldLeft is foldLeftList" "for all (start :: Integer) (xs :: List Integer) => prelude.foldLeft plus start xs = foldLeftList plus start xs end for all"
   , law "foldRight is foldRightList" "for all (xs :: List Integer) => prelude.foldRight plus 0 xs = foldRightList plus 0 xs end for all" ]
+  ++
+  [ law "rational field" "for all (reading :: Reading) => doubled reading = 2 * reading.amount end for all"
+  , law "rational field wrong" "for all (reading :: Reading) => doubled reading = reading.amount end for all"
+  , law "no reading squares to two" "there exists (reading :: Reading) such that reading.amount * reading.amount = 2 end exists"
+  , law "some reading is a half" "there exists (reading :: Reading) such that reading.amount + reading.amount = 1 end exists"
+  , law "several is never empty" "for all (several :: Several Int32) => size several > 0 end for all"
+  , law "several wrong" "for all (several :: Several Int32) => size several > 1 end for all" ]
   where law name body = "law \"|" ++ name ++ "| is definition: " ++ body ++ " end definition end law"
 
 response :: Maybe Value
@@ -124,3 +140,11 @@ test_solverUsesInstanceDefinitions =
       results <- forM ["map is mapList", "filter is filterList", "all is allList", "length is lengthList", "append is appendList", "foldLeft is foldLeftList", "foldRight is foldRightList"] $ \name ->
         (,) name <$> byInduction z3 name
       results `shouldBe` [(name, ["unsat", "unsat"]) | (name, _) <- results]
+    it "takes a record with a Rational field, and a wrapper with a type parameter" $ solver $ \z3 -> do
+      direct z3 "rational field" >>= (`shouldBe` "unsat")
+      direct z3 "rational field wrong" >>= (`shouldNotBe` "unsat")
+      direct z3 "several is never empty" >>= (`shouldBe` "unsat")
+      direct z3 "several wrong" >>= (`shouldNotBe` "unsat")
+    it "keeps a Rational field exact where some value is claimed" $ solver $ \z3 -> do
+      direct z3 "some reading is a half" >>= (`shouldBe` "unsat")
+      direct z3 "no reading squares to two" >>= (`shouldNotBe` "unsat")

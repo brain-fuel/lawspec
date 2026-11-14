@@ -138,8 +138,17 @@ testers keep their LawSpec names, as quoted symbols like
 - Equality on data is structural, as LawSpec's is.
 - `List` laws over recursive definitions, such as length or membership, are
   unfolded as below.
+- A `Rational` or `Decimal` field is an SMT Real. A law over every such
+  record is then proved for every real in the field, which covers every value
+  the field can hold. A law that some record exists states that the field is
+  a ratio of integers (or a decimal), so no irrational witness is accepted;
+  for a recursive type that holds such a field, that law is unsupported. A
+  model is reported as a counterexample only after the evaluator reads it back.
+- `prelude.map`, `prelude.filter`, `prelude.all`, `prelude.any`, the folds,
+  and `prelude.length` and `++` on lists are the definitions in
+  `lawspec.instances`, made for the function written at each call.
 - Handles, indexed families, constructors with existential or refined type
-  parameters, `Rational` fields and types with no finite value are refused.
+  parameters, and types with no finite value are refused.
   An SMT datatype must have a value, and LawSpec allows empty types. Other existing verification layers keep
 their own capabilities. Unsupported translation never substitutes an
 uninterpreted implementation or changes a law's domain.

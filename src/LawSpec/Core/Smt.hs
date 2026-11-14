@@ -485,8 +485,11 @@ inhabited types root = root `elem` grow []
 
 -- | A declarable data type: a closed instance of a declaration that is not a
 -- handle or an indexed family, has no existential or equation constructors,
--- and whose fields are declarable too. A Rational field is refused, since SMT
--- Real would admit irrational values inside a quantified datum.
+-- and whose fields are declarable too. A Rational or Decimal field is an SMT
+-- Real: a universal over the datum then covers every real there, which is
+-- every value the field can hold and more, so what it proves holds; an
+-- existential states that each such field is exact (exactFields); and a
+-- model is a counterexample only once the evaluator has read it back.
 admissible :: Catalog -> [Type] -> Type -> Either String ()
 admissible types seen ty
   | ty `elem` seen = Right ()
@@ -505,7 +508,6 @@ admissible types seen ty
         forM_ (constructorFields c) $ \field -> do
           let fieldType = instantiate (zip (dataParameters declaration) concrete) (binderType field)
           case sort fieldType of
-            Right RealSort -> refused "a Rational field would admit irrational SMT values"
             Right _ -> Right ()
             Left _ -> admissible types (ty : seen) fieldType
   | otherwise = Left ("unsupported SMT carrier: " ++ show ty)
@@ -517,6 +519,32 @@ instantiate table ty = case ty of
   Constructor name arguments -> Constructor name
     [case a of TypeArgument t -> TypeArgument (instantiate table t); other -> other | a <- arguments]
   Arrow a b -> Arrow (instantiate table a) (instantiate table b)
+
+-- | A declaration's refinement at an instance's type arguments: every type
+-- it mentions, so a wrapper with a type parameter is checked at each type
+-- it is used at.
+instantiateExpression :: [(Id, Type)] -> Expr -> Expr
+instantiateExpression [] e = e
+instantiateExpression table e = typed { expressionType = at (expressionType typed), expressionNode = node }
+  where
+    typed = mapChildren (instantiateExpression table) e
+    at = instantiate table
+    binder b = b { binderType = at (binderType b) }
+    evidence proof = case proof of
+      Numeric t -> Numeric (at t)
+      Structural t -> Structural (at t)
+    node = case expressionNode typed of
+      Match value cases -> Match value [c { caseBinders = map binder (caseBinders c) } | c <- cases]
+      AllElements value b body -> AllElements value (binder b) body
+      MapElements value b body -> MapElements value (binder b) body
+      FilterElements value b body -> FilterElements value (binder b) body
+      FoldElements fromLeft value initial accumulator b body -> FoldElements fromLeft value initial (binder accumulator) (binder b) body
+      SearchElements universal value b body -> SearchElements universal value (binder b) body
+      AllPayloads value predicates -> AllPayloads value [(binder b, x) | (b, x) <- predicates]
+      Let b value body -> Let (binder b) value body
+      Binary op proof a b -> Binary op (evidence proof) a b
+      Convert conversion target a -> Convert conversion (at target) a
+      other -> other
 
 -- Symbols are quoted, so a type, constructor or selector keeps its LawSpec
 -- name: Maybe<Int32>, Maybe<Int32>#Just and Maybe<Int32>#Just#0.
@@ -603,17 +631,29 @@ datatypePreamble program = do
         constructor ty c = "(" ++ unwords (constructorSymbol ty c : [field ty c i f | (i, f) <- zip [0 ..] (constructorFields c)]) ++ ")"
         declare = "(declare-datatypes (" ++ unwords ["(" ++ sortText (DataSort t) ++ " 0)" | t <- final] ++ ") (" ++
           unwords ["(" ++ unwords (map (constructor t) (constructors t)) ++ ")" | t <- final] ++ "))\n"
+        -- A refinement that calls a recursive definition (a wrapper of
+        -- a list, by its length) is stated after the definitions, which
+        -- themselves name well-formedness: declared here, and given its
+        -- meaning by an axiom that follows them.
+        calls t = any (`isInfixOf` body t) ["|lawspec_function", "|lawspec_defined"]
         graph = [(t, typeSymbol t, [typeSymbol f | f <- fieldTypes types t, f `elem` final]) | t <- final]
-        components = stronglyConnComp graph
+        later = concat [members | component <- stronglyConnComp graph, let members = flattenSCCs [component], any calls members]
+        early = [t | t <- final, t `notElem` later]
+        components = stronglyConnComp [node | node@(t, _, _) <- graph, t `elem` early]
         recursive = not (null [() | CyclicSCC _ <- components])
         signature t = "(" ++ wellFormedSymbol t ++ " ((x " ++ sortText (DataSort t) ++ ")) Bool)"
         body t = maybe "true" id (lookup t bodies)
+        declarations = concat ["(declare-fun " ++ wellFormedSymbol t ++ " (" ++ sortText (DataSort t) ++ ") Bool)\n" | t <- later]
+        axioms = concat ["(assert (forall ((x " ++ sortText (DataSort t) ++ ")) (! " ++ app "=" [app (wellFormedSymbol t) ["x"], body t] ++
+          " :pattern (" ++ app (wellFormedSymbol t) ["x"] ++ "))))\n" | t <- later]
         definitions
-          | recursive = "(define-funs-rec (" ++ unwords (map signature final) ++ ") (" ++ unwords (map body final) ++ "))\n"
+          | null early = ""
+          | recursive = "(define-funs-rec (" ++ unwords (map signature early) ++ ") (" ++ unwords (map body early) ++ "))\n"
           | otherwise = concat ["(define-fun " ++ wellFormedSymbol t ++ " ((x " ++ sortText (DataSort t) ++ ")) Bool " ++ body t ++ ")\n"
                               | t <- flattenSCCs components]
     _ <- pure bits
-    pure (declare ++ definitions)
+    unless (null later) (modify (\w -> w{functionText = functionText w ++ [axioms]}))
+    pure (declare ++ declarations ++ definitions)
   where
     wellFormed done = do
       pending <- gets (filter (`notElem` map fst done) . datatypes)
@@ -632,7 +672,7 @@ wellFormedBody program ty = do
       s <- sortOf program fieldType
       range <- lift (domain (programMachineBits program) fieldType selected)
       pure ((binderId f, Term s selected "true"), range)
-    invariant <- restrictions program [] (M.fromList (map fst fields)) (constructorPredicates c)
+    invariant <- restrictions program [] (M.fromList (map fst fields)) (map (instantiateExpression table) (constructorPredicates c))
     pure (app "=>" [tester ty c "x", both (map snd fields ++ [positive invariant])])
   pure (both conditions)
 
@@ -766,6 +806,8 @@ proposition program active scope claim = do
       modify (\w -> w{bound = name : bound w})
       let local=M.insert (binderId binder) (Term s name "true") scope
       base <- lift (domain (programMachineBits program) (binderType binder) name)
+      known' <- gets known
+      exact <- exactFields known' [] (binderType binder) name
       restricted <- restrictions program active local (quantifiedPredicates q)
       result <- proposition program active local body
       made <- gets (drop before . triggers)
@@ -784,10 +826,33 @@ proposition program active scope claim = do
             | otherwise = "(" ++ keyword ++ " ((" ++ name ++ " " ++ sortText s ++ ")) (! " ++ formula ++ patterns ++ "))"
           allOf bodyCertificate = quantify "forall" (eitherOf [no base,negative restricted,
             both [positive restricted,bodyCertificate]])
-          someOf bodyCertificate = quantify "exists" (both [base,positive restricted,bodyCertificate])
+          someOf bodyCertificate = quantify "exists" (both ([base] ++ exact ++ [positive restricted,bodyCertificate]))
       pure $ case kind of
         ForEvery -> Certificate (allOf (positive result)) (someOf (negative result))
         ForSome -> Certificate (someOf (positive result)) (allOf (negative result))
+
+-- | That every Rational and Decimal field of a datum is exact: a ratio of
+-- integers, or a multiple of the decimal unit. A recursive data type that
+-- holds one has no such statement of bounded size, so an existential over
+-- it stays unsupported.
+exactFields :: Catalog -> [Type] -> Type -> String -> Encode [String]
+exactFields types seen ty x = case sort ty of
+  Right RealSort -> do
+    n <- fresh
+    pure $ case exactKind ty of
+      Just ExactDecimal -> ["(exists ((" ++ n ++ " Int)) " ++ app "=" [x, app "/" [app "to_real" [n], decimalUnit]] ++ ")"]
+      _ -> ["(exists ((" ++ n ++ "_n Int) (" ++ n ++ "_d Int)) " ++
+        both [app ">" [n ++ "_d", "0"], app "=" [x, app "/" [app "to_real" [n ++ "_n"], app "to_real" [n ++ "_d"]]]] ++ ")"]
+  Right _ -> pure []
+  Left _ | not (any real (reachable types ty)) -> pure []
+         | ty `elem` seen -> lift (Left ("unsupported SMT quantifier: some value of the recursive data type " ++ typeSymbol ty ++ ", which holds a Rational or Decimal"))
+         | otherwise -> case declarationOf types ty of
+             Left why -> lift (Left why)
+             Right (declaration, table) -> fmap concat $ forM (dataConstructors declaration) $ \c -> do
+               fields <- fmap concat $ forM (zip [0 ..] (constructorFields c)) $ \(i, f) ->
+                 exactFields types (ty : seen) (instantiate table (binderType f)) (app (selectorSymbol ty c i) [x])
+               pure [app "=>" [tester ty c x, both fields] | not (null fields)]
+  where real t = any (\f -> sort f == Right RealSort) (fieldTypes types t)
 
 expression :: Program -> [Id] -> Scope -> Expr -> Encode Term
 expression program active scope source = do
