@@ -227,7 +227,17 @@ renderWith declarations bits schema typeReference typeKey callees = render
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
-      FoldElements {} -> Left "a fold of a list is not emitted for Rust yet"
+      -- The list runs first, then the initial value; the step takes the
+      -- accumulator, then the element, in either direction.
+      FoldElements fromLeft value initial accumulator binder body -> do
+        argument <- render names value
+        start <- render names initial
+        let bound = boundLocals names [accumulator, binder]
+        step <- render (zip (map binderId [accumulator, binder]) bound ++ names) body
+        let parameters = [unusedAs name (L.expr step) | name <- bound]
+        pure (L.Block [L.Let "values" argument]
+          (Just (tried (L.call (if fromLeft then "ls::fold_left_elements" else "ls::fold_right_elements") [L.atom "values", start,
+            L.closure ("|" ++ intercalate ", " parameters ++ "|") (L.Block [L.Let "result" step] (Just (L.call "Ok" [L.atom "result"])))]))))
       AllPayloads value predicates -> do
         argument <- render names value
         ref <- typeReference (expressionType value)

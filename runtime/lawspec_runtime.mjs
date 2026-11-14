@@ -98,6 +98,26 @@ export async function filterElementsAsync(values, evaluate)
   return kept;
 }
 
+export async function foldLeftElementsAsync(values, initial, step)
+{
+  let total = initial;
+  for (const value of values)
+  {
+    total = await step(total, value);
+  }
+  return total;
+}
+
+export async function foldRightElementsAsync(values, initial, step)
+{
+  let total = initial;
+  for (let index = values.length - 1; index >= 0; index--)
+  {
+    total = await step(total, values[index]);
+  }
+  return total;
+}
+
 export async function searchElementsAsync(universal, values, evaluate)
 {
   const decisive = universal ? -1 : 1;
@@ -2096,6 +2116,38 @@ export function filterElements(value, predicate)
       });
     }
   });
+}
+
+function foldStep(step, total, item, index)
+{
+  try
+  {
+    return step(total, item);
+  }
+  catch (error)
+  {
+    throw new Error(`List element ${index}: ${error.message}`, {
+      cause: error,
+    });
+  }
+}
+
+export function foldLeftElements(value, initial, step)
+{
+  if (!Array.isArray(value)) throw new TypeError('expected List in fold');
+  return value.reduce(
+    (total, item, index) => foldStep(step, total, item, index),
+    initial,
+  );
+}
+
+export function foldRightElements(value, initial, step)
+{
+  if (!Array.isArray(value)) throw new TypeError('expected List in fold');
+  return value.reduceRight(
+    (total, item, index) => foldStep(step, total, item, index),
+    initial,
+  );
 }
 
 export function matchList(value, branches)

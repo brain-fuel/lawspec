@@ -2540,6 +2540,46 @@ pub fn filter_elements(
     Ok(Value::List(kept))
 }
 
+/// A left fold: the step takes the accumulator and each element, first to last.
+pub fn fold_left_elements(
+    value: Value,
+    initial: Value,
+    mut step: impl FnMut(Value, Value) -> Result<Value>,
+) -> Result<Value>
+{
+    let Value::List(values) = value
+    else
+    {
+        return Err("expected List in fold".into());
+    };
+    let mut total = initial;
+    for (index, item) in values.into_iter().enumerate()
+    {
+        total = step(total, item).map_err(|error| format!("List element {index}: {error}"))?;
+    }
+    Ok(total)
+}
+
+/// A right fold: the step takes the accumulator and each element, last to first.
+pub fn fold_right_elements(
+    value: Value,
+    initial: Value,
+    mut step: impl FnMut(Value, Value) -> Result<Value>,
+) -> Result<Value>
+{
+    let Value::List(values) = value
+    else
+    {
+        return Err("expected List in fold".into());
+    };
+    let mut total = initial;
+    for (index, item) in values.into_iter().enumerate().rev()
+    {
+        total = step(total, item).map_err(|error| format!("List element {index}: {error}"))?;
+    }
+    Ok(total)
+}
+
 pub fn search_elements(
     universal: bool,
     value: Value,

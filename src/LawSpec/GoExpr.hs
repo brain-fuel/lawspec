@@ -297,7 +297,14 @@ renderExpressionWithContext declarations width schema ref key local external = r
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
-      FoldElements {} -> Left "a fold of a list is not emitted for Go yet"
+      -- The step takes the accumulator, then the element, in either direction.
+      FoldElements fromLeft value initial accumulator binder body -> do
+        argument <- render value
+        start <- render initial
+        step <- render body
+        pure (call (if fromLeft then "lsFoldLeftElements" else "lsFoldRightElements") [argument, start,
+          D.text ("func(" ++ local (binderId accumulator) ++ " LawSpecValue, " ++ local (binderId binder) ++ " LawSpecValue) LawSpecValue ") <>
+            D.block 8 (D.text "return " <> step)])
       AllPayloads value predicates -> do
         argument <- render value
         reference <- ref (expressionType value)

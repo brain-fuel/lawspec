@@ -205,7 +205,13 @@ renderExpressionWithContextAt atBody declarations width reference key outerLocal
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
-      FoldElements {} -> Left "a fold of a list is not emitted for Python yet"
+      -- The step takes the accumulator, then the element, in either direction.
+      FoldElements fromLeft value initial accumulator binder body -> do
+        argument <- render value
+        start <- render initial
+        step <- renderBody body
+        pure (runtime (if fromLeft then "fold_left_elements" else "fold_right_elements") [argument, start,
+          lambdaExpression [D.text (local (binderId accumulator)), D.text (local (binderId binder))] step])
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)

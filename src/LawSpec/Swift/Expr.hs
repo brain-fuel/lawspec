@@ -178,7 +178,13 @@ render context root = evalStateT (go context root) scope0
         argument <- go ctx subject
         body <- go ctx predicate
         pure (call "Runtime" "filterElements" [argument, Lambda [(local (C.binderId binder), tValue)] tValue body])
-      C.FoldElements {} -> lift $ Left "a fold of a list is not emitted for Swift yet"
+      -- The step takes the accumulator, then the element, in either direction.
+      C.FoldElements fromLeft subject initial accumulator binder step -> do
+        argument <- go ctx subject
+        start <- go ctx initial
+        body <- go ctx step
+        pure (call "Runtime" (if fromLeft then "foldLeftElements" else "foldRightElements") [argument, start,
+          Lambda [(local (C.binderId accumulator), tValue), (local (C.binderId binder), tValue)] tValue body])
       C.SearchElements universal subject binder predicate -> do
         argument <- go ctx subject
         body <- go ctx predicate

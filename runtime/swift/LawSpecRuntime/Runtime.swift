@@ -65,6 +65,22 @@ public enum Runtime {
     return .list(try items.filter { try truth(predicate($0)) })
   }
 
+  /// A left fold: the step takes the accumulator and each element, first to last.
+  public static func foldLeftElements(
+    _ value: Value, _ initial: Value, _ step: (Value, Value) throws -> Value
+  ) throws -> Value {
+    guard case .list(let items) = value else { throw Fail.with("ListRequired") }
+    return try items.reduce(initial, step)
+  }
+
+  /// A right fold: the step takes the accumulator and each element, last to first.
+  public static func foldRightElements(
+    _ value: Value, _ initial: Value, _ step: (Value, Value) throws -> Value
+  ) throws -> Value {
+    guard case .list(let items) = value else { throw Fail.with("ListRequired") }
+    return try items.reversed().reduce(initial, step)
+  }
+
   /// Three-valued finite search, visiting every needed item exactly once.
   public static func searchElements(
     _ universal: Bool, _ value: Value, _ predicate: (Value) throws -> Value

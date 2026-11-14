@@ -152,7 +152,17 @@ renderWith asynchronous ts declarations width reference key outerLocal external 
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
-      FoldElements {} -> Left "a fold of a list is not emitted for JavaScript or TypeScript yet"
+      -- The step takes the accumulator, then the element, in either direction.
+      FoldElements fromLeft value initial accumulator binder body -> do
+        argument <- render value
+        start <- render initial
+        step <- render body
+        let name = (if fromLeft then "foldLeftElements" else "foldRightElements") ++ (if asynchronous then "Async" else "")
+            invocation = runtime name
+              [argument, start,
+               E.Arrow asynchronous [annotated (local (binderId accumulator)) "unknown", annotated (local (binderId binder)) "unknown"]
+                 Nothing (E.ExpressionBody step)]
+        pure (if asynchronous then E.Await invocation else invocation)
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)

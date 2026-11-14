@@ -135,14 +135,13 @@ test_listsFold =
         Right compiled ->
           [() | e <- expressions compiled, C.Let _ _ rest <- [C.expressionNode e], C.FoldElements {} <- [C.expressionNode rest]]
             `shouldBe` [()]
-    -- Emission is a later pass: until then a target says so, never emitting
-    -- code for a fold it cannot run.
-    it "is refused by each target's emitter, which names the fold" $ do
+    -- Each target runs the fold itself, with its own loop or library fold.
+    it "is emitted by every target, in both directions" $ do
       let source =
-            [ "function sum (xs :: List Integer) -> Integer is prelude.foldLeft add 0 xs end function" ] ++ law
-            [ "  sum [1, 2, 3] = 6" ]
+            [ "function sum (xs :: List Integer) -> Integer is prelude.foldLeft add 0 xs end function"
+            , "function rebuilt (xs :: List Integer) -> List Integer is prelude.foldRight before [] (prelude.map double xs) end function" ] ++ law
+            [ "  sum [1, 2, 3] = 6 and rebuilt [1, 2] = [2, 4] and prelude.foldLeft (weighted (1 + 1)) 0 [1, 2] = 6" ]
           outcome target = case program source >>= planTesting >>= emitPlan target of
-            Right _ -> [(target, "emitted")]
-            Left problems | any (("fold of a list is not emitted" `isInfixOf`) . message) problems -> []
-                          | otherwise -> [(target, take 200 (unwords (map message problems)))]
+            Right _ -> []
+            Left problems -> [(target, take 200 (unwords (map message problems)))]
       concatMap outcome programTargets `shouldBe` []

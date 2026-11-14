@@ -13,8 +13,19 @@
     worker_context/0,
     with_worker_context/2,
     recorded/4,
-    search_elements/3
+    search_elements/3,
+    fold_left_elements/3,
+    fold_right_elements/3
 ]).
+
+%% A left fold takes the elements first to last. The step takes the
+%% accumulator, then the element.
+fold_left_elements(Values, Initial, Step) ->
+    lists:foldl(fun(Value, Total) -> Step(Total, Value) end, Initial, Values).
+
+%% A right fold takes the elements last to first, with the same step.
+fold_right_elements(Values, Initial, Step) ->
+    lists:foldr(fun(Value, Total) -> Step(Total, Value) end, Initial, Values).
 
 %% A three-valued finite search, in candidate order and with short circuiting.
 search_elements(Universal, Values, Evaluate) ->

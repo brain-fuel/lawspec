@@ -72,6 +72,20 @@ let filterElements (value: Value) (predicate: Value -> Value) =
     | List items -> List(items |> List.filter (predicate >> truth))
     | _ -> Fail.raiseWith "ListRequired" ""
 
+/// A left fold: the step takes the accumulator and each element, first to last.
+[<CompiledName("FoldLeftElements")>]
+let foldLeftElements (value: Value) (initial: Value) (step: Value -> Value -> Value) =
+    match value with
+    | List items -> List.fold step initial items
+    | _ -> Fail.raiseWith "ListRequired" ""
+
+/// A right fold: the step takes the accumulator and each element, last to first.
+[<CompiledName("FoldRightElements")>]
+let foldRightElements (value: Value) (initial: Value) (step: Value -> Value -> Value) =
+    match value with
+    | List items -> List.foldBack (fun item total -> step total item) items initial
+    | _ -> Fail.raiseWith "ListRequired" ""
+
 /// Fold a finite search once, preserving incomplete inner outcomes.
 [<CompiledName("SearchElements")>]
 let searchElements (universal: bool) (value: Value) (predicate: Value -> Value) =

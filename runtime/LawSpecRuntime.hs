@@ -506,6 +506,17 @@ filterElements :: Scalar -> (Scalar -> Scalar) -> Scalar
 filterElements (SList values) predicate = SList (filter (truth . predicate) values)
 filterElements _ _ = error "expected List in filter"
 
+-- | A left fold takes the elements first to last; the step takes the
+-- accumulator, then the element.
+foldLeftElements :: Scalar -> Scalar -> (Scalar -> Scalar -> Scalar) -> Scalar
+foldLeftElements (SList values) initial step = foldl step initial values
+foldLeftElements _ _ _ = error "expected List in fold"
+
+-- | A right fold takes the elements last to first, with the same step.
+foldRightElements :: Scalar -> Scalar -> (Scalar -> Scalar -> Scalar) -> Scalar
+foldRightElements (SList values) initial step = foldl step initial (reverse values)
+foldRightElements _ _ _ = error "expected List in fold"
+
 -- | Ordered three-valued search. Unknown is retained unless an item decides
 -- the aggregate; a failed bounded inner search never proves absence.
 searchElements :: Bool -> Scalar -> (Scalar -> Scalar) -> Scalar

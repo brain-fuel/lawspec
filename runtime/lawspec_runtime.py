@@ -2132,6 +2132,30 @@ def filter_elements(value, predicate):
     return kept
 
 
+def fold_left_elements(value, initial, step):
+    if not isinstance(value, list):
+        raise TypeError("expected List in fold")
+    total = initial
+    for index, item in enumerate(value):
+        try:
+            total = step(total, item)
+        except Exception as error:
+            raise ValueError(f"List element {index}: {error}") from error
+    return total
+
+
+def fold_right_elements(value, initial, step):
+    if not isinstance(value, list):
+        raise TypeError("expected List in fold")
+    total = initial
+    for index in range(len(value) - 1, -1, -1):
+        try:
+            total = step(total, value[index])
+        except Exception as error:
+            raise ValueError(f"List element {index}: {error}") from error
+    return total
+
+
 def all_elements(value, predicate):
     if not isinstance(value, list):
         raise TypeError("expected List in element predicate")

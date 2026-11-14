@@ -451,6 +451,51 @@ func lsFilterElements(value LawSpecValue, predicate func(LawSpecValue) LawSpecVa
 	return LawSpecValue{value.Type, kept}
 }
 
+// lsFoldLeftElements folds the elements first to last: the step takes the
+// accumulator, then the element.
+func lsFoldLeftElements(value LawSpecValue, initial LawSpecValue, step func(LawSpecValue, LawSpecValue) LawSpecValue) LawSpecValue {
+	values, ok := value.Data.([]LawSpecValue)
+	if !ok {
+		panic("expected List in fold")
+	}
+	index := 0
+	defer func() {
+		if failure := recover(); failure != nil {
+			if raised, ok := failure.(*LawSpecFailure); ok {
+				panic(raised)
+			}
+			panic(fmt.Sprintf("List element %d: %v", index, failure))
+		}
+	}()
+	total := initial
+	for index = range values {
+		total = step(total, values[index])
+	}
+	return total
+}
+
+// lsFoldRightElements folds the elements last to first, with the same step.
+func lsFoldRightElements(value LawSpecValue, initial LawSpecValue, step func(LawSpecValue, LawSpecValue) LawSpecValue) LawSpecValue {
+	values, ok := value.Data.([]LawSpecValue)
+	if !ok {
+		panic("expected List in fold")
+	}
+	index := 0
+	defer func() {
+		if failure := recover(); failure != nil {
+			if raised, ok := failure.(*LawSpecFailure); ok {
+				panic(raised)
+			}
+			panic(fmt.Sprintf("List element %d: %v", index, failure))
+		}
+	}()
+	total := initial
+	for index = len(values) - 1; index >= 0; index-- {
+		total = step(total, values[index])
+	}
+	return total
+}
+
 func lsSearchElements(universal bool, value LawSpecValue, predicate func(LawSpecValue) LawSpecValue) LawSpecValue {
 	decisive := int64(1)
 	if universal {

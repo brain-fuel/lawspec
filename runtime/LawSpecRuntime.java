@@ -1040,6 +1040,46 @@ public final class LawSpecRuntime
     return list(value.type, kept);
   }
 
+  /** A left fold: the step takes the accumulator and each element, first to last. */
+  public static Value foldLeftElements(Value value, Value initial,
+      BiFunction<Value, Value, Value> step)
+  {
+    var values = listElements(value);
+    var total = initial;
+    for (int index = 0; index < values.size(); index++)
+    {
+      total = foldStep(step, total, values.get(index), index);
+    }
+    return total;
+  }
+
+  /** A right fold: the step takes the accumulator and each element, last to first. */
+  public static Value foldRightElements(Value value, Value initial,
+      BiFunction<Value, Value, Value> step)
+  {
+    var values = listElements(value);
+    var total = initial;
+    for (int index = values.size() - 1; index >= 0; index--)
+    {
+      total = foldStep(step, total, values.get(index), index);
+    }
+    return total;
+  }
+
+  private static Value foldStep(BiFunction<Value, Value, Value> step, Value total, Value item,
+      int index)
+  {
+    try
+    {
+      return step.apply(total, item);
+    }
+    catch (RuntimeException error)
+    {
+      throw new IllegalArgumentException("List element " + index + ": " + error.getMessage(),
+          error);
+    }
+  }
+
   public static Value searchElements(boolean universal, Value value,
       Function<Value, Value> predicate)
   {

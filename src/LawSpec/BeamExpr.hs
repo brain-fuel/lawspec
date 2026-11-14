@@ -96,7 +96,14 @@ renderExpressionWithConstruction width reference key construct initialSchema sym
             argument <- render value
             body <- render predicate
             pure (E.remote "lists" "filter" [E.lambda [bound body binder] body,argument])
-          C.FoldElements {} -> Left "a fold of a list is not emitted for BEAM yet"
+          -- The runtime takes the list first, then the initial value, and
+          -- hands the step the accumulator, then the element.
+          C.FoldElements fromLeft value initial accumulator binder step -> do
+            argument <- render value
+            start <- render initial
+            body <- render step
+            pure (E.remote "lawspec_beam_runtime" (if fromLeft then "fold_left_elements" else "fold_right_elements")
+              [argument,start,E.lambda [bound body accumulator,bound body binder] body])
           C.SearchElements universal value binder predicate -> do
             argument <- render value
             body <- render predicate

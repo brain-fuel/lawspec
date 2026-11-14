@@ -144,7 +144,13 @@ renderExpressionWith declarations Context{..} = render
       -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
       Project {} -> Left "a field node reached the backend"
       Update {} -> Left "a record update node reached the backend"
-      FoldElements {} -> Left "a fold of a list is not emitted for Haskell yet"
+      -- The step takes the accumulator, then the element, in either direction.
+      FoldElements fromLeft value initial accumulator binder body -> do
+        argument <- render value
+        start <- render initial
+        step <- render body
+        pure (H.call (if fromLeft then "LS.foldLeftElements" else "LS.foldRightElements")
+          [argument, start, H.lambda [contextLocal (binderId accumulator), contextLocal (binderId binder)] step])
       AllPayloads value predicates -> do
         argument <- render value
         callbacks <- mapM (\(binder,predicate) -> lam binder <$> render predicate) predicates
