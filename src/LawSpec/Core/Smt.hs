@@ -354,7 +354,10 @@ data Work = Work { nextName :: Int, visited :: Int, required :: Encoding
                  , instances :: M.Map String Id
                  -- Whether what is encoded is the conclusion of an assumed
                  -- law, which may be stated more weakly than it was proved.
-                 , concluding :: Bool }
+                 , concluding :: Bool
+                 -- The definitions without arguments met so far: each is
+                 -- defined once, and named wherever it is used.
+                 , constants :: [Id] }
 
 -- | The conclusion of an assumed law.
 concluded :: Encode a -> Encode a
@@ -366,7 +369,7 @@ concluded action = do
   pure result
 
 start :: Encoding -> Program -> Recursion -> Work
-start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty [] M.empty False
+start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty [] M.empty False []
 
 -- | With recursive definitions, the solver options that keep unfolding
 -- bounded (as Dafny sets them: no model-based quantifier instantiation, so
@@ -798,7 +801,43 @@ proposition program active scope claim = do
       pure $ case kind of
         ForEvery -> Certificate (allOf (positive resAll)) (someOf (negative resSome))
         ForSome -> Certificate (someOf (positive resSome)) (allOf (negative resAll))
+    -- An enumeration (a data type of constants) is quantified by cases,
+    -- one per constant, as Why3 and SPARK split a goal on an enumeration:
+    -- each case then names its constant, so a list chosen by it is written
+    -- out and a recursive definition over it unfolds to a value. Where the
+    -- cases would exceed the expression budget, or a third of the output
+    -- budget, the quantifier stays.
     Quantified kind q body -> do
+      types <- gets known
+      let binder = quantifiedBinder q
+          ty = binderType binder
+      case declarationOf types ty of
+        Right (declaration, _) | constructors@(_ : _) <- dataConstructors declaration
+                               , all (null . constructorFields) constructors, length constructors <= 64 ->
+          attempt (do
+            s <- sortOf program ty
+            rows <- forM constructors $ \c -> do
+              let constant = constructorSymbol ty c
+                  local = M.insert (binderId binder) (Term s constant "true") scope
+              base <- lift (domain (programMachineBits program) ty constant)
+              restricted <- restrictions program active local (quantifiedPredicates q)
+              result <- proposition program active local body
+              pure (base, restricted, result)
+            when (sum [length (positive result) + length (negative result) | (_, _, result) <- rows] > 349525)
+              (lift (Left "the cases exceed their budget"))
+            let allOf pick = both [eitherOf [no base, negative restricted, both [positive restricted, pick result]] | (base, restricted, result) <- rows]
+                someOf pick = eitherOf [both [base, positive restricted, pick result] | (base, restricted, result) <- rows]
+            pure $ case kind of
+              ForEvery -> Certificate (allOf positive) (someOf negative)
+              ForSome -> Certificate (someOf positive) (allOf negative))
+            (general kind q body)
+        _ -> general kind q body
+  where
+    attempt :: Encode a -> Encode a -> Encode a
+    attempt first otherwise' = StateT $ \before -> case runStateT first before of
+      Left why | "budget" `isInfixOf` why -> runStateT otherwise' before
+      outcome -> outcome
+    general kind q body = do
       let binder=quantifiedBinder q
       s <- quantifierSortOf program (binderType binder)
       name <- fresh
@@ -1359,8 +1398,38 @@ contractChecks program active name stored result = do
     post <- restrictions program nested after (contractRuntimePostconditions contract)
     pure (both [positive pre,positive post])
 
+-- | A definition with no argument but Unit is a constant: defined once in
+-- the script, with whether it is defined, and named at each use, so a table
+-- written as a definition is not written out again wherever it is read. It
+-- is encoded at the fuel a law starts with, never at a fuel variable of the
+-- recursive definition that happens to read it first.
 inlineCall :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
-inlineCall program active scope name arguments = do
+inlineCall program active scope name arguments
+  | name `notElem` active, constant = do
+      let symbol = "|lawspec_constant " ++ idText name ++ "|"
+          definedSymbol = "|lawspec_constant_defined " ++ idText name ++ "|"
+      done <- gets (elem name . constants)
+      if done then do
+        s <- sortOf program (snd (functionType (declarationType (definitionDeclaration (head found)))))
+        pure (Term s symbol definedSymbol)
+      else do
+        outer <- gets fuel
+        mode <- gets recursion
+        modify (\w -> w{fuel = fuelLiteral mode})
+        result <- inlineBody program active M.empty name arguments
+        modify (\w -> w{fuel = outer, constants = name : constants w, functionText = functionText w ++
+          [ "(define-fun " ++ symbol ++ " () " ++ sortText (termSort result) ++ " " ++ value result ++ ")\n" ++
+            "(define-fun " ++ definedSymbol ++ " () Bool " ++ defined result ++ ")\n" ]})
+        pure result{value = symbol, defined = definedSymbol}
+  | otherwise = inlineBody program active scope name arguments
+  where
+    found = [d | u <- programUnits program, d <- unitDefinitions u, declarationId (definitionDeclaration d) == name]
+    unit e = expressionType e == Constructor "Unit" [] && case expressionNode e of Constant _ -> True; _ -> False
+    constant = length found == 1 && all unit arguments &&
+      all ((== Constructor "Unit" []) . binderType) (definitionArguments (head found))
+
+inlineBody :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
+inlineBody program active scope name arguments = do
   when (name `elem` active) (lift (Left "recursive checked definitions require an SMT induction encoding"))
   definition <- lift $ case [d | u <- programUnits program,d <- unitDefinitions u,
       declarationId (definitionDeclaration d)==name,not (definitionOrchestrates d),

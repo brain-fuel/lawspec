@@ -36,6 +36,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wrapper with a type parameter whose rule calls a list operation. A proof
   about such a record covers every value the field can hold; a law that
   claims some value exists states that the field is exact.
+- The solver states a law over an enumeration once per value, and defines a
+  definition whose only argument is `Unit` once per script. A law that reads
+  a table chosen by an enumeration's value is then proved by evaluating it.
 
 ## [0.34.1] - 2026-11-16
 
