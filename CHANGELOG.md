@@ -396,6 +396,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `length (trim value) > 0`. A literal that breaks the restriction is refused
   with `constructor field refinement does not hold for the value given`; a
   value the compiler cannot decide is still `could not be proved`.
+- A reserved word written as the name of a field, parameter or quantified
+  variable (`description :: Text`) gives one error, at the word: `description
+  is a reserved word, so it cannot name a field`, with the list of reserved
+  words. There is no escape; the name has to change. The first message was
+  `unexpected 'd', expecting '}'`, and each later use of the name was
+  reported again.
 - Compiling a record with rules no longer takes time exponential in its
   rules. The totality audit doubled its proof term at every binding whose
   value was itself a shared binding, which is the shape of the generated

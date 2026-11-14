@@ -274,8 +274,22 @@ The identifier parser reserves these words (case-sensitive): `unit`, `law`,
 `requires`, `is`, `end`, `definition`, `description`, `rationale`, `example`,
 `expect`, `implies`, `and`, `true`, `false`, `references`, `are`, `Eq`, `where`,
 `refinement`, `type`, `match`, `with`, `if`, `then`, `else`, `in`, `when`,
-`otherwise`, `must`. The authoritative list is `identRaw` in
+`otherwise`, `must`. The authoritative list is `reservedWords` in
 `src/LawSpec/Parser.hs`; other grammatical words are contextual.
+
+A reserved word cannot name a field, a parameter or a quantified variable, and
+there is no escape that makes it one: choose another name (`summary` for
+`description`, `reasoning` for `rationale`, `kind` for `type`). The compiler
+reports the word once, where it is declared, with this list:
+
+```text
+risk.lawspec:5:3:
+  |
+5 |   description :: Text
+  |   ^
+description is a reserved word, so it cannot name a field. A reserved word has
+no escape: use another name. Reserved words: unit, law, requires, ...
+```
 
 Data declarations additionally reserve every primitive type name and `Type`,
 `Nullable`, `Optional`, `List`, `Maybe`, `Either`, as checked in
