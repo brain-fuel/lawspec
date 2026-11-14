@@ -210,19 +210,37 @@ ships the first application-port checkpoint: manifest admission and version
 selection in typed Haskell services. `lawspec init` now leaves a project ready
 to generate and test: it fetches dependencies and runs the `doctor` checks.
 
+### 0.34: answers to the first adoption report
+
+0.34 answers a team's report of adopting 0.32 in a Spring Boot service on
+Windows. Compiling is faster: a repeated `check` reuses one warm compiler and
+its cache, compiler-provided units are admitted once, and `--timings` and a
+progress line show where time goes. The command line runs natively on Windows
+with the JVM and JavaScript targets, and the compiler cache has short paths, a
+configurable place and a warning when it cannot be written. A failed test run
+no longer keeps new laws from running. A law whose consequence no generated
+case reached is `vacuous`, not passed, and the compiler derives generators
+from guards and says how to fix the rest. The Java target compiles at release
+21, runs on JUnit 6 and can write generated files apart from user-owned ones.
+Records gain rules with stable ids, an accumulating validator, drafts that
+break one rule each, JSON Schema, and a `masking` block that hides fields in
+renderings, violation messages and logs. Generated code uses the parameter
+names the spec declares, and `init` names the project.
+
 ## Planned
 
-### 0.33.x: S1.j follow-ups (in progress)
+### S1.j follow-ups: remaining
 
-The remaining S1.j reports, on branch `s1j-followup`: one `map` for lists and
-`Either` through a capability over type constructors (`requires Mappable m`,
-committed), stored parses and persisted definition admission so a repeated
-`check` is faster than the first (in progress), list `map` and `filter` in the
-typed fast-path backends, mutual tail calls as loops, constructor predicates
-that call recursive definitions, and the `generate` slowdown. The canon and
-Rice's Tax pin bump waits on their releases. See [the S1.j follow-up](s1j-followup.md).
+0.33.1 shipped one `map` for lists and `Either` through a capability over type
+constructors (`requires Mappable m`), stored parses so a repeated `check` reads
+each source's parse from the cache directory, and a faster compile for projects
+with structural records. Still open: persisted definition admission, list `map`
+and `filter` in the typed fast-path backends, mutual tail calls as loops,
+constructor predicates that call recursive definitions, and the rest of the
+`generate` slowdown. The canon and Rice's Tax pin bump waits on their releases.
+See [the S1.j follow-up](s1j-followup.md).
 
-### 0.34: Haskell application port, with Maven, Gradle and Go hosts
+### Next: Haskell application port, with Maven, Gradle and Go hosts
 
 Every command runs end to end in the Haskell core; Node, the JVM and Go become
 thin hosts that only perform primitive effects (files, processes, fetch,
