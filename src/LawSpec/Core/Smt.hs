@@ -79,6 +79,19 @@ data InductionPlan = InductionPlan
   , inductionCapabilityLaws :: [Id]
   , inductionCases :: Either String [InductionCase] } deriving (Eq, Show)
 
+-- | The laws a proof by induction cites, as its evidence names them: the
+-- unit's laws, then the capability laws, which a law cites only on the
+-- receipt of LawSpec's own proof of them (LawSpec.ProofSettings).
+inductionCiting :: InductionPlan -> [String]
+inductionCiting plan = map named (inductionLemmas plan) ++
+  [named law ++ " (a law of the list operations, on LawSpec's receipt)" | law <- inductionCapabilityLaws plan]
+  where
+    named (Id text) = go text
+    go text = case text of
+      ':' : ':' : 'l' : 'a' : 'w' : ':' : ':' : name -> name
+      _ : rest -> go rest
+      [] -> text
+
 -- | A case, in the law's first encoding, and in the other one when the law
 -- tries both (as for the law itself).
 data InductionCase = InductionCase
@@ -155,7 +168,9 @@ instance ToJSON ProofTask where
         | Just (recursion, script) <- [taskAlternative task] ] ++
         [ "induction" .= object ([ "on" .= inductionOn plan, "asked" .= inductionAsked plan
                                  , "using" .= map idText (inductionLemmas plan)
-                                 , "capabilityLaws" .= map idText (inductionCapabilityLaws plan) ] ++
+                                 , "capabilityLaws" .= map idText (inductionCapabilityLaws plan)
+                                 -- What the evidence says the proof cites, as it is to be read.
+                                 , "citing" .= inductionCiting plan ] ++
             case inductionCases plan of
               Left reason -> ["status" .= ("unsupported" :: String), "reason" .= reason]
               Right cases -> ["status" .= ("ready" :: String), "cases" .=

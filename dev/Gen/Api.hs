@@ -972,4 +972,4 @@ declarations =
   where
     scalar names rest = record (("type", union (map quoted names)) : fields rest)
     analysisRow = [("owner", "string"), ("declaration", "string"), ("stage", "AnalysisStage")]
-    induction = [("on", "string"), ("asked", "boolean"), ("using", "string[]"), ("capabilityLaws", "string[]")]
+    induction = [("on", "string"), ("asked", "boolean"), ("using", "string[]"), ("capabilityLaws", "string[]"), ("citing", "string[]")]

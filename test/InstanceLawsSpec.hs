@@ -3,7 +3,7 @@
 module InstanceLawsSpec (test_capabilityLawsAreProved, test_capabilityLawsAreCited) where
 
 import Control.Monad (forM)
-import Data.Aeson (Value(..), object, (.=), decode, encode)
+import Data.Aeson (Value(..), object, (.=), decode, encode, toJSON)
 import qualified Data.Aeson.KeyMap as K
 import Data.Foldable (toList)
 import Data.List (isInfixOf, isPrefixOf)
@@ -136,6 +136,11 @@ test_capabilityLawsAreCited = describe "citing a capability law" $ do
     without <- either fail (mapM (outcome z3)) (inductionOf "reversal" plain)
     with `shouldBe` ["unsat", "unsat"]
     without `shouldSatisfy` (/= ["unsat", "unsat"])
+  it "names what the proof cites, as the evidence is to say it" $ do
+    found <- tasks "probe.laws::law::" (tasksOf (reversal
+      "for law \"|doubling commutes with reversal|\n prove by induction on xs using \"|a sum is itself|, \"|map distributes over append|\n end for law"))
+    [field "citing" plan | t <- found, "reversal" `isInfixOf` textOf "declaration" t, Just plan <- [field "induction" t]] `shouldBe`
+      [Just (toJSON ["|a sum is itself|", "|map distributes over append| (a law of the list operations, on LawSpec's receipt)" :: String])]
   it "adds neither the capability laws nor their unit to the program" $ do
     found <- tasks "" (tasksOf (reversal
       "for law \"|doubling commutes with reversal|\n prove by induction on xs using \"|map distributes over append|\n end for law"))

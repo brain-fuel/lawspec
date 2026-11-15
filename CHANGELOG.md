@@ -38,7 +38,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   map, filter, all and fold calls. The laws are proved once by LawSpec's own
   checks, and a receipt for each proof ships with LawSpec; a citation is
   accepted only while its receipt matches. Proof tasks list these citations
-  as `induction.capabilityLaws`.
+  as `induction.capabilityLaws`, and give the names an induction's evidence
+  is to cite, already worded, as `induction.citing`.
 
 ### Changed
 
