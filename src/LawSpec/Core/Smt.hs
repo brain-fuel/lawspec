@@ -18,6 +18,7 @@ import qualified Data.ByteString as B
 import LawSpec.Common (Diagnostic, InputDomain(..), Location, Quantification(..))
 import LawSpec.Core
 import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.Semantics (textWhiteSpaceRanges)
 import LawSpec.Core.SmtInstances (Instance(..), Written(..), instanceOf, instanceKey, instanceArguments)
 import LawSpec.Core.Types (builtinDataDeclarations)
 import LawSpec.CorePersist ()
@@ -906,6 +907,15 @@ expression program active scope source = do
     recurse=expression program active scope
     node expected types=case expressionNode source of
       _ | Just found <- instanceOf source -> instanceCall program active scope found
+      -- Whether a text is blank: its trim is empty exactly when every code
+      -- point of it is white space, a regular-expression test. prelude.trim
+      -- as a value stays unsupported.
+      _ | Just (text, wanted) <- blankTest source -> do
+        term <- recurse text
+        unless (termSort term == StringSort) (lift (Left "unsupported SMT expression: trim of a non-text"))
+        requires SmtLibV2
+        let blank = app "str.in_re" [value term, app "re.*" [app "re.union" ("re.none" : [scalarRange low high | (low, high) <- textWhiteSpaceRanges])]]
+        pure (Term BooleanSort (if wanted then blank else no blank) (defined term))
       -- Data (lawspec-smtlib-v2). A construction is defined when its fields
       -- are and the datum is well formed: its field refinements hold.
       Construct tag fields -> do
@@ -1096,6 +1106,47 @@ expression program active scope source = do
         let ascii = choose (app "<" [n, "0"]) (app "str.++" ["\"-\"", app "str.from_int" [app "-" [n]]]) (app "str.from_int" [n])
         pure (Term StringSort (app helper [ascii]) (defined term))
       other -> lift (Left ("unsupported SMT expression (" ++ nodeName other ++ "); no uninterpreted replacement was introduced"))
+
+-- | A comparison that asks only whether a text's trim is empty: the text,
+-- and whether it holds when the text is blank.
+blankTest :: Expr -> Maybe (Expr, Bool)
+blankTest e = case expressionNode e of
+  Binary op _ left right
+    | Just text <- trimmedLength left, Just n <- literal right -> (,) text <$> against op n
+    | Just text <- trimmedLength right, Just n <- literal left -> (,) text <$> against (flipped op) n
+    | Just text <- trimmed left, emptyText right, op `elem` [Equal, NotEqual] -> Just (text, op == Equal)
+    | Just text <- trimmed right, emptyText left, op `elem` [Equal, NotEqual] -> Just (text, op == Equal)
+  _ -> Nothing
+  where
+    trimmed x = case expressionNode x of
+      Helper Trim [text] -> Just text
+      _ -> Nothing
+    trimmedLength x = case expressionNode x of
+      Helper Length [inner] -> trimmed inner
+      Convert _ _ inner -> trimmedLength inner
+      _ -> Nothing
+    literal x = case expressionNode x of
+      Constant (SInteger _ n) -> Just n
+      Convert _ _ inner -> literal inner
+      _ -> Nothing
+    emptyText x = case expressionNode x of
+      Constant (SSequence "Text" []) -> True
+      _ -> False
+    -- length compared with n, for a length that is never negative.
+    against op n = case (op, n) of
+      (Equal, 0) -> Just True
+      (NotEqual, 0) -> Just False
+      (Greater, 0) -> Just False
+      (LessEqual, 0) -> Just True
+      (GreaterEqual, 1) -> Just False
+      (Less, 1) -> Just True
+      _ -> Nothing
+    flipped op = case op of
+      Less -> Greater
+      Greater -> Less
+      LessEqual -> GreaterEqual
+      GreaterEqual -> LessEqual
+      other -> other
 
 -- | What an unsupported node is, for the task's reason.
 nodeName :: Node -> String

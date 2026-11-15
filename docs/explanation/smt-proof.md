@@ -147,6 +147,9 @@ testers keep their LawSpec names, as quoted symbols like
 - `prelude.map`, `prelude.filter`, `prelude.all`, `prelude.any`, the folds,
   and `prelude.length` and `++` on lists are the definitions in
   `lawspec.instances`, made for the function written at each call.
+- Whether a text is blank (`prelude.trim text = ""`, or the trim's length
+  compared with zero) is a regular-expression test over LawSpec's white
+  space. `prelude.trim` as a value is unsupported.
 - Handles, indexed families, constructors with existential or refined type
   parameters, and types with no finite value are refused.
   An SMT datatype must have a value, and LawSpec allows empty types. Other existing verification layers keep

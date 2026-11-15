@@ -45,6 +45,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The solver states a law over an enumeration once per value, and defines a
   definition whose only argument is `Unit` once per script. A law that reads
   a table chosen by an enumeration's value is then proved by evaluating it.
+- The solver decides whether a text is blank: `prelude.trim text` compared
+  with the empty text, or its length with zero. A wrapper of nonblank text
+  is then a type the solver takes. `prelude.trim` as a value is still
+  unsupported there.
 
 ## [0.34.1] - 2026-11-16
 

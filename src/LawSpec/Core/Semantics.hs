@@ -147,10 +147,14 @@ utf8Units c
 -- out so that every target's runtime uses the same set whatever its own
 -- library calls a space. ref:DEC-text-pieces
 textWhiteSpace :: Int -> Bool
-textWhiteSpace point =
-  (point >= 0x09 && point <= 0x0D) || point == 0x20 || point == 0x85 || point == 0xA0 || point == 0x1680
-    || (point >= 0x2000 && point <= 0x200A) || point == 0x2028 || point == 0x2029 || point == 0x202F
-    || point == 0x205F || point == 0x3000
+textWhiteSpace point = any (\(low, high) -> point >= low && point <= high) textWhiteSpaceRanges
+
+-- | The same set as ranges of code points, for the solver's regular
+-- expression of a text that is all white space.
+textWhiteSpaceRanges :: [(Int, Int)]
+textWhiteSpaceRanges =
+  [ (0x09, 0x0D), (0x20, 0x20), (0x85, 0x85), (0xA0, 0xA0), (0x1680, 0x1680), (0x2000, 0x200A)
+  , (0x2028, 0x2029), (0x202F, 0x202F), (0x205F, 0x205F), (0x3000, 0x3000) ]
 
 -- | The pieces of a text between each occurrence of a separator, found from
 -- the left without overlap. Empty pieces are kept, so joining the pieces

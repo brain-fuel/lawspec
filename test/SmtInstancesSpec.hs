@@ -26,6 +26,8 @@ definitions =
   , "end type"
   , "wrapper Several (a :: Type) is List a where prelude.length value > 0"
   , "end wrapper"
+  , "function nonblank (text :: Text) -> Bool is prelude.length (prelude.trim text) > 0 end function"
+  , "wrapper Written is Text where nonblank value end wrapper"
   , "function doubled (reading :: Reading) -> Rational is reading.amount + reading.amount end function"
   , "function size (several :: Several Int32) -> Integer is prelude.length (valueOfSeveral several) end function"
   , "function lowered (n :: Int32) -> Int32 is if n > 0 then n - 1 else n end if end function"
@@ -59,6 +61,9 @@ laws =
   , law "no reading squares to two" "there exists (reading :: Reading) such that reading.amount * reading.amount = 2 end exists"
   , law "some reading is a half" "there exists (reading :: Reading) such that reading.amount + reading.amount = 1 end exists"
   , law "several is never empty" "for all (several :: Several Int32) => size several > 0 end for all"
+  , law "written is never blank" "for all (written :: Written) => valueOfWritten written != \"\" and prelude.trim (valueOfWritten written) != \"\" end for all"
+  , law "spaces are blank" "not nonblank \" \\t \" and nonblank \" a \""
+  , law "every text is written" "for all (text :: Text) => nonblank text end for all"
   , law "several wrong" "for all (several :: Several Int32) => size several > 1 end for all" ]
   where law name body = "law \"|" ++ name ++ "| is definition: " ++ body ++ " end definition end law"
 
@@ -148,3 +153,7 @@ test_solverUsesInstanceDefinitions =
     it "keeps a Rational field exact where some value is claimed" $ solver $ \z3 -> do
       direct z3 "some reading is a half" >>= (`shouldBe` "unsat")
       direct z3 "no reading squares to two" >>= (`shouldNotBe` "unsat")
+    it "decides whether a text is blank, and so takes a wrapper of nonblank text" $ solver $ \z3 -> do
+      direct z3 "written is never blank" >>= (`shouldBe` "unsat")
+      direct z3 "spaces are blank" >>= (`shouldBe` "unsat")
+      direct z3 "every text is written" >>= (`shouldNotBe` "unsat")
