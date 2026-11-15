@@ -1,0 +1,7 @@
+expect: a reading stays within its scale
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+  width span < 0
+=======
+  width span >= 0
+>>>>>>>

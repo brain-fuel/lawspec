@@ -1,0 +1,114 @@
+unit example.witnessless
+
+-- The other shapes of a restricted type that no law writes a value of. Each
+-- law below can only fail on a value the generator made of that type, so a
+-- mutant that survives means none was made.
+
+-- A restricted scalar.
+wrapper Name is Text where prelude.length value > 0 end wrapper
+
+wrapper Percent is Integer where value >= 0 && value <= 100 end wrapper
+
+function rest (percent :: Percent) -> Integer is
+  100 - valueOfPercent percent
+end function
+
+law "|a percentage and its rest make a hundred| is
+  definition:
+    for all (percent :: Percent) =>
+      rest percent >= 0 && rest percent + valueOfPercent percent = 100
+    end for all
+  end definition
+end law
+
+-- A record whose rule relates two of its fields.
+type Span is a record{
+  low :: Integer,
+  high :: Integer}
+  rule ordered is low <= high
+end type
+
+function width (span :: Span) -> Integer is
+  span.high - span.low
+end function
+
+law "|a span has a width| is
+  definition:
+    for all (span :: Span) =>
+      width span >= 0
+    end for all
+  end definition
+end law
+
+-- Restricted values under Maybe and under List.
+type Reading is a record{
+  level :: Maybe Percent
+  spans :: List Span
+  marks :: List Percent
+}
+end type
+
+function level (reading :: Reading) -> Integer is
+  first matching case of reading.level:
+    when Absent then 0
+    when Present percent then valueOfPercent percent
+  end case
+end function
+
+function narrow (span :: Span) -> Bool is
+  width span < 0
+end function
+
+function overfull (percent :: Percent) -> Bool is
+  valueOfPercent percent > 100
+end function
+
+law "|a reading stays within its scale| is
+  definition:
+    for all (reading :: Reading) =>
+      level reading <= 100
+        && not (prelude.any narrow reading.spans)
+        && not (prelude.any overfull reading.marks)
+    end for all
+  end definition
+end law
+
+-- A restriction few draws meet: one integer in sixteen.
+wrapper Sixteenth is Integer where prelude.rem value 16 = 5 end wrapper
+
+function remainder (sixteenth :: Sixteenth) -> Integer is
+  prelude.rem (valueOfSixteenth sixteenth) 16
+end function
+
+law "|a sixteenth leaves five| is
+  definition:
+    for all (sixteenth :: Sixteenth) =>
+      remainder sixteenth = 5
+    end for all
+  end definition
+end law
+
+-- The same restriction under a sum whose other constructors always have a
+-- value: the constructor that needs it must still be drawn.
+type Ticket is one of
+  | Blank
+  | Named of type Name
+  | Numbered of type Sixteenth
+end type
+
+function prize (ticket :: Ticket) -> Integer is
+  first matching case of ticket:
+    when Blank then 0
+    when Named name then 0
+    when Numbered sixteenth then remainder sixteenth
+  end case
+end function
+
+law "|only a numbered ticket wins, and wins five| is
+  definition:
+    for all (ticket :: Ticket) =>
+      prize ticket = 0 || prize ticket = 5
+    end for all
+  end definition
+end law
+end unit

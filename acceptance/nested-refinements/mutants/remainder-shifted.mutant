@@ -1,0 +1,7 @@
+expect: a sixteenth leaves five
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+  prelude.rem (valueOfSixteenth sixteenth) 16
+=======
+  prelude.rem (valueOfSixteenth sixteenth + 1) 16
+>>>>>>>

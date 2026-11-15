@@ -1,0 +1,7 @@
+expect: a span has a width
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+  span.high - span.low
+=======
+  span.low - span.high
+>>>>>>>

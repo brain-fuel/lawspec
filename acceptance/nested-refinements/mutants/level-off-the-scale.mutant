@@ -1,0 +1,7 @@
+expect: a reading stays within its scale
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+    when Present percent then valueOfPercent percent
+=======
+    when Present percent then valueOfPercent percent + 101
+>>>>>>>

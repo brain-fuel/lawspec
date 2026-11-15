@@ -1,0 +1,7 @@
+expect: a frequency on weekdays names a day
+@@ test/fixtures/nested-refinements.lawspec
+<<<<<<<
+    when OnWeekdays days then prelude.length (valueOfNonEmptyList days)
+=======
+    when OnWeekdays days then 0 - prelude.length (valueOfNonEmptyList days)
+>>>>>>>

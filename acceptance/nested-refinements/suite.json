@@ -1,5 +1,9 @@
 {
   "languageProfile": "1.0-rc.2",
   "verification": {"layers": ["property", "examples"]},
-  "specs": ["test/fixtures/nested-refinements.lawspec"]
+  "specs": [
+    "test/fixtures/nested-refinements.lawspec",
+    "test/fixtures/witnessless-refinements.lawspec"
+  ],
+  "seeds": [1000941691, 20261114, 7]
 }

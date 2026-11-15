@@ -176,4 +176,22 @@ law "|a practice repeats unless it is done once| is
     end for all
   end definition
 end law
+
+function weekdays (frequency :: Frequency) -> Integer is
+  first matching case of frequency:
+    when EveryN every then 0
+    when OnWeekdays days then prelude.length (valueOfNonEmptyList days)
+    when Described label then 0
+  end case
+end function
+
+-- The same restricted list, where a law's budget does reach it: the law
+-- holds only if a case with OnWeekdays is drawn and its list read.
+law "|a frequency on weekdays names a day| is
+  definition:
+    for all (frequency :: Frequency) =>
+      weekdays frequency >= 0
+    end for all
+  end definition
+end law
 end unit

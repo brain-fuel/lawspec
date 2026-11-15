@@ -1,0 +1,7 @@
+expect: a reading stays within its scale
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+  valueOfPercent percent > 100
+=======
+  valueOfPercent percent >= 0
+>>>>>>>

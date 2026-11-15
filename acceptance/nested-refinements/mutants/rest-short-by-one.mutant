@@ -1,0 +1,7 @@
+expect: a percentage and its rest make a hundred
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+  100 - valueOfPercent percent
+=======
+  99 - valueOfPercent percent
+>>>>>>>

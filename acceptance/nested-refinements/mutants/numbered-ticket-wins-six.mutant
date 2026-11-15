@@ -1,0 +1,7 @@
+expect: only a numbered ticket wins, and wins five
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+    when Numbered sixteenth then remainder sixteenth
+=======
+    when Numbered sixteenth then remainder sixteenth + 1
+>>>>>>>
