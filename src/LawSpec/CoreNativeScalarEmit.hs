@@ -1060,6 +1060,7 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
       , HaskellProperties.handlerInstalls = hsInstalls
       , HaskellProperties.lateHandlerInstalls = hsLateInstalls
       , HaskellProperties.searchDescriptors = searchDescriptorsOf
+      , HaskellProperties.keptSpecOf = keptSpecOf
       , HaskellProperties.local = hsLocal
       , HaskellProperties.scalarCodecs = [(n, e) | (n, _, e) <- hsScalarCodecs]
       , HaskellProperties.selfChecked = \e -> case C.expressionNode e of

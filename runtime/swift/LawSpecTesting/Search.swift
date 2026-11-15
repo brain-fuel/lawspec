@@ -98,6 +98,165 @@ public enum Search {
     try? FileManager.default.removeItem(atPath: file)
   }
 
+  // The kept-values store (docs/reference/cli.md, "Kept values"). A run that
+  // draws a case holding a value of a restricted type records the case's
+  // inputs in the wire encoding under .lawspec/found, in a file named by a
+  // hash of the definitions its inputs reach, so a changed restriction makes
+  // the old values unreachable. A later run replays them as extra cases of the
+  // law after checking each against the current definitions; one that no
+  // longer meets them is dropped. A spec is "KEY CAP TAG...": the cap is how
+  // many values a key keeps (0 keeps none), the tags are the constructors of
+  // the restricted types.
+  private struct KeptEntry {
+    var inputs: [String]
+    var used: Int
+  }
+
+  private static let keptLock = NSLock()
+  nonisolated(unsafe) private static var keptRecorded = Set<String>()
+
+  private static func keptFile(_ spec: String) -> String? {
+    let environment = ProcessInfo.processInfo.environment
+    var directory = environment["LAWSPEC_FOUND"] ?? ""
+    if directory.isEmpty {
+      guard let failures = environment["LAWSPEC_FAILURES"], !failures.isEmpty else { return nil }
+      // The failure database is .lawspec/failures/<target>/<project>.
+      directory =
+        URL(fileURLWithPath: failures).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("found")
+        .path
+    }
+    let key = spec.split(separator: " ").first.map(String.init) ?? ""
+    return URL(fileURLWithPath: directory).appendingPathComponent(key + ".json").path
+  }
+
+  private static func keptCap(_ spec: String) -> Int {
+    let words = spec.split(separator: " ")
+    return words.count > 1 ? Int(words[1]) ?? 0 : 0
+  }
+
+  private static func keptRead(_ file: String) -> [KeptEntry] {
+    guard let data = FileManager.default.contents(atPath: file),
+      let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let values = record["values"] as? [[String: Any]]
+    else { return [] }
+    return values.compactMap { entry in
+      guard let inputs = entry["inputs"] as? [String], let used = entry["used"] as? Int else {
+        return nil
+      }
+      return KeptEntry(inputs: inputs, used: used)
+    }
+  }
+
+  // Merge into what is on disk now, since another target's run may have
+  // written since this one read: write a temporary file, then rename it.
+  private static func keptUpdate(
+    _ file: String, _ spec: String, _ change: ([KeptEntry]) -> [KeptEntry]
+  ) {
+    var entries = change(keptRead(file))
+    let cap = keptCap(spec)
+    if entries.count > cap { entries.removeFirst(entries.count - cap) }
+    let directory = (file as NSString).deletingLastPathComponent
+    if !FileManager.default.fileExists(atPath: directory) {
+      try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+      try? "*\n".write(toFile: directory + "/.gitignore", atomically: false, encoding: .utf8)
+    }
+    let key = spec.split(separator: " ").first.map(String.init) ?? ""
+    let values = entries.map { entry in
+      JSON.object([
+        ("inputs", .array(entry.inputs.map { .string($0) })), ("used", .integer(entry.used)),
+      ])
+    }
+    let record = JSON.object([("key", .string(key)), ("values", .array(values))])
+    Harness.writeAtomically(file, record.text + "\n")
+  }
+
+  private static func keptHolds(_ value: Value, _ tags: Set<String>) -> Bool {
+    switch value {
+    case .data(let tag, let fields):
+      return tags.contains(tag) || fields.contains { keptHolds($0, tags) }
+    case .list(let items): return items.contains { keptHolds($0, tags) }
+    case .presence(_, let inner): return inner.map { keptHolds($0, tags) } ?? false
+    default: return false
+    }
+  }
+
+  /// Keep the case's inputs when it holds a value of a restricted type, once
+  /// per run.
+  public static func keptRecord(_ spec: String, _ descriptors: [String], _ values: [Value]) {
+    keptLock.lock()
+    defer { keptLock.unlock() }
+    if keptRecorded.contains(spec) { return }
+    guard keptCap(spec) > 0, let file = keptFile(spec) else {
+      keptRecorded.insert(spec)
+      return
+    }
+    let tags = Set(spec.split(separator: " ").dropFirst(2).map(String.init))
+    guard values.contains(where: { keptHolds($0, tags) }) else { return }
+    keptRecorded.insert(spec)
+    guard
+      let inputs = try? zip(descriptors, values).map({ descriptor, value -> String in
+        let (table, d) = try Descriptors.fromText(descriptor)
+        return hex(try Descriptors.encode(d, value, table))
+      })
+    else { return }
+    keptUpdate(file, spec) { entries in
+      let same = entries.first { $0.inputs == inputs }
+      return entries.filter { $0.inputs != inputs } + [same ?? KeptEntry(inputs: inputs, used: 0)]
+    }
+  }
+
+  /// Run the law on the cases earlier runs kept, after checking each against
+  /// the current definitions; a case that no longer meets them is dropped.
+  /// `check` answers nil for a case outside the law's own refinements.
+  public static func keptReplay(
+    _ law: String, _ spec: String, _ descriptors: [String], _ schema: Schema,
+    _ references: [TypeRef], _ check: ([Value]) throws -> Value?
+  ) throws {
+    guard keptCap(spec) > 0, let file = keptFile(spec) else { return }
+    let all = keptRead(file)
+    var dropped = Set<[String]>()
+    var used = [[String]]()
+    var failure: Error? = nil
+    for entry in all.suffix(keptCap(spec)) {
+      let values = try? zip(zip(descriptors, references), entry.inputs).map {
+        pair, text -> Value in
+        let (table, d) = try Descriptors.fromText(pair.0)
+        guard let bytes = unhex(text) else { throw Fail.with("InvalidSavedInputs") }
+        return try Schema.validate(try Descriptors.decode(d, bytes, table), pair.1, schema)
+      }
+      guard let values, values.count == descriptors.count, entry.inputs.count == descriptors.count
+      else {
+        dropped.insert(entry.inputs)
+        continue
+      }
+      do {
+        if try check(values) == nil {
+          dropped.insert(entry.inputs)
+        } else {
+          used.append(entry.inputs)
+        }
+      } catch {
+        failure = error
+        break
+      }
+    }
+    if !dropped.isEmpty || !used.isEmpty {
+      keptUpdate(file, spec) { entries in
+        entries.filter { !dropped.contains($0.inputs) }.map { entry in
+          used.contains(entry.inputs)
+            ? KeptEntry(inputs: entry.inputs, used: entry.used + 1) : entry
+        }
+      }
+    }
+    if !used.isEmpty {
+      FileHandle.standardError.write(
+        Data(
+          "\(law): ran \(used.count) kept value(s) found by earlier runs in .lawspec/found\n".utf8))
+    }
+    if let failure { throw failure }
+  }
+
   private static func bounds(_ d: Descriptors.Descriptor) -> (BigInt, BigInt) {
     guard case .forms(let parts) = d, parts.count == 4 else { return (.zero, .zero) }
     func number(_ x: Descriptors.Descriptor) -> BigInt? {

@@ -17,6 +17,7 @@ import LawSpec.TestNames (unitTestNames)
 import LawSpec.HaskellDefinitions (sortedImports)
 import LawSpec.TargetNames (targetKeywords)
 import LawSpec.Testing
+import LawSpec.Search (Kept(..))
 import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Testing.Draws as Draws
 import qualified LawSpec.Core as C
@@ -71,6 +72,8 @@ data Config = Config
   -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
   -- Nothing when the law takes no part in it.
   , searchDescriptors :: Expanded -> Maybe [String]
+  -- The kept-values store's view of a law (LawSpec.Search.keptFor).
+  , keptSpecOf :: Expanded -> Maybe Kept
   -- Each binder's name in generated code.
   , local :: C.Id -> String
   -- The scalar codecs a module may name once: textCodec = Codec.textCodec ...
@@ -436,21 +439,31 @@ emitTests Config{..} unit laws = do
           inputsName = short ++ "Inputs"
           caseName = short ++ "Case"
           names = H.List (map (var . inputId) (inputs e))
-          remembered stmts = case descriptors of
+          kept = keptSpecOf e
+          keptName = short ++ "Kept"
+          -- A passing case that holds a value of a restricted type is kept.
+          recordKept = [Run (call "LS.keptRecord" [string (keptSpec k), var keptName, names]) | Just k <- [kept]]
+          remembered stmts' = let stmts = stmts' ++ recordKept in case descriptors of
             Nothing -> stmts
             Just _ -> [Run (dollar (call "LS.searchGuard" [string label, var inputsName, names]) (H.Do stmts))]
-          (searchBefore, searchAfter) = case descriptors of
-            Nothing -> ([], [])
-            Just ds ->
-              let refinements = concatMap inputRefinements (inputs e)
-                  score = maybe (integer 0) (\s' -> call "LS.searchNumber" [checked (expressionType s') (expr s')]) (C.harnessTarget h)
-                  checking = bracketed e (check (string (shown ++ " search"))) ++
-                    [Run (call "P.pure" [call "P.Just" [score]])]
-              in ( [ Let inputsName (H.List (map string ds))
-                   , Let (caseName ++ " values") (H.Do (withSymbols (handlerInstalls e ++
+          refinements = concatMap inputRefinements (inputs e)
+          score = maybe (integer 0) (\s' -> call "LS.searchNumber" [checked (expressionType s') (expr s')]) (C.harnessTarget h)
+          checking = bracketed e (check (string (shown ++ " search"))) ++
+            [Run (call "P.pure" [call "P.Just" [score]])]
+          caseDefinition = Let (caseName ++ " values") (H.Do (withSymbols (handlerInstalls e ++
                        [bind' inp (checked (inputType inp) (operator "!!" [var "values", integer (toInteger i)])) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
                        (if null refinements then checking
                         else [Run (H.If (call "P.not" [conjunction (map (truth . expr) refinements)]) (call "P.pure" [var "P.Nothing"]) (H.Do checking))]))))
+          keptBefore = case kept of
+            Nothing -> []
+            Just k -> [Let keptName (H.List (map string (keptDescriptors k)))] ++ [caseDefinition | descriptors == Nothing] ++
+              [example (base' ++ "_kept") (call "LS.keptReplay" [string label, string (keptSpec k), var keptName,
+                 H.List [reference (inputType inp) | inp <- inputs e], call "Schema.validate" [var "schema"], var "machineBits", var caseName])]
+          (searchBefore, searchAfter) = case descriptors of
+            Nothing -> (keptBefore, [])
+            Just ds ->
+              ( keptBefore ++ [ Let inputsName (H.List (map string ds))
+                   , caseDefinition
                    , example (base' ++ "_replay") (call "LS.searchReplay" [string label, var inputsName, var caseName]) ]
                  , [example (base' ++ "_search") (call "LS.searchClimb" [string label, var inputsName, var caseName]) | C.harnessTarget h /= Nothing] )
       let propertyCheck = bracketed e (observations e ++ remembered (check (string (shown ++ " property"))))

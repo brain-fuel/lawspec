@@ -33,6 +33,7 @@ import qualified LawSpec.DotNet.Data as Data
 import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.BeamGenerators as BeamGenerators
 import qualified LawSpec.BeamProperties as BeamProperties
+import LawSpec.Search (Kept(..))
 import LawSpec.TestNames (unitBenchmarkNames)
 import Control.Monad (forM, foldM)
 import Data.Char (toUpper)
@@ -222,15 +223,24 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
               -- Only the inputs the body reads are taken from the case.
               boundInputs inner = foldr (\(i, (_, a)) rest -> if mentions a rest then Let a tValue (call "Runtime" "item" [IntLit i, Var "values"]) rest else rest) inner (zip [0 ..] aliases)
               descriptors = BeamProperties.searchDescriptors plan planned
-              remembered values = case descriptors of
+              kept = BeamProperties.keptSpecOf plan planned
+              -- A passing case that holds a value of a restricted type is kept.
+              withRecord values inner = case kept of
+                Nothing -> inner
+                Just k -> Let "kept" tValue inner (Do [call "Search" "keptRecord" [Str (keptSpec k), ListOf tString (map Str (keptDescriptors k)), values]] (Var "kept"))
+              remembered values = withRecord values (case descriptors of
                 Nothing -> invoke values
-                Just ds -> call "Search" "guard" [Str label, ListOf tString (map Str ds), values, Lambda [] tValue (invoke values)]
+                Just ds -> call "Search" "guard" [Str label, ListOf tString (map Str ds), values, Lambda [] tValue (invoke values)])
               property = if not (observed harness) then Lambda [("values", tValues)] tValue (remembered (Var "values"))
                 else Lambda [("values", tValues)] tValue (boundInputs (call "Harness" "sample" [observation, Lambda [] tValue (remembered (Var "values"))]))
           predicates <- mapM render (concatMap C.quantifiedPredicates (C.propertyInputs law))
+          keptReferences <- sequence [X.typeRef (C.binderType (C.quantifiedBinder q)) | Just _ <- [BeamProperties.keptSpecOf plan planned], q <- C.propertyInputs law]
           let inDomain body = foldr (\p rest -> If (X.truth p) (tOption tValue) rest (Raw "None" "FSharpOption<Value>.None")) body predicates
-              replay = [ call "Search" "replay" [Str label, ListOf tString (map Str ds),
-                           Lambda [("values", tValues)] (tOption tValue) (boundInputs (inDomain (call "Runtime" "some" [invoke (Var "values")])))]
+              domainCase = Lambda [("values", tValues)] (tOption tValue) (boundInputs (inDomain (call "Runtime" "some" [invoke (Var "values")])))
+              keptReplay = [ call "Search" "keptReplay" [Str label, Str (keptSpec k), ListOf tString (map Str (keptDescriptors k)),
+                               X.schemaVar, ListOf (Ty "TypeRef" "TypeRef") keptReferences, domainCase]
+                           | Just k <- [kept] ]
+              replay = keptReplay ++ [ call "Search" "replay" [Str label, ListOf tString (map Str ds), domainCase]
                        | Just ds <- [descriptors] ]
               check = Let "generation" (Ty "Generators.Context" "Generators.Context")
                 (if nativeGenerators

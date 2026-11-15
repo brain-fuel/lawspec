@@ -5891,6 +5891,148 @@ searchMoves table d0 v = case (descriptorKind d, v) of
     replace :: Int -> a -> [a] -> [a]
     replace i m xs = take i xs ++ [m] ++ drop (i + 1) xs
 
+-- | The kept-values store (docs/reference/cli.md, "Kept values"). A run that
+-- draws a case holding a value of a restricted type records the case's
+-- inputs in the wire encoding under .lawspec/found, in a file named by a hash
+-- of the definitions its inputs reach, so a changed restriction makes the old
+-- values unreachable. A later run replays them as extra cases of the law
+-- after checking each against the current definitions; one that no longer
+-- meets them is dropped. A spec is "KEY CAP TAG...": the cap is how many
+-- values a key keeps (0 keeps none), the tags are the constructors of the
+-- restricted types.
+keptRecorded :: IORef [String]
+keptRecorded = unsafePerformIO (newIORef [])
+{-# NOINLINE keptRecorded #-}
+
+keptFile :: String -> IO (Maybe FilePath)
+keptFile spec = do
+  found <- lookupEnv "LAWSPEC_FOUND"
+  failures <- lookupEnv "LAWSPEC_FAILURES"
+  let key = takeWhile (/= ' ') spec
+      -- The failure database is .lawspec/failures/<target>/<project>.
+      parent path = reverse (drop 1 (dropWhile (/= '/') (reverse (dropWhile (== '/') (reverse path)))))
+  pure
+    ( case (found, failures) of
+        (Just d, _) | not (null d) -> Just (d ++ "/" ++ key ++ ".json")
+        (_, Just f) | not (null f) -> Just (parent (parent (parent f)) ++ "/found/" ++ key ++ ".json")
+        _ -> Nothing
+    )
+
+keptCap :: String -> Int
+keptCap spec = case words spec of
+  _ : cap : _ -> case reads cap of [(n, "")] -> n; _ -> 0
+  _ -> 0
+
+-- | The entries of a kept file: each entry's inputs and its use count.
+keptRead :: FilePath -> IO [([String], Int)]
+keptRead path = do
+  present <- Directory.doesFileExist path
+  if not present
+    then pure []
+    else do
+      text <- readFile path
+      length text `seq` pure ()
+      pure (entries (drop 1 (splitOn "{\"inputs\":[" text)))
+  where
+    entries chunks = [(quoted inputs, used rest) | chunk <- chunks, let (inputs, rest) = breakOn "],\"used\":" chunk, not (null rest)]
+    quoted t = everyOther (drop 1 (splitQuotes t))
+    used rest = case reads (takeWhile isDigit (drop 9 rest)) of [(n, "")] -> n; _ -> 0
+    everyOther (x : _ : more) = x : everyOther more
+    everyOther xs = xs
+    splitQuotes t = case break (== '"') t of
+      (a, []) -> [a]
+      (a, _ : more) -> a : splitQuotes more
+    breakOn needle haystack = case haystack of
+      [] -> ([], [])
+      _ | needle `isPrefixOf` haystack -> ([], haystack)
+      c : more -> let (a, b) = breakOn needle more in (c : a, b)
+    splitOn needle haystack = case breakOn needle haystack of
+      (a, []) -> [a]
+      (a, rest) -> a : splitOn needle (drop (length needle) rest)
+
+-- | Merge into what is on disk now, since another target's run may have
+-- written since this one read: write a temporary file, then rename it.
+keptUpdate :: FilePath -> String -> ([([String], Int)] -> [([String], Int)]) -> IO ()
+keptUpdate path spec change = do
+  current <- keptRead path
+  let changed = change current
+      kept = drop (length changed - keptCap spec) changed
+      directory = reverse (drop 1 (dropWhile (/= '/') (reverse path)))
+  fresh <- not <$> Directory.doesDirectoryExist directory
+  Directory.createDirectoryIfMissing True directory
+  if fresh then writeFile (directory ++ "/.gitignore") "*\n" else pure ()
+  let entry (inputs, n) = "{\"inputs\":[" ++ intercalate "," (map show inputs) ++ "],\"used\":" ++ show n ++ "}"
+      temporary = path ++ ".tmp"
+  writeFile temporary ("{\"key\":" ++ show (takeWhile (/= ' ') spec) ++ ",\"values\":[" ++ intercalate "," (map entry kept) ++ "]}\n")
+  Directory.renameFile temporary path
+
+keptHolds :: [String] -> Scalar -> Bool
+keptHolds tags v = case v of
+  SData tag fields -> tag `elem` tags || any (keptHolds tags) fields
+  SList items -> any (keptHolds tags) items
+  SPresent _ (Just inner) -> keptHolds tags inner
+  _ -> False
+
+keptRecord :: String -> [String] -> [Scalar] -> IO ()
+keptRecord spec descriptors values = do
+  done <- readIORef keptRecorded
+  if spec `elem` done
+    then pure ()
+    else do
+      file <- keptFile spec
+      case file of
+        Just path
+          | keptCap spec > 0 ->
+              if any (keptHolds (drop 2 (words spec))) values
+                then do
+                  modifyIORef' keptRecorded (spec :)
+                  case mapM encode (zip descriptors values) of
+                    Right inputs ->
+                      keptUpdate path spec (\entries -> [e | e <- entries, fst e /= inputs] ++ [(inputs, maybe 0 id (lookup inputs entries))])
+                    Left _ -> pure ()
+                else pure ()
+        _ -> modifyIORef' keptRecorded (spec :)
+  where
+    encode (text, v) = let (table, d) = valuesFrom text in hexOf <$> wireEncode table d v
+
+-- | Runs the law on the cases earlier runs kept, after checking each against
+-- the current definitions (the validate function and a reference to each
+-- input's type); one that no longer meets them is dropped. The case answers
+-- Nothing for inputs outside the law's own refinements.
+keptReplay :: String -> String -> [String] -> [r] -> (r -> Int -> Scalar -> Either String Scalar) -> Int -> ([Scalar] -> IO (Maybe Double)) -> IO ()
+keptReplay law spec descriptors references validate bits check = do
+  file <- keptFile spec
+  case file of
+    Just path | keptCap spec > 0 -> do
+      entries <- keptRead path
+      outcomes <- mapM run (drop (length entries - keptCap spec) entries)
+      let dropped = [inputs | (inputs, False) <- outcomes]
+          used = [inputs | (inputs, True) <- outcomes]
+      if null dropped && null used
+        then pure ()
+        else keptUpdate path spec (\current -> [(i, if i `elem` used then n + 1 else n) | (i, n) <- current, i `notElem` dropped])
+      if null used then pure () else putStrLn (law ++ ": ran " ++ show (length used) ++ " kept value(s) found by earlier runs in .lawspec/found")
+    _ -> pure ()
+  where
+    run (inputs, _) = case decoded inputs of
+      Nothing -> pure (inputs, False)
+      Just values -> do
+        answer <- check values
+        pure (inputs, answer /= Nothing)
+    decoded inputs
+      | length inputs /= length descriptors = Nothing
+      | otherwise = mapM decode (zip3 descriptors references inputs)
+    decode (descriptor, reference, hex) = do
+      bytes <- unhex hex
+      let (table, d) = valuesFrom descriptor
+      value <- either (const Nothing) Just (wireDecode table d (B.pack bytes))
+      either (const Nothing) Just (validate reference bits value)
+    unhex (a : b : rest) = case readHex [a, b] of
+      [(w, "")] -> (fromInteger w :) <$> unhex rest
+      _ -> Nothing
+    unhex [] = Just []
+    unhex _ = Nothing
+
 searchClimb :: String -> [String] -> ([Scalar] -> IO (Maybe Double)) -> IO ()
 searchClimb law descriptors check = do
   seedText <- lookupEnv "LAWSPEC_SEED"

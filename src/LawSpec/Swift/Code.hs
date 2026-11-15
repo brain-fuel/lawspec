@@ -166,7 +166,7 @@ returnsVoid e = case e of
 voidFunctions :: [String]
 voidFunctions =
   [ "Runtime.require", "Runtime.ignore", "Harness.skip", "Harness.benchmark", "Harness.run", "Harness.knownDiscrepancy"
-  , "Harness.recordParallel", "Search.replay", "Search.climb", "Property.boundaries", "Property.check", "Effects.setHandlerState" ]
+  , "Harness.recordParallel", "Search.replay", "Search.keptReplay", "Search.keptRecord", "Search.climb", "Property.boundaries", "Property.check", "Effects.setHandlerState" ]
 
 -- | Whether an expression mentions a name.
 mentions :: String -> Expr -> Bool
