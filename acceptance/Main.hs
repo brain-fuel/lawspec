@@ -12,7 +12,8 @@
 --                                    "architecture": true,                  (optional)
 --                                    "packages": ["examples/packages/p"],   (optional)
 --                                    "dependencies": {"p.name": "^1.0.0"}}  (optional)
---                                    "reach": {"unit::law": "reached" | "vacuous"}}  (optional)
+--                                    "reach": {"unit::law": "reached" | "vacuous"},  (optional)
+--                                    "seeds": [1, 2, 3]}                    (optional)
 --   <target>/files/<path>          adapters replacing generated user-owned stubs
 --   <target>/stubs/<path>          the stub an adapter was written against (optional)
 --   <target>/mutants/<name>.mutant search/replace edits, one mutant per file
@@ -61,7 +62,7 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BLC
-import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort, stripPrefix)
+import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort, stripPrefix)
 import Data.Maybe (fromMaybe)
 import Data.Time.Clock (addUTCTime)
 import qualified Data.Text as T
@@ -178,7 +179,7 @@ main = do
               suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
                 doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
               recordingInputs <- map snd <$> suiteRecordings suite
-              let inputs = suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
+              let inputs = ("acceptance" </> suite </> "suite.json") : suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
               key <- runKey target labels (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated]) inputs
               pure (key, inputs)
         -- The exact key is known before anything is written: the generated
@@ -508,7 +509,12 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
   reached <- case field "reach" <$> decode manifest of
     Just (Object expected) -> checkReach target tool project [(K.toString law, text outcome) | (law, outcome) <- KM.toList expected]
     _ -> pure []
-  let scheduled = scheduled' ++ reached
+  -- A suite with "seeds" passes again under each of them: what a generator
+  -- plans for one seed says little about the next.
+  swept <- case list . field "seeds" =<< decode manifest of
+    Just seeds@(_ : _) -> pure <$> checkSeeds suite target tool project [round n :: Integer | Number n <- seeds]
+    _ -> pure []
+  let scheduled = scheduled' ++ reached ++ swept
   mutants <- if mutate then suiteMutants suite target else pure []
   stubs <- if mutate then suiteStubs suite target else pure []
   -- Mutants edit adapters, or the native code a bound unit calls.
@@ -618,6 +624,21 @@ checkDisk project generated = do
     [g | g <- generated, generatedOwnership g /= "user"]
   unless (null stale) (die ("stale generated files: " ++ unwords (map generatedPath stale)))
   putStrLn (project ++ ": generated files match")
+
+-- | The correct project run again with each of the suite's seeds
+-- (LAWSPEC_SEED), which every program target's generated tests read.
+checkSeeds :: String -> String -> Toolchain -> FilePath -> [Integer] -> IO String
+checkSeeds suite target tool project seeds = do
+  -- Gradle would skip a test task whose inputs did not change.
+  let rerun = ["--rerun" | target `elem` ["kotlin", "groovy"]]
+  forM_ seeds $ \seed -> do
+    (code, output) <- runToolWith [("LAWSPEC_SEED", show seed)] tool (arguments tool ++ rerun) project
+    let logFile = project </> ("seed-" ++ show seed ++ ".log")
+    writeFile logFile output
+    unless (code == ExitSuccess) (die (target ++ ": " ++ suite ++ " fails with seed " ++ show seed ++ " (see " ++ logFile ++ ")"))
+  let line = target ++ ": " ++ suite ++ " passes with seeds " ++ intercalate ", " (map show seeds)
+  putStrLn line
+  pure line
 
 -- The scheduling checks: the adapters note when each call starts and ends
 -- (LAWSPEC_SCHEDULE_LOG). `order random` must follow the run's seed (the
