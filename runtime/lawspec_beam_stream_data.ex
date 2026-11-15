@@ -101,8 +101,32 @@ defmodule LawSpec.Beam.StreamData do
   def complete(type), do: filter(type, &(&1 != @empty))
   def forall(type, predicate), do: {type, predicate}
 
+  # StreamData's filter draws every attempt at one size, and its integers lie
+  # within the size: a restriction no small value meets (a remainder, a lower
+  # bound) then has no value in a law's first cases, however many attempts it
+  # has. Each quarter of the attempts that finds nothing gives the next a
+  # larger size, as PropEr's constraints do. A restriction the first quarter
+  # meets draws what it drew before.
   defp filter(type, predicate) do
-    SD.sized(fn _ -> SD.filter(type, predicate, Process.get({__MODULE__, :attempts}, 100)) end)
+    SD.sized(fn _ ->
+      share = div(Process.get({__MODULE__, :attempts}, 100), 4) + 1
+
+      [first | _] =
+        stages =
+        for grown <- [0, 8, 32, 128] do
+          %SD{} = SD.filter(SD.scale(type, &(&1 + grown)), predicate, share)
+        end
+
+      %SD{first | generator: fn seed, size -> attempt(stages, seed, size) end}
+    end)
+  end
+
+  defp attempt([last], seed, size), do: last.generator.(seed, size)
+
+  defp attempt([next | rest], seed, size) do
+    next.generator.(seed, size)
+  rescue
+    SD.FilterTooNarrowError -> attempt(rest, seed, size)
   end
 
   # Catch failures inside check_all so StreamData can shrink them with its
