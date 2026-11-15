@@ -23,6 +23,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and adds an input holding it to the law's boundary cases on every target.
   Give the law an example whose input holds a value, or bind a generator, when
   it finds none. A specification that relied on a lucky draw is now refused.
+  The same holds when the boundary search of the input itself fails: the
+  law's examples, the type's own search and the sampled values are tried
+  before the law is refused, and the refusal is this message rather than
+  `constructor field boundary search exhausted`. An input drawn from a harness
+  strategy (`use`), search or witness is never refused: the generator makes
+  its values, and the compiler adds boundary cases only where it can find them.
 - On the BEAM, .NET and Swift runtimes a restricted type inside a law's input
   takes a value from the law's witnesses when its own draws are all refused.
   These runtimes mixed witnesses in only for the input as a whole, so a

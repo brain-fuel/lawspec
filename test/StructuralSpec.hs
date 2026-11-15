@@ -435,8 +435,12 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
                 (T.boundaryCases property)
     it "shows a value of every restricted type a law's input can hold, or refuses the law" $ do
       source <- readFile "test/fixtures/witnessless-refinements.lawspec"
-      let planned text = either (Left . show) (either (Left . show) Right . T.planTesting)
-            (compileCore 64 defaultGeneration [Source "witnessless" text])
+      harness <- readFile "test/fixtures/witnessless-refinements-testing.lawspec"
+      let plannedWith bound text = either (Left . show) (either (Left . show) Right . T.planTesting)
+            (compileCore 64 defaultGeneration [Source "witnessless" text, Source "witnessless-testing" bound])
+          planned = plannedWith harness
+          lawNamed name plan = [property | property <- concatMap T.plannedProperties (T.plannedUnits plan)
+            , name `isInfixOf` show (propertyId (T.plannedProperty property))]
           replaced old new text = case breakOn old text of
             Just (before, after) -> before ++ new ++ after
             Nothing -> error ("fixture no longer holds: " ++ old)
@@ -446,7 +450,7 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
             [] -> Nothing
           residue = "wrapper Residue is Integer where prelude.rem (value + 4) 53 = 0 end wrapper"
           example = "    envelope = Sealed (Keyed 999999)\n"
-      case compileCore 64 defaultGeneration [Source "witnessless" source] of
+      case compileCore 64 defaultGeneration [Source "witnessless" source, Source "witnessless-testing" harness] of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right program -> do
           r <- registry (programDataDeclarations program)
@@ -458,6 +462,7 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
           forM_ (named "::Keyed") $ \ty -> do
             T.boundariesWithRegistry r 64 ty `shouldSatisfy` isLeft
             T.sampledValues r 64 ty `shouldBe` []
+          forM_ (named "::Slip") $ \ty -> T.boundariesWithRegistry r 64 ty `shouldSatisfy` isLeft
           length (named "::Residue" ++ named "::Keyed") `shouldBe` 2
       case planned source of
         Left message -> expectationFailure message
@@ -469,6 +474,10 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
           cases "marked draw" `shouldSatisfy` isInfixOf "Marked"
           -- Found by nothing: the value the law's example wrote.
           cases "sealed envelope" `shouldSatisfy` isInfixOf "999999"
+          -- The boundary search of the input fails outright: the example holds the value.
+          cases "slip's stamp leaves" `shouldSatisfy` isInfixOf "999999"
+          -- A bound generator supplies the input, so the compiler holds none.
+          [show (T.boundaryCases property) | property <- lawNamed "generated slip" plan] `shouldBe` ["[]"]
       planned (replaced residue
         "wrapper Residue is Integer where value > 0 && prelude.rem (value + 4) 1000003 = 0 && prelude.rem value 53 = 1 end wrapper"
         source) `shouldSatisfy` either (isInfixOf "no value of Residue found") (const False)
@@ -477,6 +486,13 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
       planned (replaced "prelude.rem (value + 4) 1000003 = 0 end wrapper"
         "prelude.rem (value + 5) 1000003 = 0 end wrapper" source) `shouldSatisfy`
         either (isInfixOf "Keyed: field refinement failed") (const False)
+      -- No example and no generator for an input whose search fails outright:
+      -- refused with the message that says what to do.
+      plannedWith (replaced "  for law \"|a generated slip's stamp leaves one|\n    use slips for slip\n  end for law\n" "" harness) source
+        `shouldSatisfy` either (isInfixOf "no value of Stamp found") (const False)
+      -- An example whose input is not a valid value is an error.
+      planned (replaced "Stamp 999999" "Stamp 999998" source) `shouldSatisfy`
+        either (isInfixOf "refinement") (const False)
       planned (replaced example "    envelope = Plain\n" (replaced "    expect seal envelope = 1\n"
         "    expect seal envelope = 0\n" source)) `shouldSatisfy`
         either (isInfixOf "no value of Keyed found") (const False)

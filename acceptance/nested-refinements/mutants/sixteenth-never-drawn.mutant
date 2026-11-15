@@ -1,5 +1,5 @@
 rejected-at: generation
-expect: boundary search exhausted without a witness
+expect: no value of Sixteenth found
 @@ test/fixtures/witnessless-refinements.lawspec
 <<<<<<<
 wrapper Sixteenth is Integer where prelude.rem value 16 = 5 end wrapper

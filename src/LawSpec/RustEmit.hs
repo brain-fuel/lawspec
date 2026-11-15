@@ -787,7 +787,9 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
               seeded = not (harnessDraw /= Nothing || checked || customInput inputType)
               made = statements
                 ([binding "symbol" value | value <- take 1 symbols] ++
-                 [binding "seeds" (Expression.vector (if null symbols then hints ++ seeds else [])) | seeded || checked] ++
+                 [binding "seeds" (let held = if null symbols then hints ++ seeds else []
+                    -- A generator-bound input may hold no compiler value.
+                    in if null held then Doc.text "vec![] as Vec<ls::Value>" else Expression.vector held) | seeded || checked] ++
                  [binding "base" (construct <> Doc.text "?"),
                   Doc.text (if harnessDraw /= Nothing then (if hasFieldContracts then "Ok(base.map(|base| base.prop_map(Ok).boxed()))" else "Ok(base)")
                     else if checked then "Ok(base)" else if customInput inputType

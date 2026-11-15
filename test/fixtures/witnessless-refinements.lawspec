@@ -167,4 +167,40 @@ law "|only a sealed envelope carries a seal, and carries one| is
     expect seal envelope = 1
   end example
 end law
+
+-- The same restriction as a field of a record that holds nothing else to
+-- fall back on, so the boundary search for the law's input fails outright.
+-- The law's example writes a value of the input.
+wrapper Stamp is Integer where value > 0 && prelude.rem (value + 4) 1000003 = 0 end wrapper
+
+type Slip is a record{
+  key :: Stamp,
+  count :: Integer}
+end type
+
+function stampRest (slip :: Slip) -> Integer is
+  1 + prelude.rem (valueOfStamp slip.key + 4) 1000003 + prelude.rem slip.count 1
+end function
+
+law "|a slip's stamp leaves one| is
+  definition:
+    for all (slip :: Slip) =>
+      stampRest slip = 1
+    end for all
+  end definition
+  example "|a slip stamped at the first multiple| :
+    slip = Slip record{ key = Stamp 999999 , count = 3 }
+    expect stampRest slip = 1
+  end example
+end law
+
+-- The same input, with no example: the harness binds a generator for it, so
+-- the compiler is not asked to find a value.
+law "|a generated slip's stamp leaves one| is
+  definition:
+    for all (slip :: Slip) =>
+      stampRest slip = 1
+    end for all
+  end definition
+end law
 end unit

@@ -422,6 +422,7 @@ extra-source-files:
     test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
     test/fixtures/triple-quoted-strings.lawspec
+    test/fixtures/witnessless-refinements-testing.lawspec
     test/fixtures/witnessless-refinements.lawspec
     test/fixtures/blake3sum.json
     test/fixtures/smt-corpus/authorization-snapshots.lawspec

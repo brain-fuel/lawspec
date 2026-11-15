@@ -183,8 +183,11 @@ values`. Give the law an example whose input holds a value of the type, or
 bind a generator for the input. Nothing is stored between runs: the values
 are computed again from the specification, so a changed restriction cannot
 leave a stale one behind, and an example that no longer meets its restriction
-is a compile error. An input bound to a harness search or witness is the
-author's to generate and is not checked this way.
+is a compile error. A failed boundary search of the input itself does not
+refuse the law before the examples and samples are tried. An input bound to a
+harness strategy, search or witness is the author's to generate and is not
+checked this way: the compiler adds the values it finds as boundary cases and
+needs none.
 
 The witnesses decide which budgets hold a value. For a budget no witness
 fits, those runtimes, and Rust's, probe: once for each restricted type and budget

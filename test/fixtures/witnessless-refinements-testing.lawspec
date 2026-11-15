@@ -1,0 +1,15 @@
+-- The harness of example.witnessless: a slip is stamped with a multiple of
+-- 1000003, less four, which neither the boundary search nor sampling reaches.
+harness example.witnessless.testing for example.witnessless is
+  strategy multiples :: (n :: Integer where n >= 1 and n <= 5) is any end strategy
+
+  strategy slips :: Slip is
+    bind n :: Integer from multiples in
+      one of Slip record{ key = Stamp (n * 1000003 - 4) , count = n }
+    end bind
+  end strategy
+
+  for law "|a generated slip's stamp leaves one|
+    use slips for slip
+  end for law
+end harness

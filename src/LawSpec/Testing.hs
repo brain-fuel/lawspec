@@ -31,6 +31,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (evaluate)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import System.Mem.StableName (StableName, makeStableName)
+import Data.Either (isLeft)
 import Data.List (find, nub, partition, sort, sortOn, stripPrefix, zip3)
 import LawSpec.Formats (rfc822Uncommented)
 import LawSpec.Regex (Regex, parseRegex, regexMatches, regexSamples)
@@ -288,19 +289,36 @@ planPopulatedProperty registry programMachineBits invoke definitions p = do
         evaluateValuePure registry programMachineBits [] value) (exampleBindings example)) (propertyExamples p)
       let harness = propertyHarness p
           bound q = binderId (quantifiedBinder q) `elem`
-            ([target | (target,_,_,_) <- harnessSearches harness] ++ map witnessTarget (harnessWitnesses harness))
+            ([target | (target,_,_,_) <- harnessSearches harness] ++ [target | (target,_,_) <- harnessDraws harness]
+              ++ map witnessTarget (harnessWitnesses harness))
       bs <- sequence [case domain of
           Just values | hasValueContracts registry ty -> pure values
           _ -> do
-            base <- boundariesWithRegistry registry programMachineBits ty
-            let known = patternValues definitions hinted ++ fieldPatternValues definitions hinted base ++ memberValues hinted ++ base
+            -- A failed boundary search is not a refusal: the law's examples,
+            -- the type's own search and the sampled values are consulted
+            -- before it is, and a bound generator supplies its own values.
+            let searched = boundariesWithRegistry registry programMachineBits ty
+                base = either (const []) id searched
+                known = patternValues definitions hinted ++ fieldPatternValues definitions hinted base ++ memberValues hinted ++ base
                 given = [value | bindings <- written, Just value <- [lookup (binderId (quantifiedBinder q)) bindings]]
-            shown <- if hasValueContracts registry ty && not (bound q)
-              then restrictedWitnesses registry programMachineBits ty known given else pure []
-            pure (known ++ shown)
+                accepted value = acceptsValue registry programMachineBits ty value == Right True
+            -- Values of a bound input are the generator's to make: the ones the
+            -- compiler can show are still seeds, and none is not a refusal.
+            let shownBy = restrictedWitnesses registry programMachineBits ty known given
+            shown <- if not (hasValueContracts registry ty) then pure []
+              else if bound q then pure (either (const []) id shownBy) else shownBy
+            if null known && null shown && isLeft searched && not (bound q) && hasValueContracts registry ty
+              then case filter accepted given ++ sampledValues registry programMachineBits ty of
+                value : _ -> pure [value]
+                [] -> Left ("no value of " ++ restrictedName ty ++ " found by the boundary search or in " ++
+                  show sampleAttempts ++ " sampled values, so no case of this law could hold one. " ++
+                  "Give the law an example whose input holds one, or bind a generator.")
+              else pure (known ++ shown)
         | (q,ty,domain) <- zip3 qs types domains, let hinted = guardedQuantifier (propertyBody p) q]
-      unless (all (not . null) bs) (Left "uninhabited input domain")
-      let tuples = if null bs then [[]] else [[xs !! (i `mod` length xs) | xs <- bs] | i <- [0..maximum (map length bs)-1]]
+      unless (and [not (null b) || bound q | (q,b) <- zip qs bs]) (Left "uninhabited input domain")
+      -- A bound generator supplies the values of an input the compiler found
+      -- none of; the law then has no boundary tuples of its own.
+      let tuples = if null bs then [[]] else if any null bs then [] else [[xs !! (i `mod` length xs) | xs <- bs] | i <- [0..maximum (map length bs)-1]]
       cases <- filterM (validTupleWithDefinitions registry programMachineBits invoke qs) tuples
       mapM_ (\example -> do
         bindings <- mapM (\(name,value) -> (,) name <$> evaluateValuePure registry programMachineBits [] value)

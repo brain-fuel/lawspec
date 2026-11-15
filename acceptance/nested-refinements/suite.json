@@ -3,7 +3,8 @@
   "verification": {"layers": ["property", "examples"]},
   "specs": [
     "test/fixtures/nested-refinements.lawspec",
-    "test/fixtures/witnessless-refinements.lawspec"
+    "test/fixtures/witnessless-refinements.lawspec",
+    "test/fixtures/witnessless-refinements-testing.lawspec"
   ],
   "seeds": [1000941691, 20261114, 7]
 }
