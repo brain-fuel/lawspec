@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: Keyed: field refinement failed
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+wrapper Keyed is Integer where value > 0 && prelude.rem (value + 4) 1000003 = 0 end wrapper
+=======
+wrapper Keyed is Integer where value > 0 && prelude.rem (value + 5) 1000003 = 0 end wrapper
+>>>>>>>

@@ -1111,8 +1111,13 @@ targetSteps target =
   -- sum, a Maybe and a List, a rule relating two fields, a restriction few
   -- draws meet), on every program target, under the run's own seed and three
   -- fixed ones. Its mutants are laws that only a generated value of such a
-  -- type can fail. ref:DEC-structural-size-budget
+  -- type can fail. One restriction only the compiler's sampled values meet
+  -- and one only the law's example meets; a mutant without either value is
+  -- refused. ref:DEC-structural-size-budget ref:DEC-never-pass-vacuously
   [ step (target ++ "-nested-refinements") (acceptance ["nested-refinements", target]) ] ++
+  -- A signature longer than Swift's line, and a Rust type numbered apart
+  -- from another unit's of the same name.
+  [ step (target ++ "-long-names") (acceptance ["long-names", target]) | target `elem` ["swift", "rust"] ] ++
   [ step (target ++ "-vacuity-sampled") (acceptance ["vacuity-sampled", target]) | target `elem` ["java", "javascript", "python"] ] ++
   -- Record rules and masking on every program target. Four targets also
   -- have native tests of their own renderings; on the targets the masking

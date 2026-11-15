@@ -1,0 +1,7 @@
+expect: only a marked draw scores, and scores eleven
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+    when Marked residue then 11 + prelude.rem (valueOfResidue residue + 4) 53
+=======
+    when Marked residue then 12 + prelude.rem (valueOfResidue residue + 4) 53
+>>>>>>>

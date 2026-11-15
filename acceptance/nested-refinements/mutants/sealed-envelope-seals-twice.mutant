@@ -1,0 +1,7 @@
+expect: only a sealed envelope carries a seal, and carries one
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+    when Sealed keyed then 1 + prelude.rem (valueOfKeyed keyed + 4) 1000003
+=======
+    when Sealed keyed then 2 + prelude.rem (valueOfKeyed keyed + 4) 1000003
+>>>>>>>

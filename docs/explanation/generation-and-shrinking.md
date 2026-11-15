@@ -162,8 +162,32 @@ without a witness, reserves its smallest shape as before. The JVM runtime
 (Java, Groovy, Clojure) and the Kotlin, Scala, Go, Python (which the Prolog
 target runs on) and JavaScript/TypeScript runtimes do this.
 
-A law that writes no value of a restricted type gives it no witness. Those
-runtimes, and Rust's, then probe: once for each restricted type and budget
+The compiler shows that every restricted type a law's input can hold has a
+value, and puts the value among the law's boundary cases, so each run on each
+target checks the law on it and each generator starts from it. A law that
+passes only on the cases that avoid a constructor says nothing about that
+constructor: always not p, so p implies q. The value is one of these, in
+order:
+
+1. a value the boundary search of the input found, as before;
+2. the input of an example the law wrote that holds one;
+3. a value the boundary search of the restricted type itself finds;
+4. one of a thousand values sampled from a fixed sequence that the reference
+   evaluator accepts. The sequence is the same on every machine, so the value
+   is too.
+
+The value is then placed inside a checked value of the input's type. When
+none of the four yields a value the law is refused at generation, on every
+target: `no value of <type> found by the boundary search or in 1000 sampled
+values`. Give the law an example whose input holds a value of the type, or
+bind a generator for the input. Nothing is stored between runs: the values
+are computed again from the specification, so a changed restriction cannot
+leave a stale one behind, and an example that no longer meets its restriction
+is a compile error. An input bound to a harness search or witness is the
+author's to generate and is not checked this way.
+
+The witnesses decide which budgets hold a value. For a budget no witness
+fits, those runtimes, and Rust's, probe: once for each restricted type and budget
 that no witness fits, they draw from the type's unfiltered generator with a
 fixed seed, and ask whether any draw passes the restriction. They make as
 many draws as the filter may (at least 100, at most 10,000); the Python, Rust
@@ -173,14 +197,11 @@ that size. The probe has its own seed and its answers are kept for the run,
 so the cases a law draws from a seed are the same every time.
 
 A probe that finds nothing is believed only if a probe at the law's whole
-budget finds a value: then it is the smaller budget that holds none. When the
-whole budget yields none either, the restriction is one that draws seldom
-meet, and the probes decide nothing. The type keeps its place in the plan,
-its values are left to the filter, as they were before probes, and the
-runtime says so once on standard error (`LawSpec: no value of ... found in
-... draws`): the law's cases hold a value of that type only when a draw
-happens to meet the restriction. Write a value of the type in the law, or
-bind a generator for it.
+budget finds a value, or a witness shows one: then it is the smaller budget
+that holds none. A restricted type with no witness that the whole budget
+yields no value of fails the law (`LawSpec: no value of ... found in ...
+draws`). The compiler's check leaves this to the case where it showed the type
+to have a value but could build no checked input around it.
 
 A restricted type's values are drawn through its restriction where they
 stand, each with attempts of its own, so that one refused element does not
@@ -191,11 +212,16 @@ often enough for a restriction to a small range to be met: half of the
 Haskell and JavaScript/TypeScript draws lie between -128 and 127.
 
 The Haskell runtime has no reservation and no probe. Hedgehog filters each
-restricted part, discards the case when the retries of a part run out, and
-fails the law when 10,000 cases are discarded. The .NET, Swift and BEAM
+restricted part, draws half the values of a type with witnesses from them,
+discards the case when the retries of a part run out, and fails the law when
+10,000 cases are discarded. A restricted type the compiler placed no witness
+of is the one case it can still pass without building. The .NET, Swift and BEAM
 runtimes plan differently: the budget grows with the test's size, scalar
 draws follow the bounds a restriction's comparisons give, and a part that no
-attempt satisfies fails the law. StreamData draws every attempt of a filter
+attempt satisfies fails the law. A restricted type that the law's witnesses
+hold a value of takes that value when its draws are refused (after 16 on the
+BEAM, after 100 on .NET and Swift), so a restriction no draw meets is still
+generated, from the value the compiler showed. StreamData draws every attempt of a filter
 at one size, so the Elixir runtime gives each quarter of the attempts a
 larger one.
 
@@ -205,7 +231,9 @@ record whose rule relates two fields, restricted values under `Maybe` and
 `List`, and a restriction one integer in sixteen meets, alone and under a sum
 with other constructors. Each law can only fail on a generated value of the
 restricted type, each has a mutant, and the suite passes again under three
-fixed seeds.
+fixed seeds. It also holds a restriction only the sampled values meet, one
+only the law's example meets, and mutants that take the value away (the law
+is refused) or change the restriction under the example (a compile error).
 
 ## Custom generators
 

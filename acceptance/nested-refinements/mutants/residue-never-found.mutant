@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: no value of Residue found
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+wrapper Residue is Integer where prelude.rem (value + 4) 53 = 0 end wrapper
+=======
+wrapper Residue is Integer where value > 0 && prelude.rem (value + 4) 1000003 = 0 && prelude.rem value 53 = 1 end wrapper
+>>>>>>>

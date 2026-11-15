@@ -1,0 +1,10 @@
+rejected-at: generation
+expect: no value of Keyed found
+@@ test/fixtures/witnessless-refinements.lawspec
+<<<<<<<
+  example "|a sealed envelope| :
+    envelope = Sealed (Keyed 999999)
+    expect seal envelope = 1
+  end example
+=======
+>>>>>>>

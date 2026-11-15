@@ -13,6 +13,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   restriction to small numbers (`value >= 0 && value <= 100`) refused nearly
   every draw. A law's cases for a seed differ from those of 0.34.0 on these
   targets.
+- A law is refused at generation when its input can hold a restricted type
+  that no value was found of (`no value of <type> found by the boundary
+  search or in 1000 sampled values`). Until now only the input's own type was
+  checked; a restricted type under one constructor of a sum, in a `List` or in
+  a `Maybe` could have no witness, and the law passed on the cases without it.
+  The compiler now finds a value from the law's examples, from the boundary
+  search of the type, or from a fixed sequence of a thousand sampled values,
+  and adds an input holding it to the law's boundary cases on every target.
+  Give the law an example whose input holds a value, or bind a generator, when
+  it finds none. A specification that relied on a lucky draw is now refused.
+- On the BEAM, .NET and Swift runtimes a restricted type inside a law's input
+  takes a value from the law's witnesses when its own draws are all refused.
+  These runtimes mixed witnesses in only for the input as a whole, so a
+  nested type that only a witness has a value of failed the law.
+- A restricted type with no witness that a runtime's probe finds no value of
+  at the law's whole budget fails the law on the JVM, Kotlin, Scala, Go,
+  Python (and Prolog), Rust and JavaScript/TypeScript runtimes.
 - `make package` and `make release-check` run `lawspec-dev integrity`, which
   refuses a staged core or host component that differs from what
   `npm/build.json` records, and `make package` builds the lesson assets
@@ -37,9 +54,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A probe that found no value of a restricted type removed its constructor
   from every case without saying so when the restriction was one that draws
   seldom meet. A probe is now believed only when a probe at the law's whole
-  budget finds a value. Otherwise the type stays in the plan, its values are
-  left to the filter, and the runtime says once on standard error that it
-  found none (`LawSpec: no value of ... found in ... draws`).
+  budget finds a value, or a witness shows one.
+- Generated Swift put the brace of a parameterless function on a line of its
+  own when its signature was too long even without the brace (a codec of a
+  type with a long unit name); `swift-format` breaks inside the result
+  type's angle brackets, and the generator now does.
+- Generated Rust tells two units' types of one name apart with a number
+  (`Label_2`), which the `non_camel_case_types` lint refused; the declaration
+  now allows it.
 - Generated Python wrapped `lsf_length(...)` around a call too long for the
   line in a way `ruff format` changes.
 - The `nested-refinements` acceptance suite runs on every program target,
