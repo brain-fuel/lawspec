@@ -733,7 +733,8 @@ the files; they are plain JSON, `{"key": ..., "values": [{"inputs": [hex, ...],
 
 A law whose inputs the wire encoding cannot describe (a float, a handle, a type
 defined by the program's native code) keeps nothing, and a restricted type
-that is still checked by its generator is drawn as before.
+that is still checked by its generator is drawn as before. The Prolog target
+keeps no failing inputs and no kept values.
 
 Generated property tests read the seed from `LAWSPEC_SEED`, so a failure can
 be repeated with the same seed outside LawSpec. Haskell tests also read hspec's

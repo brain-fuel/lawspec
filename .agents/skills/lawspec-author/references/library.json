@@ -4764,54 +4764,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:742: `package`",
+      "id": "reference:docs/reference/cli.md:743: `package`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:742: `package`",
+      "name": "docs/reference/cli.md:743: `package`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:753: `examples`",
+      "id": "reference:docs/reference/cli.md:754: `examples`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:753: `examples`",
+      "name": "docs/reference/cli.md:754: `examples`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:771: Exit status",
+      "id": "reference:docs/reference/cli.md:772: Exit status",
       "kind": "reference",
-      "name": "docs/reference/cli.md:771: Exit status",
+      "name": "docs/reference/cli.md:772: Exit status",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:780: Project workflow and Learn",
+      "id": "reference:docs/reference/cli.md:781: Project workflow and Learn",
       "kind": "reference",
-      "name": "docs/reference/cli.md:780: Project workflow and Learn",
+      "name": "docs/reference/cli.md:781: Project workflow and Learn",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:794: Authoring discovery",
+      "id": "reference:docs/reference/cli.md:795: Authoring discovery",
       "kind": "reference",
-      "name": "docs/reference/cli.md:794: Authoring discovery",
+      "name": "docs/reference/cli.md:795: Authoring discovery",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:799: Mutation testing",
+      "id": "reference:docs/reference/cli.md:800: Mutation testing",
       "kind": "reference",
-      "name": "docs/reference/cli.md:799: Mutation testing",
+      "name": "docs/reference/cli.md:800: Mutation testing",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
