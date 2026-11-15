@@ -462,7 +462,7 @@ cexpr env scope e = case expressionNode e of
     (s, v) <- cexpr env scope x
     pure (s, case expressionType x of
       Constructor n [] | n `elem` ["Text", "Bytes"] -> callD "len" [v]
-      _ -> D.text "lsf_length(" <> v <> D.text ")")
+      _ -> callD "lsf_length" [v])
   Helper Unreachable _ -> pure ([D.text "lsf_unreachable()"], D.text "None")
   Helper Checked _ -> pure ([], D.text "True")
   Helper StartsWith [a, b] -> method "startswith" a b
