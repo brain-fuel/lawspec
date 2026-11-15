@@ -133,3 +133,8 @@ try{vm.runInContext(workerData,context,{timeout:20000});}catch(error){parentPort
     });
   });
 }
+/** Recognize the refusal of a law that has no value of a restricted input, which the lessons that bind a generator expect. ref:REQ-learn-executable-story */
+export function refusesWithoutValue(plan)
+{
+  return plan.diagnostics.some(row => row.code === 'generation');
+}

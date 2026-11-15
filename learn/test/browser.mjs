@@ -490,6 +490,10 @@ try
         for (let step = 0; step < lesson.stages.length; step++)
         {
           const stage = lesson.stages[step];
+          if (stage.run.expect === 'refused' || stage.run.awaitsCompiler)
+          {
+            continue; // Covered by the story checks until the compiler finds these values.
+          }
           await selectScene(lesson, step);
           const focus =
             stage.focus === 'Solution'

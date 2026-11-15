@@ -18,6 +18,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   compiler's own value of each restricted type. The wire descriptors of a
   law's inputs now cover restricted types and generic types applied to
   arguments, for this store only.
+- The Learn course has a seventh lesson, "Practice: bind a generator for a
+  rare value". A law over a record that holds a restricted type no draw
+  almost ever meets is refused for want of a value; the lesson repairs it
+  with an example and with a bound generator in F#, TypeScript and
+  JavaScript. Its steps that need the compiler to find a value from an example
+  or generator are skipped by the story checks until it can.
 
 ### Changed
 
@@ -57,6 +63,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The Learn browser runner defines `process.once`, so a law over generated
+  records no longer fails with "process.once is not a function".
 - A law could pass without ever drawing a value of a restricted type it has
   no literal of. On Rust, Haskell, JavaScript and TypeScript a restricted
   integer under a `List` or a `Maybe` (`List Percent`) was drawn only as an

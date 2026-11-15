@@ -68,7 +68,8 @@
     "wlaschin-shrink",
     "examples",
     "weak-properties",
-    "shrinking"
+    "shrinking",
+    "generators"
   ],
   "navigation": [
     {
@@ -86,7 +87,8 @@
       "lessons": [
         "examples",
         "weak-properties",
-        "shrinking"
+        "shrinking",
+        "generators"
       ]
     }
   ],

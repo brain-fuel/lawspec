@@ -1,0 +1,29 @@
+-- ref:DEC-learn-tests-in-lawspec
+unit learn.lending
+
+-- A reserve-shelf voucher number passes two checks at once. One Int32 in about
+-- 900 million is a voucher, and no short search finds one.
+wrapper Voucher is Int32 where prelude.rem value 30011 = 5 and prelude.rem value 30013 = 7 end wrapper
+
+type Request is a record{
+  voucher :: Voucher,
+  renewals :: Int32
+}
+end type
+
+loanDays :: Int32 -> Int32
+
+law "|a voucher request gets the long loan| is
+  definition:
+    for all (request :: Request) =>
+      request.renewals >= 0 and request.renewals <= 3 implies loanDays request.renewals >= 28
+    end for all
+  end definition
+
+  example "|voucher 900690137 with no renewals| :
+    request = Request record{ voucher = Voucher 900690137 , renewals = 0 }
+    expect loanDays request.renewals >= 28
+  end example
+end law
+
+end unit

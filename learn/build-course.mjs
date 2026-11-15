@@ -118,15 +118,19 @@ export async function buildCourse()
       const built = await project(stage.project);
       stage.projects = built.projects;
       stage.sources = built.sources;
-      stage.previousProjects = previous.lessons
+      const earlier = previous.lessons
         .find(row => row.id === id)
         ?.stages.find(row => row.id === stage.id)?.projects;
+      if (earlier)
+      {
+        stage.previousProjects = earlier;
+      }
       if (
         !['Tests', 'Solution'].includes(stage.editor) ||
         !stage.story?.length ||
         !stage.harnessNotes?.length ||
         !['examples', 'sample', 'all'].includes(stage.run.mode) ||
-        !['passed', 'failed'].includes(stage.run.expect)
+        !['passed', 'failed', 'refused'].includes(stage.run.expect)
       )
       {
         throw new Error('Incomplete story scene ' + id + '/' + stage.id);
