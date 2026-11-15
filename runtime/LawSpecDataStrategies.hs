@@ -536,7 +536,17 @@ primitiveStrategy bits name
               )
               id
               (LS.integerBounds bits name)
-       in Right (LS.SInteger name <$> Gen.integral (Range.linearFrom 0 lo hi))
+       in -- A linear range over a wide type holds almost no small value
+          -- beyond the first sizes, so a restriction to small numbers (a
+          -- percentage) would refuse nearly every draw. Half the draws
+          -- are small, as the other targets' integer generators make them.
+          Right
+            ( LS.SInteger name
+                <$> Gen.choice
+                  [ Gen.integral (Range.linearFrom 0 lo hi),
+                    Gen.integral (Range.linearFrom 0 (max lo (-128)) (min hi 127))
+                  ]
+            )
   | name == "Bool" = Right (LS.SBool <$> Gen.bool)
   | name `elem` ["Unit", "Null", "Undefined"] =
       Right (pure (LS.SAbsent name))
