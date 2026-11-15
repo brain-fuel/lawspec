@@ -66,6 +66,14 @@ make generate-check integrity
 core with `wasm32-wasi-ghc`, stages the shipped files into `npm/`, and records
 their fingerprints in `npm/build.json`.
 
+The package also ships build outputs that git ignores, such as the host
+component (`npm/host-component/`, from `make component SDK_DIST=<SDK
+tarballs>`) and the lesson assets (`npm/learn/vendor/`). A worktree holds
+whatever it last built of them, and a new worktree holds none, so build them
+in the worktree you release from, before `make wasm`: its last step records
+the host component's fingerprints and stops if the directory is missing.
+Build, verify and pack in that one worktree.
+
 ## 4. Commit the candidate and verify
 
 ```sh
@@ -106,6 +114,14 @@ with that number. Passing these checks does not create a tag or publish.
 make package
 tar -tzf .artifacts/0.34.0/lawspec-0.34.0.tgz
 ```
+
+`make package` first runs `make integrity`, which refuses a staged core or
+host component that differs from what `npm/build.json` records (`Stale build
+artifact/source: ...`), and builds the lesson assets again, which
+`npm/build.json` does not record. `release-check` runs the same integrity
+check. Neither can tell that an ignored output is stale if you record it
+again without rebuilding it, so do not run `lawspec-dev integrity --record`
+by hand.
 
 The archive holds the CLI and library code, `core.wasm` and its JavaScript glue,
 `README.md`, `CHANGELOG.md`, `LICENSE`, the starter specification and

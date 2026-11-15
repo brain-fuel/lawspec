@@ -69,6 +69,12 @@ lock: ## Regenerate npm/package-lock.json, including the native compiler package
 
 package: ## Pack the npm package into .artifacts/<version>/
 	node tools/npm-lock.mjs --check
+	@# The package ships build outputs git does not track, so a worktree
+	@# holds whatever it last built. The staged core and host component must
+	@# be the ones npm/build.json records; the lesson assets, which it does
+	@# not record, are built again.
+	$(DEV) integrity
+	node tools/learn-build.mjs
 	mkdir -p .artifacts/$(VERSION)
 	npm pack ./npm --pack-destination .artifacts/$(VERSION)
 
@@ -133,6 +139,7 @@ release-check: ## Preconditions for a release (see docs/how-to/release.md)
 	@test -z "$$(git status --porcelain)" || (echo "The working tree is not clean" && exit 1)
 	$(DEV) version --check
 	$(DEV) generate --check
+	$(DEV) integrity
 	@! git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null || (echo "Tag v$(VERSION) exists" && exit 1)
 	@! npm view "lawspec@$(VERSION)" version --registry https://registry.npmjs.org 2>/dev/null | grep -q . || (echo "lawspec@$(VERSION) is already published" && exit 1)
 	@echo "Ready to release $(VERSION)."
