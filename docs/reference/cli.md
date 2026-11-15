@@ -692,6 +692,49 @@ in punctuation remain separate. Its JSON record contains the readable law name
 and wire inputs. Replays check the current refinements before calling an adapter
 or acquiring a resource; incompatible inputs from an older law are discarded.
 
+### Kept values
+
+A run also keeps values it found, so later runs start from them. When a
+generated case that passes holds a value of a restricted type (a wrapper or
+record with a `where` restriction, however deep in the law's inputs), the
+run records the case's inputs in the same [wire
+encoding](language/distribution.md#the-wire-encoding), once for each set of
+input types in a run, in `.lawspec/found/<key>.json`. The key is a hash of the
+descriptors of the law's inputs and of the definitions they reach, the
+restrictions included, so a changed restriction makes the old values
+unreachable rather than wrong. Laws with the same input types share a file,
+and so do the targets: the encoding is the same on every target, and a target
+merges what it writes into what another wrote (a temporary file renamed over
+the old one) instead of replacing it.
+
+A later run, on any target, runs each kept case as one more case of its law
+before the generated ones ("`<law>`: ran N kept value(s) found by earlier runs
+in .lawspec/found"). Nothing read from the store is trusted: each input is
+decoded and checked against the current restrictions of its type, and a case
+that fails the check, or whose inputs no longer decode, is dropped from the
+file. A case that passes the check but fails the law fails the test, as any
+generated case would.
+
+A file keeps the 16 most recent distinct cases of its key; `:kept-values` in
+[`:generation`](configuration.md#generation) sets another number, and 0 turns
+the store off: nothing is recorded and nothing is read, and the generated
+tests carry no code for it. The store only adds cases. A clean checkout with
+no store still has the compiler's own value of every restricted type a law's
+input can hold, or the law is refused, and a law the compiler refuses stays
+refused whatever the store holds.
+
+`.lawspec/found` has a `.gitignore` that ignores it, as `.lawspec/failures`
+has: kept values are a cache of luck, not part of the project. A project that
+wants its found values in the repository removes that `.gitignore` and commits
+the files; they are plain JSON, `{"key": ..., "values": [{"inputs": [hex, ...],
+"used": N}]}`, where `used` counts the runs that ran the case. A run reads the
+`.lawspec/found` beside the `.lawspec/failures` it was given, or the folder
+`LAWSPEC_FOUND` names.
+
+A law whose inputs the wire encoding cannot describe (a float, a handle, a type
+defined by the program's native code) keeps nothing, and a restricted type
+that is still checked by its generator is drawn as before.
+
 Generated property tests read the seed from `LAWSPEC_SEED`, so a failure can
 be repeated with the same seed outside LawSpec. Haskell tests also read hspec's
 `HSPEC_SEED`, which `lawspec test` sets as well.

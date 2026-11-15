@@ -37,7 +37,7 @@ import LawSpec.SourceLink (sourceLink, locationLink, exampleLocation, labelled, 
 import LawSpec.RustExpr (mentions, unusedAs)
 import qualified LawSpec.RustLayout as RL
 import Control.Monad (forM, unless)
-import LawSpec.Search (lawDescriptors, searchable)
+import LawSpec.Search (Kept(..), keptFor, lawDescriptors, searchable)
 import LawSpec.Bounds (inputRange)
 
 q :: String -> String
@@ -832,7 +832,8 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
               -- An example's value that nothing reads is still made, as written.
               named = [binding (unusedAs n (statements (later ++ rest))) v | ((n, v), later) <- zip bindings (drop 1 (tails (map (uncurry binding) bindings)))]
           pure (e, statements (opened (named ++ rest)))
-        let searchKept = searchable (finiteCases pp /= Nothing) p && lawDescriptors planMachineBits planDataDeclarations p /= Nothing
+        let kept = if searchable (finiteCases pp /= Nothing) p then keptFor planMachineBits planDataDeclarations p else Nothing
+            searchKept = searchable (finiteCases pp /= Nothing) p && lawDescriptors planMachineBits planDataDeclarations p /= Nothing
             predicated = not (null valid)
             inputArgs from = [Doc.text (from ++ "[" ++ show n ++ "].clone()") | n <- [0..length names-1]]
             tupleArgs = inputArgs "case.values"
@@ -869,6 +870,9 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                       -- A failing case's inputs go to the failure database.
                       [conditional (Doc.text "result.is_err()") (statement (invoke "ls::search_remember" [string (unitName ++ "::" ++ label),
                          Doc.text "SEARCH_INPUTS", Doc.text "&case.values"])) | searchKept] ++
+                      -- A passing case that holds a value of a restricted type is kept.
+                      [conditional (Doc.text "result.is_ok()") (statement (invoke "ls::kept_record" [string (keptSpec k),
+                         Doc.text "KEPT_INPUTS", Doc.text "&case.values"])) | Just k <- [kept]] ++
                       [Doc.text "result.map_err(proptest::test_runner::TestCaseError::fail)"])))
                 , statement (Doc.text "proptest::test_runner::TestRunner::new(config)" <>
                     Doc.nest 4 (Doc.softbreak <> invoke ".run" [Doc.text "&strategy",Doc.text "check"] <>
@@ -883,16 +887,19 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
         let descriptors = if searchable (finiteCases pp /= Nothing) p then lawDescriptors planMachineBits planDataDeclarations p else Nothing
             lawKey = unitName ++ "::" ++ label
         score <- traverse (render names) (harnessTarget (propertyHarness p))
-        let searchItems = case descriptors of
-              Nothing -> []
-              Just ds -> [RL.stmt (RL.Let' "const SEARCH_INPUTS: &[&str]" (RL.prefix "&" (RL.Macro "" "[" "]" (map (RL.atom . q) ds))))] ++
-                [function "score" (parameters scored) "ls::Result<f64>" scored | Just s <- [score], let scored = statements [binding "score" s, Doc.text "Ok(ls::search_number(&score))"]] ++
+        keptReferences <- sequence [schemaType (binderType (quantifiedBinder q)) | Just _ <- [kept], q <- propertyInputs p]
+        let keptItems = [RL.stmt (RL.Let' "const KEPT_INPUTS: &[&str]" (RL.prefix "&" (RL.Macro "" "[" "]" (map (RL.atom . q) (keptDescriptors k))))) | Just k <- [kept]]
+            caseItems = [function "score" (parameters scored) "ls::Result<f64>" scored | descriptors /= Nothing, Just s <- [score], let scored = statements [binding "score" s, Doc.text "Ok(ls::search_number(&score))"]] ++
                 [function "search_case" [Doc.text "values: &[ls::Value]"] "ls::Result<Option<f64>>" (statements
                   ([ Doc.text "let ctx = &mut ls::Context::testing();" ] ++
                    [ conditional (Doc.text "!" <> invoke "valid" (Doc.text "ctx" : valueArgs) <> Doc.text "?") (Doc.text "return Ok(None);") | predicated ] ++
                    [ statement (lawCall "ctx" valueArgs <> Doc.text "?")
-                   , if score == Nothing then Doc.text "Ok(Some(0.0))" else Doc.text "Ok(Some(" <> invoke "score" (Doc.text "ctx" : valueArgs) <> Doc.text "?))" ]))]
-            replay = [statement (invoke "ls::search_replay" [string lawKey, Doc.text "SEARCH_INPUTS", Doc.text "search_case"] <> Doc.text "?") | descriptors /= Nothing]
+                   , if score == Nothing then Doc.text "Ok(Some(0.0))" else Doc.text "Ok(Some(" <> invoke "score" (Doc.text "ctx" : valueArgs) <> Doc.text "?))" ]))
+                | descriptors /= Nothing || kept /= Nothing]
+            searchItems = keptItems ++ [RL.stmt (RL.Let' "const SEARCH_INPUTS: &[&str]" (RL.prefix "&" (RL.Macro "" "[" "]" (map (RL.atom . q) ds)))) | Just ds <- [descriptors]] ++ caseItems
+            keptReplay = [statement (invoke "ls::kept_replay" [string lawKey, string (keptSpec k), Doc.text "KEPT_INPUTS",
+              Doc.text "lawspec_schema::schema()?", Doc.text "&" <> Expression.vector keptReferences, bits, Doc.text "search_case"] <> Doc.text "?") | Just k <- [kept]]
+            replay = keptReplay ++ [statement (invoke "ls::search_replay" [string lawKey, Doc.text "SEARCH_INPUTS", Doc.text "search_case"] <> Doc.text "?") | descriptors /= Nothing]
             climb = [statement (invoke "ls::search_climb" [string lawKey, Doc.text "SEARCH_INPUTS", Doc.text "search_case"] <> Doc.text "?")
                     | descriptors /= Nothing, harnessTarget (propertyHarness p) /= Nothing]
             h = propertyHarness p

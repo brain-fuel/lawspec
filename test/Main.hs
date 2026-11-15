@@ -10,6 +10,7 @@ import qualified ArtifactTargetSpec
 import qualified PrologTargetSpec
 import qualified WitnessSpec
 import qualified QuantifierDomainSpec
+import qualified KeptValuesSpec
 import qualified SearchSpec
 import qualified NamedBlocksSpec
 import qualified ParserDiagnosticsSpec
@@ -185,6 +186,7 @@ main = hspec $ do
   SourceRecordCanonicalSpec.test_canonicalRecordsReachCheckedCore
   WitnessSpec.test_constructiveWitnessesPreserveScopedMeaning
   QuantifierDomainSpec.test_refinedIntegerDomainsAreComplete
+  KeptValuesSpec.test_keptValuesSpecs
   SearchSpec.test_boundedWitnessSearchPreservesEvidence
   BeamSpec.test_beamCodeUsesCheckedCoreAndNativeFrameworks
   BeamSpec.test_beamRunsTheLanguageGaps

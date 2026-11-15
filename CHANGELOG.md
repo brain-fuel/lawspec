@@ -6,6 +6,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Kept values. A run that draws a case holding a value of a restricted type
+  records its inputs in the wire encoding under `.lawspec/found`, keyed by a
+  hash of the definitions the inputs reach, restrictions included. Later runs,
+  on any target, run the kept cases as extra cases of their law after
+  checking each against the current restrictions, and drop one that fails.
+  `:generation {:kept-values 16}` in `lawspec.edn` sets how many a key keeps
+  (the most recent); 0 turns the store off. The store never replaces the
+  compiler's own value of each restricted type. The wire descriptors of a
+  law's inputs now cover restricted types and generic types applied to
+  arguments, for this store only.
+
 ### Changed
 
 - Haskell and JavaScript/TypeScript tests draw half their integers between

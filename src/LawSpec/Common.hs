@@ -8,12 +8,12 @@ import LawSpec.TargetNames (phraseNativeName)
 -- | One set of generation limits for every target, mapped onto each framework's
 -- own settings, so a law is tried as hard on one target as on another.
 -- ref:DEC-native-property-frameworks
-data Generation = Generation { cases :: Int, maxAttempts :: Int, maxShrinks :: Int, exhaustiveLimit :: Int } deriving (Eq, Show, Generic)
+data Generation = Generation { cases :: Int, maxAttempts :: Int, maxShrinks :: Int, exhaustiveLimit :: Int, keptValues :: Int } deriving (Eq, Show, Generic)
 -- | A hundred cases is the common default of the property frameworks LawSpec
 -- targets; the exhaustive limit lets small domains be checked completely.
 -- ref:quickcheck
 defaultGeneration :: Generation
-defaultGeneration = Generation 100 10000 1000 4096
+defaultGeneration = Generation 100 10000 1000 4096 16
 -- Logical binders are separate from existentially packaged data types.
 data Quantification = ForEvery | ForSome deriving (Eq, Show, Generic)
 instance ToJSON Quantification
@@ -76,7 +76,7 @@ instance ToJSON target => ToJSON (DocumentaryReference target) where
     (["kind" .= ("external" :: String), "resource" .= resource] ++ ["name" .= n | Just n <- [name]])
 instance ToJSON Generation
 instance FromJSON Generation where
-  parseJSON = withObject "generation" $ \o -> Generation <$> o .:? "cases" .!= 100 <*> o .:? "maxAttempts" .!= 10000 <*> o .:? "maxShrinks" .!= 1000 <*> o .:? "exhaustiveLimit" .!= 4096
+  parseJSON = withObject "generation" $ \o -> Generation <$> o .:? "cases" .!= 100 <*> o .:? "maxAttempts" .!= 10000 <*> o .:? "maxShrinks" .!= 1000 <*> o .:? "exhaustiveLimit" .!= 4096 <*> o .:? "keptValues" .!= 16
 -- | Diagnostics point at a file, line and column, which every editor can follow.
 data Location = Location { file :: String, line :: Int, column :: Int } deriving (Eq, Show, Generic)
 -- | Every failure carries a stable code as well as a message, so tools and tests

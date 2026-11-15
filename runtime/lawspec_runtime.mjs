@@ -7799,6 +7799,178 @@ export async function searchReplay(law, descriptors, check)
   fs.rmSync(file, {force: true});
 }
 
+// The kept-values store (docs/reference/cli.md, "Kept values"). A run that
+// draws a case holding a value of a restricted type records the case's inputs
+// in the wire encoding under .lawspec/found, in a file named by a hash of
+// the definitions its inputs reach, so a changed restriction makes the old
+// values unreachable. A later run replays them as extra cases of the law
+// after checking each against the current definitions; one that no longer
+// meets them is dropped. A spec is "KEY CAP TAG...": the cap is how many
+// values a key keeps (0 keeps none), the tags are the constructors of the
+// restricted types.
+const keptRecorded = new Set();
+const keptSpecs = new Map();
+
+function keptSpec(text)
+{
+  let spec = keptSpecs.get(text);
+  if (spec === undefined)
+  {
+    const [key, cap, ...tags] = text.split(' ');
+    spec = {key, cap: Number(cap), tags: new Set(tags)};
+    keptSpecs.set(text, spec);
+  }
+  return spec;
+}
+
+function keptFile(key)
+{
+  const env = globalThis.process?.env;
+  const path = nodeModule('node:path');
+  let directory = env?.LAWSPEC_FOUND;
+  // The failure database is .lawspec/failures/<target>/<project>.
+  if (!directory && env?.LAWSPEC_FAILURES)
+    directory = path.join(env.LAWSPEC_FAILURES, '..', '..', '..', 'found');
+  return directory ? path.join(directory, `${key}.json`) : null;
+}
+
+function keptRead(file)
+{
+  try
+  {
+    const entries = JSON.parse(nodeModule('node:fs').readFileSync(file, 'utf8'));
+    return entries.values.filter(
+      entry => Array.isArray(entry.inputs) && Number.isInteger(entry.used),
+    );
+  }
+  catch
+  {
+    return [];
+  }
+}
+
+// Merge into what is on disk now, since another target's run may have
+// written since this one read: write a temporary file, then rename it.
+function keptUpdate(file, key, cap, change)
+{
+  const fs = nodeModule('node:fs');
+  const path = nodeModule('node:path');
+  const entries = change(keptRead(file)).slice(-cap);
+  const directory = path.dirname(file);
+  if (!fs.existsSync(directory))
+  {
+    fs.mkdirSync(directory, {recursive: true});
+    fs.writeFileSync(path.join(directory, '.gitignore'), '*\n');
+  }
+  const temporary = `${file}.${globalThis.process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify({key, values: entries}) + '\n');
+  fs.renameSync(temporary, file);
+}
+
+function keptHolds(value, tags)
+{
+  if (Array.isArray(value)) return value.some(item => keptHolds(item, tags));
+  if (value instanceof DataValue)
+    return tags.has(value.tag) || value.fields.some(item => keptHolds(item, tags));
+  return false;
+}
+
+export function keptRecord(text, descriptors, values)
+{
+  if (keptRecorded.has(text)) return;
+  const spec = keptSpec(text);
+  const file = spec.cap > 0 ? keptFile(spec.key) : null;
+  if (file === null)
+  {
+    keptRecorded.add(text);
+    return;
+  }
+  if (!values.some(value => keptHolds(value, spec.tags))) return;
+  keptRecorded.add(text);
+  try
+  {
+    const inputs = descriptors.map((descriptor, i) =>
+    {
+      const [table, d] = valuesFrom(descriptor);
+      return hex(wireEncode(table, d, values[i]));
+    });
+    keptUpdate(file, spec.key, spec.cap, entries =>
+    {
+      const same = entries.find(entry => entry.inputs.join() === inputs.join());
+      return [
+        ...entries.filter(entry => entry !== same),
+        same ?? {inputs, used: 0},
+      ];
+    });
+  }
+  catch
+  {
+    // A value the wire cannot encode is not kept.
+  }
+}
+
+export async function keptReplay(
+  law,
+  text,
+  descriptors,
+  schema,
+  references,
+  bits,
+  check,
+)
+{
+  const spec = keptSpec(text);
+  const file = spec.cap > 0 ? keptFile(spec.key) : null;
+  if (file === null) return;
+  const dropped = new Set();
+  const used = new Set();
+  try
+  {
+    for (const entry of keptRead(file).slice(-spec.cap))
+    {
+      let values;
+      try
+      {
+        values = descriptors.map((descriptor, i) =>
+        {
+          const [table, d] = valuesFrom(descriptor);
+          const bytes = Uint8Array.from(
+            (entry.inputs[i] ?? '').match(/../g) ?? [],
+            b => parseInt(b, 16),
+          );
+          const value = wireDecode(table, d, bytes);
+          schema.validate(references[i], value, bits, new Map());
+          return value;
+        });
+      }
+      catch
+      {
+        dropped.add(entry.inputs.join());
+        continue;
+      }
+      if ((await check(values)) === null) dropped.add(entry.inputs.join());
+      else used.add(entry.inputs.join());
+    }
+  }
+  finally
+  {
+    if (dropped.size !== 0 || used.size !== 0)
+      keptUpdate(file, spec.key, spec.cap, entries =>
+        entries
+          .filter(entry => !dropped.has(entry.inputs.join()))
+          .map(entry =>
+            used.has(entry.inputs.join())
+              ? {...entry, used: entry.used + 1}
+              : entry,
+          ),
+      );
+  }
+  if (used.size !== 0)
+    console.log(
+      `${law}: ran ${used.size} kept value(s) found by earlier runs in .lawspec/found`,
+    );
+}
+
 // Each value with one integer moved, wherever it sits in the value.
 function searchMoves(table, d, v)
 {

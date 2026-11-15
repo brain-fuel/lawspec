@@ -1,0 +1,8 @@
+{
+  "languageProfile": "1.0-rc.2",
+  "verification": {"layers": ["property", "examples"]},
+  "specs": [
+    "test/fixtures/kept-values.lawspec"
+  ],
+  "kept": true
+}

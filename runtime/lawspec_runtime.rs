@@ -6508,6 +6508,294 @@ pub fn search_replay(
     Ok(())
 }
 
+// The kept-values store (docs/reference/cli.md, "Kept values"). A run that
+// draws a case holding a value of a restricted type records the case's inputs
+// in the wire encoding under .lawspec/found, in a file named by a hash of the
+// definitions its inputs reach, so a changed restriction makes the old values
+// unreachable. A later run replays them as extra cases of the law after
+// checking each against the current definitions; one that no longer meets
+// them is dropped. A spec is "KEY CAP TAG...": the cap is how many values a
+// key keeps (0 keeps none), the tags are the constructors of the restricted
+// types.
+static KEPT_RECORDED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+struct KeptEntry
+{
+    inputs: Vec<String>,
+    used: u64,
+}
+
+fn kept_file(spec: &str) -> Option<std::path::PathBuf>
+{
+    let directory = match std::env::var("LAWSPEC_FOUND").ok().filter(|d| !d.is_empty())
+    {
+        Some(directory) => std::path::PathBuf::from(directory),
+        // The failure database is .lawspec/failures/<target>/<project>.
+        None => std::path::Path::new(
+            &std::env::var("LAWSPEC_FAILURES")
+                .ok()
+                .filter(|d| !d.is_empty())?,
+        )
+        .join("..")
+        .join("..")
+        .join("..")
+        .join("found"),
+    };
+    Some(directory.join(format!("{}.json", spec.split(' ').next()?)))
+}
+
+fn kept_cap(spec: &str) -> usize
+{
+    spec.split(' ')
+        .nth(1)
+        .and_then(|cap| cap.parse().ok())
+        .unwrap_or(0)
+}
+
+fn kept_read(file: &std::path::Path) -> Vec<KeptEntry>
+{
+    let Ok(text) = std::fs::read_to_string(file)
+    else
+    {
+        return Vec::new();
+    };
+    let mut entries = Vec::new();
+    for chunk in text.split("{\"inputs\":[").skip(1)
+    {
+        let Some((inputs, rest)) = chunk.split_once("],\"used\":")
+        else
+        {
+            continue;
+        };
+        let used: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        entries.push(KeptEntry {
+            inputs: inputs
+                .split('"')
+                .skip(1)
+                .step_by(2)
+                .map(str::to_string)
+                .collect(),
+            used: used.parse().unwrap_or(0),
+        });
+    }
+    entries
+}
+
+// Merge into what is on disk now, since another target's run may have
+// written since this one read: write a temporary file, then rename it.
+fn kept_update(
+    file: &std::path::Path,
+    spec: &str,
+    change: impl FnOnce(Vec<KeptEntry>) -> Vec<KeptEntry>,
+)
+{
+    let mut entries = change(kept_read(file));
+    let limit = kept_cap(spec);
+    if entries.len() > limit
+    {
+        entries.drain(..entries.len() - limit);
+    }
+    let Some(directory) = file.parent()
+    else
+    {
+        return;
+    };
+    if !directory.exists()
+    {
+        if std::fs::create_dir_all(directory).is_err()
+        {
+            return;
+        }
+        let _ = std::fs::write(directory.join(".gitignore"), "*\n");
+    }
+    let values: Vec<String> = entries
+        .iter()
+        .map(|entry| {
+            format!(
+                "{{\"inputs\":[{}],\"used\":{}}}",
+                entry
+                    .inputs
+                    .iter()
+                    .map(|hex| format!("\"{hex}\""))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                entry.used
+            )
+        })
+        .collect();
+    let temporary = file.with_extension(format!("json.{}.tmp", std::process::id()));
+    let text = format!(
+        "{{\"key\":\"{}\",\"values\":[{}]}}\n",
+        spec.split(' ').next().unwrap_or(""),
+        values.join(",")
+    );
+    if std::fs::write(&temporary, text).is_ok()
+    {
+        let _ = std::fs::rename(&temporary, file);
+    }
+}
+
+fn kept_holds(value: &Value, tags: &[&str]) -> bool
+{
+    match value
+    {
+        Value::Data(tag, fields) =>
+        {
+            tags.contains(&tag.as_str()) || fields.iter().any(|field| kept_holds(field, tags))
+        }
+        Value::List(items) => items.iter().any(|item| kept_holds(item, tags)),
+        Value::Maybe(Some(inner))
+        | Value::Nullable(Some(inner))
+        | Value::Optional(Some(inner))
+        | Value::Left(inner)
+        | Value::Right(inner) => kept_holds(inner, tags),
+        _ => false,
+    }
+}
+
+pub fn kept_record(spec: &str, descriptors: &[&str], values: &[Value])
+{
+    let Ok(mut recorded) = KEPT_RECORDED.lock()
+    else
+    {
+        return;
+    };
+    if recorded.iter().any(|done| done == spec)
+    {
+        return;
+    }
+    let file = if kept_cap(spec) > 0 { kept_file(spec) } else { None };
+    let Some(file) = file
+    else
+    {
+        recorded.push(spec.to_string());
+        return;
+    };
+    let tags: Vec<&str> = spec.split(' ').skip(2).collect();
+    if !values.iter().any(|value| kept_holds(value, &tags))
+    {
+        return;
+    }
+    recorded.push(spec.to_string());
+    let mut inputs = Vec::new();
+    for (text, value) in descriptors.iter().zip(values)
+    {
+        let (table, d) = values_from(text);
+        match net::wire_encode(&table, &d, value)
+        {
+            Ok(bytes) => inputs.push(bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()),
+            Err(_) => return,
+        }
+    }
+    kept_update(&file, spec, |entries| {
+        let (same, mut kept): (Vec<_>, Vec<_>) = entries
+            .into_iter()
+            .partition(|entry| entry.inputs == inputs);
+        kept.push(same.into_iter().next().unwrap_or(KeptEntry {
+            inputs: inputs.clone(),
+            used: 0,
+        }));
+        kept
+    });
+}
+
+/// The values of one kept entry, checked against the current definitions;
+/// None when they no longer decode or meet them.
+fn kept_decode(
+    descriptors: &[&str],
+    schema: &Schema,
+    references: &[TypeRef],
+    bits: u32,
+    inputs: &[String],
+) -> Option<Vec<Value>>
+{
+    if inputs.len() != descriptors.len() || references.len() != descriptors.len()
+    {
+        return None;
+    }
+    let mut values = Vec::new();
+    for ((descriptor, reference), hex) in descriptors.iter().zip(references).zip(inputs)
+    {
+        let bytes: Option<Vec<u8>> = (0..hex.len() / 2)
+            .map(|k| u8::from_str_radix(hex.get(2 * k..2 * k + 2)?, 16).ok())
+            .collect();
+        let (table, d) = values_from(descriptor);
+        let value = net::wire_decode(&table, &d, &bytes?).ok()?;
+        match schema.check_with_context(value, reference, bits, &mut Context::default())
+        {
+            Ok(ValueCheck::Accepted(value)) => values.push(value),
+            _ => return None,
+        }
+    }
+    Some(values)
+}
+
+pub fn kept_replay(
+    law: &str,
+    spec: &str,
+    descriptors: &[&str],
+    schema: &Schema,
+    references: &[TypeRef],
+    bits: u32,
+    mut check: impl FnMut(&[Value]) -> Result<Option<f64>>,
+) -> Result<()>
+{
+    let file = if kept_cap(spec) > 0 { kept_file(spec) } else { None };
+    let Some(file) = file
+    else
+    {
+        return Ok(());
+    };
+    let entries = kept_read(&file);
+    let skipped = entries.len().saturating_sub(kept_cap(spec));
+    let mut dropped: Vec<Vec<String>> = Vec::new();
+    let mut used: Vec<Vec<String>> = Vec::new();
+    let mut outcome = Ok(());
+    for entry in entries.iter().skip(skipped)
+    {
+        let Some(values) = kept_decode(descriptors, schema, references, bits, &entry.inputs)
+        else
+        {
+            dropped.push(entry.inputs.clone());
+            continue;
+        };
+        match check(&values)
+        {
+            Ok(None) => dropped.push(entry.inputs.clone()),
+            Ok(Some(_)) => used.push(entry.inputs.clone()),
+            Err(error) =>
+            {
+                outcome = Err(error);
+                break;
+            }
+        }
+    }
+    if !dropped.is_empty() || !used.is_empty()
+    {
+        kept_update(&file, spec, |entries| {
+            entries
+                .into_iter()
+                .filter(|entry| !dropped.contains(&entry.inputs))
+                .map(|mut entry| {
+                    if used.contains(&entry.inputs)
+                    {
+                        entry.used += 1;
+                    }
+                    entry
+                })
+                .collect()
+        });
+    }
+    if !used.is_empty()
+    {
+        println!(
+            "{law}: ran {} kept value(s) found by earlier runs in .lawspec/found",
+            used.len()
+        );
+    }
+    outcome
+}
+
 // Each value with one integer moved, wherever it sits in the value.
 fn search_moves(table: &Values, d: &Sexp, v: &Value) -> Vec<Value>
 {

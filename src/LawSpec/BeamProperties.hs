@@ -1,7 +1,7 @@
 -- | Native property cases and framework generators from checked Core.
 -- Test execution planes share these expressions; source syntax stays out.
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks
-module LawSpec.BeamProperties (emit, searchDescriptors, caseFunction) where
+module LawSpec.BeamProperties (emit, searchDescriptors, keptSpecOf, caseFunction) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -21,7 +21,7 @@ import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Testing.Literals as Literals
 import LawSpec.NativeRequest (BindingPlan)
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames)
-import LawSpec.Search (lawDescriptors, searchable)
+import LawSpec.Search (Kept(..), keptFor, lawDescriptors, searchable)
 import Control.Monad (forM, foldM)
 import qualified Data.Map.Strict as M
 import Data.Char (toUpper)
@@ -315,22 +315,35 @@ emit target layout bindings plan = do
             pure (E.tuple [E.binary name',value])
           labels <- mapM render (C.harnessLabels harness)
           score <- maybe (pure (E.atom "none")) (fmap (\v -> E.tuple [E.atom "score",v]) . render) (C.harnessTarget harness)
+          keptReferences <- sequence [referenceFor (C.binderType (C.quantifiedBinder q)) | Just _ <- [keptSpecOf plan planned], q <- C.propertyInputs law]
           let settings = C.propertyGeneration law
               options = E.array [E.tuple [E.atom k,D.text (show v)] | (k,v) <-
                 [("numtests",cases settings),("constraint_tries",maxAttempts settings),("max_shrinks",maxShrinks settings)]]
               values = E.array (map (D.text . snd) aliases)
               descriptors = searchDescriptors plan planned
-              remembered arguments = case descriptors of
+              kept = keptSpecOf plan planned
+              -- A passing case that holds a value of a restricted type is kept.
+              recorded arguments result = case kept of
+                Nothing -> result
+                Just k -> E.caseOf result [(E.atom "true", E.sequenceDoc [E.remote "lawspec_beam_search" "kept_record"
+                  [E.binary (keptSpec k),E.array (map E.binary (keptDescriptors k)),arguments], E.atom "true"]),
+                  (D.text "Other", D.text "Other")]
+              remembered arguments = recorded arguments (case descriptors of
                 Nothing -> invoke arguments
                 Just ds -> E.remote "lawspec_beam_search" "guard"
-                  [lawIdentity,E.array (map E.binary ds),arguments,E.lambda [] (invoke arguments)]
+                  [lawIdentity,E.array (map E.binary ds),arguments,E.lambda [] (invoke arguments)])
               callback = if not (observed harness) then E.lambda [D.text "Values"] (remembered (D.text "Values"))
                 else E.lambda [values] (E.remote "lawspec_beam_harness" "sample"
                   [E.lambda [] (E.tuple [E.array covers,E.array classes,E.array labels,score]),E.lambda [] (remembered values)])
               condition = foldr1 (E.operator "andalso") predicates
               replayCheck = if null predicates then check (invoke values) else
                 E.caseOf condition [(E.atom "true",check (invoke values)),(E.atom "false",E.atom "none")]
-              replay = [E.remote "lawspec_beam_search" "replay"
+              keptReplay = [E.remote "lawspec_beam_search" "kept_replay"
+                [lawIdentity,E.binary (keptSpec k),E.array (map E.binary (keptDescriptors k)),
+                 E.lambda [D.text "KeptValues"] (E.remote "lawspec_beam_search" "kept_admit"
+                   [D.text "KeptValues",E.array keptReferences,schema]),
+                 E.lambda [values] replayCheck,D.text (show (planMachineBits plan))] | Just k <- [kept]]
+              replay = keptReplay ++ [E.remote "lawspec_beam_search" "replay"
                 [lawIdentity,E.array (map E.binary ds),E.lambda [values] replayCheck] | Just ds <- [descriptors]]
               -- EUnit's five-second default covers a single test. A property
               -- runs every sample plus shrinks; match ExUnit's one-minute
@@ -503,6 +516,13 @@ searchDescriptors :: Plan -> PlannedProperty -> Maybe [String]
 searchDescriptors plan planned
   | searchable (finiteCases planned /= Nothing && not (sampleFinite plan planned)) (plannedProperty planned) =
       lawDescriptors (planMachineBits plan) (planDataDeclarations plan) (plannedProperty planned)
+  | otherwise = Nothing
+
+-- | The kept-values store's view of a law (LawSpec.Search.keptFor).
+keptSpecOf :: Plan -> PlannedProperty -> Maybe Kept
+keptSpecOf plan planned
+  | searchable (finiteCases planned /= Nothing && not (sampleFinite plan planned)) (plannedProperty planned) =
+      keptFor (planMachineBits plan) (planDataDeclarations plan) (plannedProperty planned)
   | otherwise = Nothing
 
 -- | What EUnit and ExUnit allow a law, a model check or a benchmark beyond its

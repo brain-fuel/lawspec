@@ -460,7 +460,7 @@ compileWithMappingSelection :: Maybe MappingCheck.MappingSelection -> Maybe (Boo
   -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
 compileWithMappingSelection mappingSelection selected origins capture _ referenceUnit visible bits settings sources = do
   let canonical = True
-  unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
+  unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings] && keptValues settings >= 0) (Left [Diagnostic "generation" "generation limits must be positive integers (kept-values may be 0)" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Reserved Core identities belong to compiler-provided versioned sources.
   -- A user unit must not manufacture one when its built-in is not injected.

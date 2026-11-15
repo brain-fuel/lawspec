@@ -36,7 +36,7 @@ import Control.Monad (foldM)
 import Data.Char (toLower)
 import qualified LawSpec.AbilityEmit.Web as WebAbilities
 import LawSpec.AbilityNames (specName, recordingName, productionName, interfaceName, ownAbilities, ownerName, unitAbility, unitAbilityPieces)
-import LawSpec.Search (lawDescriptors, searchable)
+import LawSpec.Search (Kept(..), keptFor, lawDescriptors, searchable)
 import LawSpec.WebModule (Support(..), webModule, headerComment, linkComment, commentLines, printWebModule)
 
 -- | A unit's tests and its adapter stub.
@@ -491,7 +491,12 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
       let descriptors = if searchable (maybe False (const True) finite) (original e) then lawDescriptors bits declarations (original e) else Nothing
           lawStem = lawStems !! index
           descriptorName = lawStem ++ "Inputs"
-          remembered stmts = case descriptors of
+          -- Kept values (LawSpec.Search.keptFor): a passing case that holds
+          -- a value of a restricted type is recorded, once per run.
+          kept = if searchable (maybe False (const True) finite) (original e) then keptFor bits declarations (original e) else Nothing
+          keptName = lawStem ++ "Kept"
+          recordKept = [E.ExprStmt (runtime "keptRecord" [E.Str (keptSpec k), E.Ident keptName, E.Array (map (E.Ident . inputId) (inputs e))]) | Just k <- [kept]]
+          remembered stmts' = let stmts = stmts' ++ recordKept in case descriptors of
             Nothing -> stmts
             Just _ -> [E.Try stmts (Just (Just (E.PIdent "error"),
               [ E.ExprStmt (runtime "searchRemember" [E.Str label, E.Ident descriptorName, E.Array (map (E.Ident . inputId) (inputs e))])
@@ -505,10 +510,18 @@ webTestsWithSourceRoot sourceRoot nativeGenerators minify declarations definitio
               bodyDoc = withSymbols e (assigned ++ guardDoc ++
                 bracket e ([checkClaim (E.Str (shown ++ " search"))]) ++ [E.ret score])
             in E.FunctionDecl False asyncMode caseName [] [E.param "values"] Nothing bodyDoc
+          keptDocs = case kept of
+            Nothing -> []
+            Just k ->
+              [ E.constDecl keptName (E.Array (map E.Str (keptDescriptors k))), E.Blank ] ++
+              [item | Nothing <- [descriptors], item <- [caseDoc, E.Blank]] ++
+              [ E.ExprStmt (E.call "test" [E.Str (label ++ " kept values"), E.asyncArrowBlock []
+                  [E.ExprStmt (E.Await (runtime "keptReplay" [E.Str label, E.Str (keptSpec k), E.Ident keptName,
+                    E.Ident "_lawspec_schema", E.Array [referenceOf (inputType input) | input <- inputs e], width, E.Ident caseName]))]]), E.Blank ]
           searchDocs = case descriptors of
-            Nothing -> ([], [])
+            Nothing -> (keptDocs, [])
             Just ds ->
-              ( [ E.constDecl descriptorName (E.Array (map E.Str ds)), E.Blank, caseDoc, E.Blank
+              ( keptDocs ++ [ E.constDecl descriptorName (E.Array (map E.Str ds)), E.Blank, caseDoc, E.Blank
                 , E.ExprStmt (E.call "test" [E.Str (label ++ " replay"), E.asyncArrowBlock []
                     [E.ExprStmt (E.Await (runtime "searchReplay" [E.Str label, E.Ident descriptorName, E.Ident caseName]))]]) ]
               , [ E.ExprStmt (E.call "test" [E.Str (label ++ " search"), E.asyncArrowBlock []

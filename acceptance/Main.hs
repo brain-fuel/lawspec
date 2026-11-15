@@ -212,7 +212,7 @@ main = do
                 mapM_ (putStrLn . (++ " (cached)")) previous
                 pure previous
               Nothing -> do
-                let regenerate edited = planEither (extra ++ native) (edited ++ vectors) target bits minify
+                let regenerate more edited = planEither (extra ++ native ++ more) (edited ++ vectors) target bits minify
                 runSuite suite target project mutate (sources, regenerate, generated)
             when (mode /= Off) $ do
               storeResult key (format ++ output)
@@ -492,7 +492,7 @@ suiteRecordings suite = do
   pure [("recorded" </> drop (length base + 1) file, file) | file <- files]
 
 -- | The lines printed for a passing run.
-runSuite :: String -> String -> FilePath -> Bool -> ([(FilePath, String)], [(FilePath, String)] -> Either String [Generated], [Generated]) -> IO [String]
+runSuite :: String -> String -> FilePath -> Bool -> ([(FilePath, String)], [(K.Key, Value)] -> [(FilePath, String)] -> Either String [Generated], [Generated]) -> IO [String]
 runSuite suite target project mutate (sources, regenerate, generated) = do
   tool <- toolchain project target
   (code, output) <- runTool tool (arguments tool) project
@@ -514,7 +514,11 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
   swept <- case list . field "seeds" =<< decode manifest of
     Just seeds@(_ : _) -> pure <$> checkSeeds suite target tool project [round n :: Integer | Number n <- seeds]
     _ -> pure []
-  let scheduled = scheduled' ++ reached ++ swept
+  -- A suite with "kept" checks the kept-values store (checkKept).
+  keptLines <- if (field "kept" <$> decode manifest) == Just (Bool True)
+    then pure <$> checkKept suite target tool project sources (regenerate [("generation", object ["keptValues" .= (0 :: Int)])]) generated
+    else pure []
+  let scheduled = scheduled' ++ reached ++ swept ++ keptLines
   mutants <- if mutate then suiteMutants suite target else pure []
   stubs <- if mutate then suiteStubs suite target else pure []
   -- Mutants edit adapters, or the native code a bound unit calls.
@@ -555,7 +559,7 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
       pure (path, changed)
     forM_ (mutantEdits mutant) $ \(relative, _, _) -> unless (relative `elem` map fst sources)
       (die (target ++ ": spec mutant " ++ mutantName mutant ++ " must edit a spec of the suite, not " ++ relative))
-    output <- case regenerate edited of
+    output <- case regenerate [] edited of
       Left diagnostics -> do
         unless (mutantAtGeneration mutant)
           (die (target ++ ": spec mutant " ++ mutantName mutant ++ " was rejected by the compiler: " ++ diagnostics))
@@ -637,6 +641,77 @@ checkSeeds suite target tool project seeds = do
     writeFile logFile output
     unless (code == ExitSuccess) (die (target ++ ": " ++ suite ++ " fails with seed " ++ show seed ++ " (see " ++ logFile ++ ")"))
   let line = target ++ ": " ++ suite ++ " passes with seeds " ++ intercalate ", " (map show seeds)
+  putStrLn line
+  pure line
+
+-- | The kept-values store (docs/reference/cli.md, "Kept values"), checked
+-- through LAWSPEC_FOUND. The suite's one restricted input is an `Even`
+-- wrapper over Integer, so a value's wire encoding is known: the constructor
+-- position 0, then the zigzag LEB128 integer (3 is 06, 4 is 08).
+--   a  a run records a value;
+--   b  a second run reads it and runs the law on it (its use count rises);
+--   c  a stored value that no longer meets the restriction (3) is dropped,
+--      and one that does (4) is used;
+--   d  the cap holds: more than the default 16 stored values leave 16 at most;
+--   e  with `:kept-values 0` the project records nothing and reads nothing.
+checkKept :: String -> String -> Toolchain -> FilePath -> [(FilePath, String)]
+  -> ([(FilePath, String)] -> Either String [Generated]) -> [Generated] -> IO String
+checkKept suite target tool project sources regenerateZero generated = do
+  root <- getCurrentDirectory
+  let found = root </> project </> "found"
+      rerun = ["--rerun" | target `elem` ["kotlin", "groovy"]]
+      fail' what = die (target ++ ": " ++ suite ++ ": kept values: " ++ what ++ " (see " ++ project </> "kept.log)")
+      run = do
+        (code, output) <- runToolWith [("LAWSPEC_FOUND", found)] tool (arguments tool ++ rerun) project
+        appendFile (project </> "kept.log") output
+        unless (code == ExitSuccess) (fail' "the run failed")
+      -- Each stored file as (name, [(inputs, used)]).
+      stored = do
+        exists <- doesDirectoryExist found
+        names <- if exists then sort . filter (".json" `isSuffixOf`) <$> listDirectory found else pure []
+        forM names $ \name -> do
+          content <- decode <$> BL.readFile (found </> name)
+          pure (name, [ (map text (fromMaybe [] (list (field "inputs" entry))), case field "used" entry of Number n -> round n :: Int; _ -> 0)
+                      | Just row <- [content], entry <- fromMaybe [] (list (field "values" row)) ])
+      uses files = sum [used | (_, entries) <- files, (_, used) <- entries]
+      write :: FilePath -> [[String]] -> IO ()
+      write name entries = writeFile (found </> name) $ BLC.unpack $ encode $ object
+        ["key" .= takeWhile (/= '.') name, "values" .= [object ["inputs" .= inputs, "used" .= (0 :: Int)] | inputs <- entries]]
+      hexByte :: Int -> String
+      hexByte n = let digit d = "0123456789abcdef" !! d in [digit (n `div` 16), digit (n `mod` 16)]
+  removePathForcibly found
+  writeFile (project </> "kept.log") ""
+  run
+  recorded <- stored
+  unless (length recorded == 1 && not (null (snd (head recorded)))) (fail' ("the first run recorded " ++ show recorded))
+  run
+  again <- stored
+  unless (uses again > uses recorded) (fail' ("the second run did not use the value it found: " ++ show again))
+  let name = fst (head recorded)
+  -- A stored 3 is odd: dropped. A stored 4 is even: used.
+  write name [["0006"], ["0008"]]
+  run
+  checked <- stored
+  let entries = concatMap snd checked
+  when (any ((== ["0006"]) . fst) entries) (fail' "a value that fails the restriction was not dropped")
+  unless (any (\(inputs, used) -> inputs == ["0008"] && used >= 1) entries) (fail' ("a value that meets the restriction was not used: " ++ show checked))
+  -- Twenty values, the cap is sixteen.
+  write name [["00" ++ hexByte (2 * k)] | k <- [0 .. 19 :: Int]]
+  run
+  capped <- stored
+  let count = sum [length entries' | (_, entries') <- capped]
+  unless (count > 0 && count <= 16) (fail' ("the cap did not hold: " ++ show count ++ " values kept"))
+  -- Kept values off: regenerate the project, and nothing is read or written.
+  zero <- either (\message -> die (target ++ ": " ++ suite ++ ": regenerating without kept values: " ++ message)) pure (regenerateZero sources)
+  let compilerOwned gs = [g | g <- gs, generatedOwnership g /= "user"]
+      writeGenerated gs = forM_ (compilerOwned gs) $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
+  flip finally (writeGenerated generated) $ do
+    writeGenerated zero
+    removePathForcibly found
+    run
+    off <- stored
+    unless (null off) (fail' ("a project with kept-values 0 recorded " ++ show off))
+  let line = target ++ ": " ++ suite ++ ": kept values are recorded, used, dropped when stale and capped at 16, and off with kept-values 0"
   putStrLn line
   pure line
 

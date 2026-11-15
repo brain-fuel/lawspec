@@ -14,6 +14,7 @@ import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
+import LawSpec.Search (Kept(..))
 import qualified LawSpec.Testing.Draws as Draws
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
@@ -65,6 +66,8 @@ data Config = Config
   -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
   -- Nothing when the law takes no part in it.
   , searchDescriptors :: Expanded -> Maybe [String]
+  -- The kept-values store's view of a law (LawSpec.Search.keptValues).
+  , keptSpecOf :: Expanded -> Maybe Kept
   -- A binder's identifier: its source name (LawSpec.JvmNames).
   , local :: C.Id -> String
   -- The specification the unit is written in, relative to the project.
@@ -465,25 +468,32 @@ emitTests Config{..} unit laws = do
       let descriptors = searchDescriptors e
           inputsName = "searchInputs"
           caseName = "searchCase"
-          remembered doc = case descriptors of
+          kept = keptSpecOf e
+          keptName = "keptInputs"
+          withRecord doc = case kept of
+            Nothing -> doc
+            Just k -> statements [doc, runtime "keptRecord" [quoted (keptSpec k), text keptName, call "listOf" [text (inputId inp) | inp <- inputs e]]]
+          remembered doc' = let doc = withRecord doc' in case descriptors of
             Nothing -> doc
             Just _ -> braced (text "try") [doc] <> text " catch (error: Throwable) " <> L.block
               [runtime "searchRemember" [quoted label, text inputsName, call "listOf" [text (inputId inp) | inp <- inputs e]], text "throw error"]
           searchCase = text "LawSpecRuntime.SearchCase " <> L.lambda ["values"]
             [L.trailing (text "kotlinx.coroutines.runBlocking") [] [call caseName [text "values"]]]
-          (searchBefore, searchAfter) = case descriptors of
-            Nothing -> ([], [])
-            Just ds ->
-              let refinements = concatMap inputRefinements (inputs e)
-              in ( [ bind inputsName (call "listOf" (map quoted ds))
-                   , text ("val " ++ caseName ++ ": suspend (List<LawSpecRuntime.Value>) -> Double? = searchCase@") <> L.lambda ["values"]
+          refinements = concatMap inputRefinements (inputs e)
+          caseDefinition = text ("val " ++ caseName ++ ": suspend (List<LawSpecRuntime.Value>) -> Double? = searchCase@") <> L.lambda ["values"]
                        (withSymbols (handlerInstalls e ++
                         [bind (inputId inp) (checked (inputType inp) (text ("values[" ++ show i ++ "]"))) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
                         [braced (L.condition "if" (text "!(" <> conjunction (map (truth . expr) refinements) <> text ")")) [text "return@searchCase null"] | not (null refinements)] ++
                         [bracketed e [lawAssertion (quoted (linked e (shown ++ " search")))],
                          maybe (text "0.0") (\score -> runtime "searchNumber" [expr score]) (C.harnessTarget h)]))
-                   , quoted (base' ++ "_replay") <> text " " <> L.lambda [] [runtime "searchReplay" [quoted label, text inputsName, searchCase]] ]
-                 , [quoted (base' ++ "_search") <> text " " <> L.lambda [] [runtime "searchClimb" [quoted label, text inputsName, searchCase]] | C.harnessTarget h /= Nothing] )
+          keptDefinition = [bind keptName (call "listOf" (map quoted (keptDescriptors k))) | Just k <- [kept]]
+          keptTest = [quoted (base' ++ "_kept") <> text " " <> L.lambda [] [runtime "keptReplay" [quoted label, quoted (keptSpec k), text keptName, text "SCHEMA",
+                 call "listOf" [reference (inputType inp) | inp <- inputs e], text "MACHINE_BITS", searchCase]] | Just k <- [kept]]
+          (searchBefore, searchAfter) =
+            ( keptDefinition ++ [bind inputsName (call "listOf" (map quoted ds)) | Just ds <- [descriptors]] ++
+              [caseDefinition | descriptors /= Nothing || kept /= Nothing] ++ keptTest ++
+              [quoted (base' ++ "_replay") <> text " " <> L.lambda [] [runtime "searchReplay" [quoted label, text inputsName, searchCase]] | descriptors /= Nothing]
+            , [quoted (base' ++ "_search") <> text " " <> L.lambda [] [runtime "searchClimb" [quoted label, text inputsName, searchCase]] | descriptors /= Nothing, C.harnessTarget h /= Nothing] )
       let check = bracketed e (observations e ++ [remembered (lawAssertion (quoted (linked e (shown ++ " property"))))])
           propertyLabel = displayLabel label
       property <- if finiteCases e /= Nothing then pure []

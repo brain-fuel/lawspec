@@ -38,7 +38,7 @@ import Data.Char (toLower, isAlphaNum)
 import qualified LawSpec.AbilityEmit.Python as PythonAbilities
 import LawSpec.AbilityNames (specName, recordingName, productionName, interfaceName, ownAbilities, ownerName, unitAbility, unitAbilityPieces)
 import LawSpec.TestNames (unitTestNames, lawWords)
-import LawSpec.Search (lawDescriptors, searchable)
+import LawSpec.Search (Kept(..), keptFor, lawDescriptors, searchable)
 
 q :: String -> String
 q = T.unpack . T.decodeUtf8 . encode
@@ -526,7 +526,14 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
           -- Each input's descriptor, kept once beside the law's tests.
           descriptorName = "_lawspec_inputs_" ++ drop 5 base
           descriptorDoc _ = text descriptorName
-          remembered doc = case descriptors of
+          -- Kept values (LawSpec.Search.keptFor): a passing case that holds
+          -- a value of a restricted type is recorded, once per run.
+          kept = if searchable (maybe False (const True) finite) (original e) then keptFor bits declarations (original e) else Nothing
+          keptName = "_lawspec_kept_" ++ drop 5 base
+          withRecord doc = case kept of
+            Nothing -> doc
+            Just k -> statements [doc, statement (runtime "kept_record" [message (keptSpec k), text keptName, array (map (text . inputId) (inputs e))])]
+          remembered doc' = let doc = withRecord doc' in case descriptors of
             Nothing -> doc
             Just ds ->
               let remember = statement (runtime "search_remember" [message label, descriptorDoc ds, array (map (text . inputId) (inputs e))])
@@ -541,10 +548,16 @@ scalarEmitWithSourceRoot sourceRoot nativeGenerators minify declarations definit
               bodyDoc = withSymbols e (assigned ++ guardDoc ++
                 [bracket e (checkClaim (message (shown ++ " search"))), statement (text "return " <> score)])
             in function caseName ["_values"] bodyDoc
+          keptDocs = case kept of
+            Nothing -> ""
+            Just k -> renderDocument (assign keptName (array (map quoted (keptDescriptors k)))) ++
+              (if descriptors == Nothing then renderDocument caseDoc else "") ++
+              renderDocument (function (base ++ "__kept") [] (statement (runtime "kept_replay"
+                [message label, message (keptSpec k), text keptName, text "_lawspec_schema", array [referenceDoc (inputType input) | input <- inputs e], width, text caseName])))
           searchDocs = case descriptors of
-            Nothing -> ("", "")
+            Nothing -> (keptDocs, "")
             Just ds ->
-              ( renderDocument (assign descriptorName (array (map quoted ds))) ++
+              ( keptDocs ++ renderDocument (assign descriptorName (array (map quoted ds))) ++
                 renderDocument caseDoc ++
                 renderDocument (function (base ++ "__replay") [] (statement (runtime "search_replay" [message label, descriptorDoc ds, text caseName])))
               , "" )

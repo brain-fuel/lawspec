@@ -5991,6 +5991,150 @@ def search_replay(law, descriptors, case):
     os.remove(path)
 
 
+# The kept-values store (docs/reference/cli.md, "Kept values"). A run that
+# draws a case holding a value of a restricted type records the case's inputs
+# in the wire encoding under .lawspec/found, in a file named by a hash of the
+# definitions its inputs reach, so a changed restriction makes the old values
+# unreachable. A later run replays them as extra cases of the law after
+# checking each against the current definitions; one that no longer meets
+# them is dropped. A spec is "KEY CAP TAG...": the cap is how many values a
+# key keeps (0 keeps none), the tags are the constructors of the restricted
+# types.
+_kept_recorded = set()
+
+
+def _kept_file(spec):
+    import os
+
+    directory = os.environ.get("LAWSPEC_FOUND")
+    if not directory:
+        failures = os.environ.get("LAWSPEC_FAILURES")
+        if not failures:
+            return None
+        # The failure database is .lawspec/failures/<target>/<project>.
+        directory = os.path.normpath(os.path.join(failures, "..", "..", "..", "found"))
+    return os.path.join(directory, spec.split(" ")[0] + ".json")
+
+
+def _kept_read(path):
+    import json
+
+    try:
+        with open(path, encoding="utf-8") as source:
+            return [
+                entry
+                for entry in json.load(source)["values"]
+                if isinstance(entry.get("inputs"), list) and isinstance(entry.get("used"), int)
+            ]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
+def _kept_update(path, spec, change):
+    """Merges into what is on disk now, since another target's run may have
+    written since this one read: a temporary file is renamed over it."""
+    import json
+    import os
+
+    words = spec.split(" ")
+    cap = int(words[1])
+    entries = change(_kept_read(path))[-cap:]
+    directory = os.path.dirname(path)
+    if not os.path.isdir(directory):
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, ".gitignore"), "w", encoding="utf-8") as ignore:
+            ignore.write("*\n")
+    temporary = f"{path}.{os.getpid()}.tmp"
+    with open(temporary, "w", encoding="utf-8") as out:
+        json.dump({"key": words[0], "values": entries}, out)
+        out.write("\n")
+    os.replace(temporary, path)
+
+
+def _kept_holds(value, tags):
+    if isinstance(value, (list, tuple)):
+        return any(_kept_holds(item, tags) for item in value)
+    if isinstance(value, DataValue):
+        return value.tag in tags or any(_kept_holds(item, tags) for item in value.fields)
+    return False
+
+
+def kept_record(spec, descriptors, values):
+    """Keeps the first passing case of a run that holds a value of a
+    restricted type."""
+    if spec in _kept_recorded:
+        return
+    words = spec.split(" ")
+    path = _kept_file(spec) if int(words[1]) > 0 else None
+    if path is None:
+        _kept_recorded.add(spec)
+        return
+    if not _kept_holds(list(values), set(words[2:])):
+        return
+    _kept_recorded.add(spec)
+    try:
+        inputs = []
+        for text, value in zip(descriptors, values):
+            table, d = values_from(text)
+            inputs.append(wire_encode(table, d, value).hex())
+    except Exception:  # noqa: BLE001 - a value the wire cannot encode is not kept
+        return
+
+    def change(entries):
+        same = [entry for entry in entries if entry["inputs"] == inputs]
+        return [entry for entry in entries if entry["inputs"] != inputs] + (
+            same or [{"inputs": inputs, "used": 0}]
+        )
+
+    try:
+        _kept_update(path, spec, change)
+    except OSError:
+        pass
+
+
+def kept_replay(law, spec, descriptors, schema, references, bits, case):
+    """Runs the law on the values earlier runs kept, after checking them
+    against the current definitions; a value that no longer meets them is
+    dropped."""
+    words = spec.split(" ")
+    path = _kept_file(spec) if int(words[1]) > 0 else None
+    if path is None:
+        return
+    dropped = []
+    used = []
+    try:
+        for entry in _kept_read(path)[-int(words[1]) :]:
+            try:
+                values = []
+                for text, reference, encoded in zip(descriptors, references, entry["inputs"]):
+                    table, d = values_from(text)
+                    values.append(
+                        schema.validate(reference, wire_decode(table, d, bytes.fromhex(encoded)), bits)
+                    )
+                if len(values) != len(descriptors):
+                    raise ValueError("fewer inputs than the law takes")
+            except Exception:  # noqa: BLE001 - a stale value is dropped
+                dropped.append(entry["inputs"])
+                continue
+            if case(values) is None:
+                dropped.append(entry["inputs"])
+            else:
+                used.append(entry["inputs"])
+    finally:
+        if dropped or used:
+            _kept_update(
+                path,
+                spec,
+                lambda entries: [
+                    {**entry, "used": entry["used"] + 1} if entry["inputs"] in used else entry
+                    for entry in entries
+                    if entry["inputs"] not in dropped
+                ],
+            )
+    if used:
+        print(f"{law}: ran {len(used)} kept value(s) found by earlier runs in .lawspec/found")
+
+
 def wire_round_trips(text, seed, size, count):
     """Whether count generated values decode to themselves."""
     values, d = values_from(text)

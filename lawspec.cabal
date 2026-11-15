@@ -406,6 +406,7 @@ extra-source-files:
     test/fixtures/induction-product-nested.lawspec
     test/fixtures/induction-product-pair.lawspec
     test/fixtures/induction-product-record.lawspec
+    test/fixtures/kept-values.lawspec
     test/fixtures/law-sets.lawspec
     test/fixtures/list_contracts.lawspec
     test/fixtures/long-names-again.lawspec
@@ -1193,6 +1194,7 @@ test-suite lawspec-test
       IncrementalSpec
       IndexedSpec
       InferenceSchemeSpec
+      KeptValuesSpec
       LanguageGapsSpec
       LawAnalysisSpec
       LawPrimitivesSpec

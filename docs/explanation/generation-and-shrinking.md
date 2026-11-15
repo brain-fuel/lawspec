@@ -238,6 +238,23 @@ fixed seeds. It also holds a restriction only the sampled values meet, one
 only the law's example meets, and mutants that take the value away (the law
 is refused) or change the restriction under the example (a compile error).
 
+## Kept values
+
+The compiler's witnesses are the values it can show; a run may find others by
+luck, and a restriction few draws meet is exactly where luck matters. A
+generated case that holds a value of a restricted type and passes is recorded
+(once per run, for each set of input types) under `.lawspec/found` in the wire
+encoding, keyed by a hash of the definitions it was found under, so a changed
+restriction makes it unreachable. The next run, on any target, replays what
+the store holds as extra cases after checking each against the current
+restrictions, and drops what fails. It keeps the 16 most recent distinct
+cases (`:kept-values` in `:generation`; 0 disables). The store never replaces
+the compiler's check: a clean checkout still finds a value of every restricted
+type itself or refuses the law, and the kept cases are added to whatever the
+law would run anyway. Recording is not selective: every law with a restricted
+type in its inputs records its first passing case that holds one, not only the
+laws whose values were hard to find. See [kept values](../reference/cli.md#kept-values).
+
 ## Custom generators
 
 A [native generator binding](../how-to/custom-codecs-and-generators.md) replaces

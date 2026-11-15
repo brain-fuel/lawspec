@@ -1,0 +1,13 @@
+unit example.kept_values
+
+-- A restricted number. A run that draws one records it under .lawspec/found,
+-- and the acceptance suite checks what a later run does with it.
+wrapper Even is Integer where prelude.rem value 2 = 0 end wrapper
+
+law "|an even number leaves no remainder| is
+  definition:
+    for all (n :: Even) =>
+      prelude.rem (valueOfEven n) 2 = 0
+    end for all
+  end definition
+end law

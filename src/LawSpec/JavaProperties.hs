@@ -10,6 +10,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
+import LawSpec.Search (Kept(..))
 import qualified LawSpec.Testing.Draws as Draws
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
@@ -66,6 +67,8 @@ data Config = Config
   -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
   -- Nothing when the law takes no part in it.
   , searchDescriptors :: Expanded -> Maybe [String]
+  -- The kept-values store's view of a law (LawSpec.Search.keptValues).
+  , keptSpecOf :: Expanded -> Maybe Kept
   -- A binder's identifier: its source name (LawSpec.JvmNames).
   , local :: C.Id -> String
   -- The specification the unit is written in, relative to the project.
@@ -264,9 +267,11 @@ emitTests Config{..} unit laws = do
     -- `target maximize` climbs after it, as JetCheck has no targeting. Each
     -- uses the law's case method, which checks one tuple of inputs.
     searchHooks =
-      [ (propertyName index e ++ "_property", (statement (runtime "searchReplay" [quoted label, inputs', caseRef]),
-          [statement (runtime "searchClimb" [quoted label, inputs', caseRef]) | C.harnessTarget (C.propertyHarness (original e)) /= Nothing]))
-      | (index, e) <- zip [0::Int ..] laws, Just _ <- [searchDescriptors e]
+      [ (propertyName index e ++ "_property", (statements ([statement (runtime "keptReplay" [quoted label, quoted (keptSpec k), text (constantName fn "_KEPT"),
+              text "SCHEMA", call "java.util.List.of" [reference (inputType inp) | inp <- inputs e], text "MACHINE_BITS", caseRef]) | Just k <- [keptSpecOf e]] ++
+            [statement (runtime "searchReplay" [quoted label, inputs', caseRef]) | Just _ <- [searchDescriptors e]]),
+          [statement (runtime "searchClimb" [quoted label, inputs', caseRef]) | Just _ <- [searchDescriptors e], C.harnessTarget (C.propertyHarness (original e)) /= Nothing]))
+      | (index, e) <- zip [0::Int ..] laws, searchDescriptors e /= Nothing || keptSpecOf e /= Nothing
       , let label = owner e ++ "::" ++ name e
             fn = unitTestNames "java" (map name laws) !! index
             inputs' = text (constantName fn "_INPUTS")
@@ -574,24 +579,31 @@ emitTests Config{..} unit laws = do
             (statement (call "knownFailures.add" [caseBody]))]
       let descriptors = searchDescriptors e
           inputsConstant = constantName fn "_INPUTS"
-          remembered doc = case descriptors of
+          keptConstant = constantName fn "_KEPT"
+          kept = keptSpecOf e
+          withRecord doc = case kept of
             Nothing -> doc
-            Just _ -> braced (text "try") doc <> D.hardline <> braced (text "catch (RuntimeException | Error error)") (statements
+            Just k -> statements [doc, statement (runtime "keptRecord" [quoted (keptSpec k), text keptConstant,
+              call "java.util.List.of" [text (inputId inp) | inp <- inputs e]])]
+          remembered doc = case descriptors of
+            Nothing -> withRecord doc
+            Just _ -> braced (text "try") (withRecord doc) <> D.hardline <> braced (text "catch (RuntimeException | Error error)") (statements
               [statement (runtime "searchRemember" [quoted label, text inputsConstant,
                  call "java.util.List.of" [text (inputId inp) | inp <- inputs e]]), text "throw error;"])
-          searchDocs = case descriptors of
-            Nothing -> []
-            Just ds ->
-              let refinements = concatMap inputRefinements (inputs e)
-              in [ D.group (text ("private static final List<String> " ++ inputsConstant ++ " =") <>
+          constantDoc name ds = D.group (text ("private static final List<String> " ++ name ++ " =") <>
                      D.nest 4 (D.softline <> call "List.of" (map quoted ds))) <> text ";"
-                 , braced (D.group (text ("private Double " ++ member fn "Case" ++ "(List<Value> values)") <>
+          searchDocs = [constantDoc keptConstant (keptDescriptors k) | Just k <- [kept]] ++
+            [constantDoc inputsConstant ds | Just ds <- [descriptors]] ++
+            [caseMethod | descriptors /= Nothing || kept /= Nothing]
+          caseMethod =
+              let refinements = concatMap inputRefinements (inputs e)
+              in braced (D.group (text ("private Double " ++ member fn "Case" ++ "(List<Value> values)") <>
                      D.nest 4 (D.softline <> text "throws Exception"))) (withSymbols
                      (handlerInstalls e ++
                       [bind (inputId inp) (checked (inputType inp) (text ("values.get(" ++ show i ++ ")"))) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
                       [braced (text "if (!(" <> conjunction (map (truth . expr) refinements) <> text "))") (text "return null;") | not (null refinements)] ++
                       [bracketed e [lawAssertion (quoted (linked e (shown ++ " search")))],
-                       returned (maybe (text "0.0") (\score -> runtime "searchNumber" [expr score]) (C.harnessTarget h))])) ]
+                       returned (maybe (text "0.0") (\score -> runtime "searchNumber" [expr score]) (C.harnessTarget h))]))
       let check = bracketed e (observations e ++ [remembered (lawAssertion (quoted (linked e (shown ++ " property"))))])
       property <- if finiteCases e /= Nothing then pure []
         else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e check

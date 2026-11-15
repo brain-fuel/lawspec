@@ -5,7 +5,7 @@
 %% trials do not change the property test's coverage denominator.
 %% ref:REQ-harness-units ref:DEC-portable-seeded-generation
 -module(lawspec_beam_search).
--export([climb/3, moves/3, remember/3, replay/3, guard/4]).
+-export([climb/3, moves/3, remember/3, replay/3, guard/4, kept_record/3, kept_replay/6, kept_admit/3]).
 
 %% Native frameworks still generate and shrink. Keep each failing candidate,
 %% so the final counterexample can run before the next generated cases, even
@@ -131,6 +131,190 @@ input_file(Law) ->
             Name = binary_to_list(binary:encode_hex(crypto:hash(sha256, Law), lowercase)),
             filename:join([Directory, "inputs", Name ++ ".json"])
     end.
+
+%% The kept-values store (docs/reference/cli.md, "Kept values"). A run that
+%% draws a case holding a value of a restricted type records the case's
+%% inputs in the wire encoding under .lawspec/found, in a file named by a hash
+%% of the definitions its inputs reach, so a changed restriction makes the old
+%% values unreachable. A later run replays them as extra cases of the law
+%% after checking each against the current definitions; one that no longer
+%% meets them is dropped. A spec is "KEY CAP TAG...": the cap is how many
+%% values a key keeps (0 keeps none), the tags are the constructors of the
+%% restricted types.
+kept_record(Spec, Descriptors, Values) ->
+    Key = {lawspec_kept_recorded, Spec},
+    case persistent_term:get(Key, false) of
+        true ->
+            ok;
+        false ->
+            [Name, Cap | Tags] = string:lexemes(Spec, " "),
+            case kept_file(Name) of
+                none ->
+                    persistent_term:put(Key, true);
+                _ when Cap =:= "0" ->
+                    persistent_term:put(Key, true);
+                File ->
+                    case kept_holds(Values, [list_to_binary(T) || T <- Tags]) of
+                        false ->
+                            ok;
+                        true ->
+                            persistent_term:put(Key, true),
+                            try
+                                Inputs = [
+                                    binary:encode_hex(lawspec_beam_values:encode(D, V, Table), lowercase)
+                                 || {Descriptor, V} <- lists:zip(Descriptors, Values),
+                                    {Table, D} <- [lawspec_beam_values:from_text(Descriptor)]
+                                ],
+                                kept_update(File, Name, list_to_integer(Cap), fun(Entries) ->
+                                    Same = [E || #{<<"inputs">> := I} = E <- Entries, I =:= Inputs],
+                                    [E || #{<<"inputs">> := I} = E <- Entries, I =/= Inputs] ++
+                                        case Same of
+                                            [E | _] -> [E];
+                                            [] -> [#{<<"inputs">> => Inputs, <<"used">> => 0}]
+                                        end
+                                end)
+                            catch
+                                _:_ -> ok
+                            end
+                    end
+            end
+    end.
+
+%% Admit(Values) is true when the values meet the current definitions and the
+%% law's own input refinements; Check(Values) then runs the law.
+kept_replay(Law, Spec, Descriptors, Admit, Check, _Bits) ->
+    [Name, Cap | _] = string:lexemes(Spec, " "),
+    case {kept_file(Name), list_to_integer(Cap)} of
+        {none, _} ->
+            ok;
+        {_, 0} ->
+            ok;
+        {File, Limit} ->
+            Entries = kept_read(File),
+            Considered = lists:nthtail(max(0, length(Entries) - Limit), Entries),
+            Outcomes = [
+                begin
+                    Inputs = maps:get(<<"inputs">>, Entry),
+                    Decoded =
+                        try
+                            {ok, [
+                                lawspec_beam_values:decode(D, binary:decode_hex(Hex), Table)
+                             || {Descriptor, Hex} <- lists:zip(Descriptors, Inputs),
+                                {Table, D} <- [lawspec_beam_values:from_text(Descriptor)]
+                            ]}
+                        catch
+                            _:_ -> error
+                        end,
+                    case Decoded of
+                        {ok, Values} ->
+                            case Admit(Values) of
+                                true ->
+                                    case Check(Values) of
+                                        false -> erlang:error({lawspec, {kept_value_failed, Law}});
+                                        none -> {dropped, Inputs};
+                                        _ -> {used, Inputs}
+                                    end;
+                                false ->
+                                    {dropped, Inputs}
+                            end;
+                        error ->
+                            {dropped, Inputs}
+                    end
+                end
+             || Entry <- Considered
+            ],
+            Dropped = [I || {dropped, I} <- Outcomes],
+            Used = [I || {used, I} <- Outcomes],
+            case Dropped ++ Used of
+                [] ->
+                    ok;
+                _ ->
+                    kept_update(File, Name, Limit, fun(Current) ->
+                        [
+                            case lists:member(I, Used) of
+                                true -> E#{<<"used">> := maps:get(<<"used">>, E) + 1};
+                                false -> E
+                            end
+                         || #{<<"inputs">> := I} = E <- Current, not lists:member(I, Dropped)
+                        ]
+                    end)
+            end,
+            case Used of
+                [] ->
+                    ok;
+                _ ->
+                    io:format(
+                        standard_error,
+                        "~ts: ran ~b kept value(s) found by earlier runs in .lawspec/found~n",
+                        [Law, length(Used)]
+                    )
+            end
+    end.
+
+%% Whether each value meets the current definitions of its type.
+kept_admit(Values, References, Schema) ->
+    try
+        _ = [lawspec_beam_schema:validate(V, Ref, Schema) || {V, Ref} <- lists:zip(Values, References)],
+        true
+    catch
+        _:_ -> false
+    end.
+
+kept_file(Name) ->
+    Directory =
+        case os:getenv("LAWSPEC_FOUND") of
+            Found when Found =/= false, Found =/= "" ->
+                Found;
+            _ ->
+                case os:getenv("LAWSPEC_FAILURES") of
+                    Failures when Failures =/= false, Failures =/= "" ->
+                        %% The failure database is .lawspec/failures/<target>/<project>.
+                        filename:join([Failures, "..", "..", "..", "found"]);
+                    _ ->
+                        none
+                end
+        end,
+    case Directory of
+        none -> none;
+        _ -> filename:join(Directory, Name ++ ".json")
+    end.
+
+kept_read(File) ->
+    try
+        {ok, Bytes} = file:read_file(File),
+        #{<<"values">> := Values} = json:decode(Bytes),
+        [E || #{<<"inputs">> := I, <<"used">> := U} = E <- Values, is_list(I), is_integer(U)]
+    catch
+        _:_ -> []
+    end.
+
+%% Merge into what is on disk now, since another target's run may have
+%% written since this one read: write a temporary file, then rename it.
+kept_update(File, Name, Limit, Change) ->
+    Entries = Change(kept_read(File)),
+    Kept = lists:nthtail(max(0, length(Entries) - Limit), Entries),
+    Directory = filename:dirname(File),
+    case filelib:is_dir(Directory) of
+        true ->
+            ok;
+        false ->
+            ok = filelib:ensure_dir(File),
+            ok = file:write_file(filename:join(Directory, ".gitignore"), "*\n")
+    end,
+    Temporary = File ++ "." ++ os:getpid() ++ "." ++ integer_to_list(erlang:unique_integer([positive])) ++ ".tmp",
+    try
+        ok = file:write_file(Temporary, [json:encode(#{<<"key">> => list_to_binary(Name), <<"values">> => Kept}), "\n"]),
+        ok = file:rename(Temporary, File)
+    after
+        file:delete(Temporary)
+    end.
+
+kept_holds(Values, Tags) when is_list(Values) ->
+    lists:any(fun(V) -> kept_holds(V, Tags) end, Values);
+kept_holds({ls_data, Tag, Fields}, Tags) ->
+    lists:member(Tag, Tags) orelse kept_holds(Fields, Tags);
+kept_holds(_, _) ->
+    false.
 
 climb(Law, Descriptors, Check) ->
     Seed =

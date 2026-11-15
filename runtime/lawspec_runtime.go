@@ -7874,6 +7874,227 @@ func LawSpecSearchReplay(law string, descriptors []string, check LawSpecSearchCa
 	_ = os.Remove(file)
 }
 
+// The kept-values store (docs/reference/cli.md, "Kept values"). A run that
+// draws a case holding a value of a restricted type records the case's inputs
+// in the wire encoding under .lawspec/found, in a file named by a hash of the
+// definitions its inputs reach, so a changed restriction makes the old values
+// unreachable. A later run replays them as extra cases of the law after
+// checking each against the current definitions; one that no longer meets
+// them is dropped. A spec is "KEY CAP TAG...": the cap is how many values a
+// key keeps (0 keeps none), the tags are the constructors of the restricted
+// types.
+var lsKeptRecorded sync.Map
+
+type lsKeptEntry struct {
+	Inputs []string `json:"inputs"`
+	Used   int      `json:"used"`
+}
+
+func lsKeptFile(spec string) string {
+	directory := os.Getenv("LAWSPEC_FOUND")
+	if directory == "" {
+		failures := os.Getenv("LAWSPEC_FAILURES")
+		if failures == "" {
+			return ""
+		}
+		// The failure database is .lawspec/failures/<target>/<project>.
+		directory = filepath.Join(failures, "..", "..", "..", "found")
+	}
+	return filepath.Join(directory, strings.Fields(spec)[0]+".json")
+}
+
+func lsKeptCap(spec string) int {
+	limit, _ := strconv.Atoi(strings.Fields(spec)[1])
+	return limit
+}
+
+func lsKeptRead(file string) []lsKeptEntry {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil
+	}
+	var stored struct {
+		Values []lsKeptEntry `json:"values"`
+	}
+	if json.Unmarshal(data, &stored) != nil {
+		return nil
+	}
+	return stored.Values
+}
+
+// Merge into what is on disk now, since another target's run may have
+// written since this one read: write a temporary file, then rename it.
+func lsKeptUpdate(file, spec string, change func([]lsKeptEntry) []lsKeptEntry) {
+	entries := change(lsKeptRead(file))
+	if limit := lsKeptCap(spec); len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+	if entries == nil {
+		entries = []lsKeptEntry{}
+	}
+	directory := filepath.Dir(file)
+	if _, err := os.Stat(directory); err != nil {
+		if os.MkdirAll(directory, 0o755) != nil {
+			return
+		}
+		_ = os.WriteFile(filepath.Join(directory, ".gitignore"), []byte("*\n"), 0o644)
+	}
+	data, err := json.Marshal(map[string]any{"key": strings.Fields(spec)[0], "values": entries})
+	if err != nil {
+		return
+	}
+	temporary := fmt.Sprintf("%s.%d.tmp", file, os.Getpid())
+	if os.WriteFile(temporary, append(data, '\n'), 0o644) == nil {
+		_ = os.Rename(temporary, file)
+	}
+}
+
+func lsKeptHolds(value LawSpecValue, tags map[string]bool) bool {
+	switch data := value.Data.(type) {
+	case lawSpecData:
+		if tags[data.tag] {
+			return true
+		}
+		for _, field := range data.fields {
+			if lsKeptHolds(field, tags) {
+				return true
+			}
+		}
+	case []LawSpecValue:
+		for _, item := range data {
+			if lsKeptHolds(item, tags) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func LawSpecKeptRecord(spec string, descriptors []string, values []LawSpecValue) {
+	if _, done := lsKeptRecorded.Load(spec); done {
+		return
+	}
+	file := ""
+	if lsKeptCap(spec) > 0 {
+		file = lsKeptFile(spec)
+	}
+	if file == "" {
+		lsKeptRecorded.Store(spec, true)
+		return
+	}
+	tags := map[string]bool{}
+	for _, tag := range strings.Fields(spec)[2:] {
+		tags[tag] = true
+	}
+	holds := false
+	for _, value := range values {
+		holds = holds || lsKeptHolds(value, tags)
+	}
+	if !holds {
+		return
+	}
+	lsKeptRecorded.Store(spec, true)
+	inputs := []string{}
+	for i, text := range descriptors {
+		table, d := lsValuesFrom(text)
+		encoded, err := LawSpecWireEncode(table, d, values[i])
+		if err != nil {
+			return
+		}
+		inputs = append(inputs, fmt.Sprintf("%x", encoded))
+	}
+	lsKeptUpdate(file, spec, func(entries []lsKeptEntry) []lsKeptEntry {
+		kept := []lsKeptEntry{}
+		same := lsKeptEntry{Inputs: inputs}
+		for _, entry := range entries {
+			if strings.Join(entry.Inputs, ",") == strings.Join(inputs, ",") {
+				same = entry
+			} else {
+				kept = append(kept, entry)
+			}
+		}
+		return append(kept, same)
+	})
+}
+
+func LawSpecKeptReplay(law, spec string, descriptors []string, schema *lawSpecSchema,
+	references []lawSpecTypeRef, bits int, check LawSpecSearchCase) {
+	file := ""
+	if lsKeptCap(spec) > 0 {
+		file = lsKeptFile(spec)
+	}
+	if file == "" {
+		return
+	}
+	dropped := map[string]bool{}
+	used := map[string]bool{}
+	defer func() {
+		if len(dropped) != 0 || len(used) != 0 {
+			lsKeptUpdate(file, spec, func(entries []lsKeptEntry) []lsKeptEntry {
+				kept := []lsKeptEntry{}
+				for _, entry := range entries {
+					id := strings.Join(entry.Inputs, ",")
+					if dropped[id] {
+						continue
+					}
+					if used[id] {
+						entry.Used++
+					}
+					kept = append(kept, entry)
+				}
+				return kept
+			})
+		}
+		if len(used) != 0 {
+			fmt.Printf("%s: ran %d kept value(s) found by earlier runs in .lawspec/found\n", law, len(used))
+		}
+	}()
+	entries := lsKeptRead(file)
+	if limit := lsKeptCap(spec); len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+	for _, entry := range entries {
+		id := strings.Join(entry.Inputs, ",")
+		values := lsKeptDecode(descriptors, schema, references, bits, entry.Inputs)
+		if values == nil {
+			dropped[id] = true
+			continue
+		}
+		if _, admitted := check(values); !admitted {
+			dropped[id] = true
+		} else {
+			used[id] = true
+		}
+	}
+}
+
+// The values of one entry, checked against the current definitions; nil when
+// they no longer decode or meet them.
+func lsKeptDecode(descriptors []string, schema *lawSpecSchema, references []lawSpecTypeRef,
+	bits int, inputs []string) (values []LawSpecValue) {
+	defer func() {
+		if recover() != nil {
+			values = nil
+		}
+	}()
+	if len(inputs) != len(descriptors) {
+		return nil
+	}
+	for i, text := range descriptors {
+		table, d := lsValuesFrom(text)
+		raw, err := hex.DecodeString(inputs[i])
+		if err != nil {
+			return nil
+		}
+		value, err := LawSpecWireDecode(table, d, raw)
+		if err != nil || !schema.accepts(references[i], value, bits) {
+			return nil
+		}
+		values = append(values, value)
+	}
+	return values
+}
+
 // Each value with one integer moved, wherever it sits in the value.
 func (s lawSpecValues) searchMoves(d any, v LawSpecValue) []LawSpecValue {
 	form := s.resolve(d)

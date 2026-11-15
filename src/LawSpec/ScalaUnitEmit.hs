@@ -33,7 +33,7 @@ import LawSpec.SourceLink (sourceLink, unitSourceFile)
 import Data.List (intercalate, nub)
 import Data.Maybe (listToMaybe)
 import Data.Char (toLower)
-import LawSpec.Search (lawDescriptors, searchable)
+import LawSpec.Search (Kept(..), keptFor, lawDescriptors, searchable)
 
 -- | The adapter object and test suite of one unit.
 emitScalaUnit :: Integer -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
@@ -269,6 +269,7 @@ emitScalaUnitOn pekko budget nativeGenerators minify dataDeclarations definition
       , ScalaProperties.handlerInstalls = installs
       , ScalaProperties.lateHandlerInstalls = lateInstalls
       , ScalaProperties.searchDescriptors = searchDescriptorsOf
+      , ScalaProperties.keptSpecOf = keptSpecOf
       , ScalaProperties.extraImports = []
       , ScalaProperties.local = localName'
       , ScalaProperties.sourceFile = unitSourceFile u
@@ -323,6 +324,7 @@ emitScalaUnitOn pekko budget nativeGenerators minify dataDeclarations definition
     lawMaking e = (map C.handlerId (sharedOf e), resourceFor e)
     plainMaking = ([], \_ _ -> Nothing)
     searchDescriptorsOf e = if searchable (finiteCases e /= Nothing) (original e) then lawDescriptors bits dataDeclarations (original e) else Nothing
+    keptSpecOf e = if searchable (finiteCases e /= Nothing) (original e) then keptFor bits dataDeclarations (original e) else Nothing
     usesOf n = [a | d <- C.unitDeclarations u, C.declarationName d == n, a <- C.declarationUses d, not (C.isFail a)]
     failuresOf n = [a | d <- C.unitDeclarations u, C.declarationName d == n, a <- C.declarationUses d, C.isFail a]
     handlerParameter ability = case maybe "handler" C.abilityName (abilityNamed ability) of

@@ -255,7 +255,7 @@ declarations =
           variant "forall" [("binder", "Binder"), ("predicates", "Expr[]"), ("body", "Assertion")],
           variant "exists" [("binder", "Binder"), ("predicates", "Expr[]"), ("body", "Assertion")]
         ],
-      interface "Generation" (fields [("cases", "number"), ("maxAttempts", "number"), ("maxShrinks", "number"), ("exhaustiveLimit", "number")]),
+      interface "Generation" (fields [("cases", "number"), ("maxAttempts", "number"), ("maxShrinks", "number"), ("exhaustiveLimit", "number"), ("keptValues", "number")]),
       interface "Binder" (fields [("id", "string"), ("name", "string"), ("type", "Type")]),
       interface "Definition" (fields [("owner", "string"), ("id", "string"), ("arguments", "Binder[]"), ("body", "Expr")]),
       interface

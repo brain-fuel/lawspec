@@ -30,6 +30,7 @@ tags and executable forms are rejected. JSON manifests are no longer accepted.
     :max-attempts 10000
     :max-shrinks 1000
     :exhaustive-limit 4096
+    :kept-values 16
   }
   :dependencies {
     "shop.domain" "^1.0.0"
@@ -264,8 +265,10 @@ reported explicitly.
 | `max-attempts` | 10000 | Attempts to find inputs that satisfy refinements. |
 | `max-shrinks` | 1000 | Shrink steps. |
 | `exhaustive-limit` | 4096 | The largest finite domain enumerated in full, by the generated tests or by the compiler for laws over checked definitions. |
+| `kept-values` | 16 | How many cases holding a value of a restricted type a run keeps in `.lawspec/found` for later runs, per set of input types. 0 keeps none and reads none. See [kept values](cli.md#kept-values). |
 
-All limits are positive integers. Omitted fields keep their defaults. Each
+All limits except `kept-values` are positive integers; `kept-values` is a
+non-negative one. Omitted fields keep their defaults. Each
 framework applies them in its own way; see
 [refinements](refinements.md#target-generation-limits).
 

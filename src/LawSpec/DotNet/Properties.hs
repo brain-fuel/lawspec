@@ -215,7 +215,7 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
             pure (TupleOf [Str className, v])
           labels <- mapM render (C.harnessLabels harness)
           score <- maybe (pure (Raw "None" "FSharpOption<Value>.None")) (fmap (\v -> call "Runtime" "some" [v]) . render) (C.harnessTarget harness)
-          let Generation caseCount attempts shrinks _ = C.propertyGeneration law
+          let Generation caseCount attempts shrinks _ _ = C.propertyGeneration law
               config = call "Property" "settings" [IntLit (toInteger caseCount), IntLit (toInteger attempts), IntLit (toInteger shrinks)]
               observation = Lambda [] (Ty "Harness.Observation" "Harness.Observation")
                 (call "Harness" "observation" [ListOf tValue covers, ListOf (Ty "string * Value" "Tuple<string, Value>") classes, ListOf tValue labels, score])

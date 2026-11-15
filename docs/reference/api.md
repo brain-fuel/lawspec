@@ -72,7 +72,7 @@ interface CheckRequest {
   languageProfile: '1.0-rc.2';
   verification?: Verification;
   machineBits?: 32 | 64;                    // default 64
-  generation?: Partial<Generation>;         // cases, maxAttempts, maxShrinks, exhaustiveLimit
+  generation?: Partial<Generation>;         // cases, maxAttempts, maxShrinks, exhaustiveLimit, keptValues
   nativeBindings?: NativeBindings;
   package?: {name: string; version: string};
   dependencies?: Record<string, string>;

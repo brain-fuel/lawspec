@@ -60,7 +60,7 @@ import Data.Char (toLower, isAlphaNum)
 import qualified Data.Map.Strict as M
 import LawSpec.Naming (claim, scopeWith, localIdentifier, reservedFor, cased, Casing(..), nameWords, uniqueNames)
 import LawSpec.SourceLink (labelled, sourceLink)
-import LawSpec.Search (lawDescriptors, searchable)
+import LawSpec.Search (Kept(..), keptFor, lawDescriptors, searchable)
 import qualified LawSpec.Backend as Backend
 import qualified Data.Map.Strict as M
 import LawSpec.JvmNames (jvmLocalTable, jvmReserved, contractMethod, jvmClaimAll, jvmLocal)
@@ -841,6 +841,7 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
       , KotlinProperties.handlerInstalls = ktInstalls
       , KotlinProperties.lateHandlerInstalls = ktLateInstalls
       , KotlinProperties.searchDescriptors = searchDescriptorsOf
+      , KotlinProperties.keptSpecOf = keptSpecOf
       , KotlinProperties.local = localName
       , KotlinProperties.sourceFile = unitSourceFile u
       , KotlinProperties.codecValues = ktCodecValues
@@ -1146,6 +1147,7 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
       , GoProperties.handlerInstalls = goInstalls
       , GoProperties.lateHandlerInstalls = goLateInstalls
       , GoProperties.searchDescriptors = searchDescriptorsOf
+      , GoProperties.keptSpecOf = keptSpecOf
       }
     -- Abilities: the unit's own, its spec handlers, and the handlers a law
     -- installs (Fail's are built in, so none is installed for it).
@@ -1184,6 +1186,8 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
     -- Each input's descriptor for LawSpec's own search, when the law takes
     -- part in it (LawSpec.Search).
     searchDescriptorsOf e = if searchable (finiteCases e /= Nothing) (original e) then lawDescriptors bits dataDeclarations (original e) else Nothing
+    -- The kept-values store's view of a law (LawSpec.Search.keptFor).
+    keptSpecOf e = if searchable (finiteCases e /= Nothing) (original e) then keptFor bits dataDeclarations (original e) else Nothing
     -- The abilities an adapter gets handlers for, first, in its uses order.
     usesOf n = [a | d <- C.unitDeclarations u, C.declarationName d == n, a <- C.declarationUses d, not (C.isFail a)]
     handlerParameter ability = case maybe "handler" C.abilityName (abilityNamed ability) of
@@ -1378,6 +1382,7 @@ nativeScalarProductWithCompanions pekko companions network javaStyle adapterBind
       , JavaProperties.handlerInstalls = javaInstalls
       , JavaProperties.lateHandlerInstalls = javaLateInstalls
       , JavaProperties.searchDescriptors = searchDescriptorsOf
+      , JavaProperties.keptSpecOf = keptSpecOf
       , JavaProperties.local = localName
       , JavaProperties.sourceFile = unitSourceFile u
       }

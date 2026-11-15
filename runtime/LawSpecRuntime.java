@@ -10485,6 +10485,241 @@ public final class LawSpecRuntime
     java.nio.file.Files.deleteIfExists(file);
   }
 
+  // The kept-values store (docs/reference/cli.md, "Kept values"). A run that
+  // draws a case holding a value of a restricted type records the case's inputs
+  // in the wire encoding under .lawspec/found, in a file named by a hash of
+  // the definitions its inputs reach, so a changed restriction makes the old
+  // values unreachable. A later run replays them as extra cases of the law
+  // after checking each against the current definitions; one that no longer
+  // meets them is dropped. A spec is "KEY CAP TAG...": the cap is how many
+  // values a key keeps (0 keeps none), the tags are the constructors of the
+  // restricted types.
+  private static final java.util.Set<String> KEPT_RECORDED =
+      java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+  private record KeptEntry(List<String> inputs, int used)
+  {
+  }
+
+  private static java.nio.file.Path keptFile(String spec)
+  {
+    var directory = System.getenv("LAWSPEC_FOUND");
+    if (directory == null || directory.isEmpty())
+    {
+      var failures = System.getenv("LAWSPEC_FAILURES");
+      if (failures == null || failures.isEmpty())
+      {
+        return null;
+      }
+      // The failure database is .lawspec/failures/<target>/<project>.
+      directory = java.nio.file.Path.of(failures, "..", "..", "..", "found").normalize().toString();
+    }
+    return java.nio.file.Path.of(directory, spec.split(" ")[0] + ".json");
+  }
+
+  private static int keptCap(String spec)
+  {
+    return Integer.parseInt(spec.split(" ")[1]);
+  }
+
+  private static List<KeptEntry> keptRead(java.nio.file.Path file)
+  {
+    var entries = new ArrayList<KeptEntry>();
+    try
+    {
+      var text = java.nio.file.Files.readString(file);
+      var matcher = java.util.regex.Pattern
+          .compile("\\{\"inputs\":\\[([^\\]]*)\\],\"used\":(\\d+)\\}").matcher(text);
+      while (matcher.find())
+      {
+        var inputs = new ArrayList<String>();
+        var hexes = java.util.regex.Pattern.compile("\"([0-9a-fA-F]*)\"").matcher(matcher.group(1));
+        while (hexes.find())
+        {
+          inputs.add(hexes.group(1));
+        }
+        entries.add(new KeptEntry(inputs, Integer.parseInt(matcher.group(2))));
+      }
+    }
+    catch (java.io.IOException | RuntimeException e)
+    {
+      entries.clear();
+    }
+    return entries;
+  }
+
+  // Merge into what is on disk now, since another target's run may have
+  // written since this one read: write a temporary file, then rename it.
+  private static void keptUpdate(java.nio.file.Path file, String spec,
+      java.util.function.UnaryOperator<List<KeptEntry>> change)
+      throws java.io.IOException
+  {
+    var entries = change.apply(keptRead(file));
+    var cap = keptCap(spec);
+    entries = entries.subList(Math.max(0, entries.size() - cap), entries.size());
+    var directory = file.getParent();
+    if (!java.nio.file.Files.exists(directory))
+    {
+      java.nio.file.Files.createDirectories(directory);
+      java.nio.file.Files.writeString(directory.resolve(".gitignore"), "*\n");
+    }
+    var out = new StringBuilder("{\"key\":\"").append(spec.split(" ")[0]).append("\",\"values\":[");
+    for (int i = 0; i < entries.size(); i++)
+    {
+      out.append(i == 0 ? "" : ",").append("{\"inputs\":[");
+      var inputs = entries.get(i).inputs();
+      for (int j = 0; j < inputs.size(); j++)
+      {
+        out.append(j == 0 ? "" : ",").append('"').append(inputs.get(j)).append('"');
+      }
+      out.append("],\"used\":").append(entries.get(i).used()).append('}');
+    }
+    out.append("]}\n");
+    var temporary = file.resolveSibling(file.getFileName() + "." + ProcessHandle.current().pid()
+        + "." + Thread.currentThread().getId() + ".tmp");
+    java.nio.file.Files.writeString(temporary, out);
+    java.nio.file.Files.move(temporary, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+  }
+
+  private static boolean keptHolds(Object data, java.util.Set<String> tags)
+  {
+    if (data instanceof Value value)
+    {
+      return keptHolds(value.data(), tags);
+    }
+    if (data instanceof List<?> items)
+    {
+      return items.stream().anyMatch(item -> keptHolds(item, tags));
+    }
+    if (data instanceof Data tagged)
+    {
+      return tags.contains(tagged.tag()) || keptHolds(tagged.fields(), tags);
+    }
+    return false;
+  }
+
+  public static void keptRecord(String spec, List<String> descriptors, List<Value> values)
+  {
+    if (KEPT_RECORDED.contains(spec))
+    {
+      return;
+    }
+    var file = keptCap(spec) > 0 ? keptFile(spec) : null;
+    if (file == null)
+    {
+      KEPT_RECORDED.add(spec);
+      return;
+    }
+    var words = spec.split(" ");
+    var tags = java.util.Set.copyOf(java.util.Arrays.asList(words).subList(2, words.length));
+    if (!keptHolds(values, tags))
+    {
+      return;
+    }
+    KEPT_RECORDED.add(spec);
+    try
+    {
+      var inputs = new ArrayList<String>();
+      for (int i = 0; i < descriptors.size(); i++)
+      {
+        var described = valuesFrom(descriptors.get(i));
+        inputs.add(java.util.HexFormat.of()
+            .formatHex(wireEncode(described.values(), described.descriptor(), values.get(i))));
+      }
+      keptUpdate(file, spec, entries ->
+      {
+        var kept = new ArrayList<KeptEntry>();
+        KeptEntry same = null;
+        for (var entry : entries)
+        {
+          if (entry.inputs().equals(inputs))
+          {
+            same = entry;
+          }
+          else
+          {
+            kept.add(entry);
+          }
+        }
+        kept.add(same != null ? same : new KeptEntry(inputs, 0));
+        return kept;
+      });
+    }
+    catch (RuntimeException | java.io.IOException e)
+    {
+      // A value the wire cannot encode is not kept.
+    }
+  }
+
+  public static void keptReplay(String law, String spec, List<String> descriptors,
+      LawSpecSchema schema, List<LawSpecSchema.TypeRef> references, int bits, SearchCase check)
+      throws Exception
+  {
+    var file = keptCap(spec) > 0 ? keptFile(spec) : null;
+    if (file == null)
+    {
+      return;
+    }
+    var dropped = new java.util.HashSet<List<String>>();
+    var used = new java.util.LinkedHashSet<List<String>>();
+    try
+    {
+      var entries = keptRead(file);
+      for (var entry : entries.subList(Math.max(0, entries.size() - keptCap(spec)), entries.size()))
+      {
+        var values = new ArrayList<Value>();
+        try
+        {
+          for (int i = 0; i < descriptors.size(); i++)
+          {
+            var described = valuesFrom(descriptors.get(i));
+            var value = wireDecode(described.values(), described.descriptor(),
+                java.util.HexFormat.of().parseHex(entry.inputs().get(i)));
+            values.add(schema.validate((LawSpecSchema.Named) references.get(i), value, bits));
+          }
+        }
+        catch (RuntimeException e)
+        {
+          dropped.add(entry.inputs());
+          continue;
+        }
+        if (check.check(values) == null)
+        {
+          dropped.add(entry.inputs());
+        }
+        else
+        {
+          used.add(entry.inputs());
+        }
+      }
+    }
+    finally
+    {
+      if (!dropped.isEmpty() || !used.isEmpty())
+      {
+        keptUpdate(file, spec, entries ->
+        {
+          var kept = new ArrayList<KeptEntry>();
+          for (var entry : entries)
+          {
+            if (!dropped.contains(entry.inputs()))
+            {
+              kept.add(used.contains(entry.inputs())
+                  ? new KeptEntry(entry.inputs(), entry.used() + 1) : entry);
+            }
+          }
+          return kept;
+        });
+      }
+    }
+    if (!used.isEmpty())
+    {
+      System.out.println(law + ": ran " + used.size()
+          + " kept value(s) found by earlier runs in .lawspec/found");
+    }
+  }
+
   private static List<Value> searchMoves(Values table, Object descriptor, Value v)
   {
     var d = table.resolve(descriptor);

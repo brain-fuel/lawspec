@@ -4,11 +4,13 @@
 -- typestate and flags. Callbacks (the bridge definitions, references,
 -- preconditions, abstraction and invariants) are passed beside it, in the
 -- order the spec lists them.
-module LawSpec.MachineSpec (machineSpec, scenarioWire, describe, narrow) where
+module LawSpec.MachineSpec (machineSpec, scenarioWire, describe, describeRefined, narrow) where
 
 import Control.Monad (foldM, forM, unless, when)
-import Data.List (isInfixOf)
+import Data.List (intercalate, isInfixOf)
+import qualified Data.Map.Strict as M
 import qualified LawSpec.Core as C
+import LawSpec.Core.Types (substitute)
 import LawSpec.Core.Machine
 import qualified LawSpec.Core.Program as P
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
@@ -171,7 +173,19 @@ only binder e = case C.expressionNode e of
 -- | A type's descriptor, adding the data types it reaches to the table (each
 -- once, by name, so recursion goes through (ref NAME)).
 describe :: Int -> [C.DataDeclaration] -> [(String, String)] -> C.Type -> Either String (String, [(String, String)])
-describe bits datas table ty = case ty of
+describe = describeWith False
+
+-- | The same descriptor for the values the kept-values store holds, which may
+-- be of restricted types and of generic data types applied to arguments. The
+-- wire encoding carries only a value's shape, so a restriction is not part of
+-- the descriptor (every reader checks it against the current definition), and
+-- an applied generic type (NonEmptyList Choice) is a table entry of its own,
+-- named by the type and its arguments.
+describeRefined :: Int -> [C.DataDeclaration] -> [(String, String)] -> C.Type -> Either String (String, [(String, String)])
+describeRefined = describeWith True
+
+describeWith :: Bool -> Int -> [C.DataDeclaration] -> [(String, String)] -> C.Type -> Either String (String, [(String, String)])
+describeWith refined bits datas table ty = case ty of
   C.Constructor "Bool" [] -> pure ("(bool)", table)
   C.Constructor "Text" [] -> pure ("(text)", table)
   C.Constructor "Unit" [] -> pure ("(unit)", table)
@@ -179,36 +193,51 @@ describe bits datas table ty = case ty of
   C.Constructor "List" [C.TypeArgument t] -> wrap "list" [t]
   C.Constructor "Maybe" [C.TypeArgument t] -> wrap "maybe" [t]
   C.Constructor "Either" [C.TypeArgument a, C.TypeArgument b] -> wrap "either" [a, b]
-  C.Constructor n []
-    | Just _ <- lookup n table -> pure ("(ref " ++ n ++ ")", table)
+  C.Constructor n arguments
+    | Just _ <- lookup name table -> pure ("(ref " ++ shown ++ ")", table)
     | [d] <- [d | d <- datas, C.idText (C.dataId d) == n] -> do
         when (C.dataHandle d) (Left ("a model command's argument cannot be the handle " ++ C.dataName d ++
           ": LawSpec cannot generate one; only the model's start makes handles"))
-        unless (null (C.dataParameters d)) (unsupported "a generic data type")
-        unless (all (null . C.constructorPredicates) (C.dataConstructors d) && all (null . C.constructorEquations) (C.dataConstructors d)
+        let applied = [t | C.TypeArgument t <- arguments]
+            parameters = C.dataParameters d
+        unless (if refined then length applied == length arguments && length applied == length parameters
+                else null parameters && null arguments) (unsupported "a generic data type")
+        unless ((refined || all (null . C.constructorPredicates) (C.dataConstructors d)) && all (null . C.constructorEquations) (C.dataConstructors d)
             && C.dataIndex d == Nothing)
           (unsupported "a data type with constructor refinements or indices")
+        let instantiate = substitute (M.fromList (zip parameters applied))
         -- The placeholder stops recursion; it is replaced when the type is done.
-        let placeholder = (n, "")
+        let placeholder = (name, "")
         (ctors, table') <- foldl (\acc ctor -> do
             (done, current) <- acc
             (fields, current') <- foldl (\inner field -> do
                 (fs, t) <- inner
-                (f, t') <- describe bits datas t (C.binderType field)
+                (f, t') <- describeWith refined bits datas t (instantiate (C.binderType field))
                 pure (fs ++ [f], t')) (Right ([], current)) (C.constructorFields ctor)
             pure (done ++ ["(ctor " ++ C.idText (C.constructorId ctor) ++ concatMap (' ' :) fields ++ ")"], current'))
           (Right ([], placeholder : table)) (C.dataConstructors d)
-        let form = "(data " ++ n ++ concatMap (' ' :) ctors ++ ")"
-        pure ("(ref " ++ n ++ ")", [(k, if k == n then form else v) | (k, v) <- table'])
+        let form = "(data " ++ shown ++ concatMap (' ' :) ctors ++ ")"
+        pure ("(ref " ++ shown ++ ")", [(k, if k == name then form else v) | (k, v) <- table'])
   _ -> unsupported ("the type " ++ show ty)
   where
+    -- An applied generic type is named as the JVM schema keys it (the name,
+    -- then each argument in parentheses; a container's one argument bare), so a
+    -- decoded value is of the type the schema expects. The name is quoted in
+    -- the descriptor when it holds a space.
+    name = typeKey ty
+    shown = if ' ' `elem` name then show name else name
+    typeKey t = case t of
+      C.Constructor n [] -> n
+      C.Constructor n [C.TypeArgument a] | n `elem` ["List", "Maybe", "Nullable", "Optional"] -> n ++ " " ++ typeKey a
+      C.Constructor n arguments -> n ++ concat [" (" ++ typeKey a ++ ")" | C.TypeArgument a <- arguments]
+      _ -> show t
     unsupported what = Left ("a model command's arguments cannot yet be generated for " ++ what)
     bounds n = case integerBounds bits n of
       Just (lo, hi) -> show lo ++ " " ++ show hi
       Nothing | n == "BigUInt" -> "0 _"
               | otherwise -> "_ _"
     wrap kind ts = do
-      (ds, table') <- foldl (\acc t -> do (done, current) <- acc; (d, current') <- describe bits datas current t; pure (done ++ [d], current'))
+      (ds, table') <- foldl (\acc t -> do (done, current) <- acc; (d, current') <- describeWith refined bits datas current t; pure (done ++ [d], current'))
         (Right ([], table)) ts
       pure ("(" ++ kind ++ concatMap (' ' :) ds ++ ")", table')
 

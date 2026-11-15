@@ -8,6 +8,7 @@ import LawSpec.TestNames (unitTestNames, lawWords)
 import LawSpec.Naming (exampleTestSuffix, displayLabel, cased, Casing(..), claimAll, scopeWith)
 import LawSpec.SourceLink (labelled, locationLink, exampleLocation, originLocation, unitSourceFile)
 import LawSpec.Testing
+import LawSpec.Search (Kept(..))
 import qualified LawSpec.Testing.Cover as Cover
 import qualified LawSpec.Testing.Draws as Draws
 import qualified LawSpec.Core as C
@@ -52,6 +53,8 @@ data Config = Config
   -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
   -- Nothing when the law takes no part in it.
   , searchDescriptors :: Expanded -> Maybe [String]
+  -- The kept-values store's view of a law (LawSpec.Search.keptValues).
+  , keptSpecOf :: Expanded -> Maybe Kept
   }
 
 text = D.text
@@ -375,24 +378,35 @@ emitTests Config{..} unit laws = do
           inputsName = "lawspec" ++ base ++ "Inputs"
           caseName = "lawspec" ++ base ++ "Case"
           values = text "[]LawSpecValue{" <> D.joinWith (text ", ") (map (text . inputId) (inputs e)) <> text "}"
-          remembered doc = case descriptors of
+          kept = keptSpecOf e
+          keptName = "lawspec" ++ base ++ "Kept"
+          withRecord doc = case kept of
+            Nothing -> doc
+            Just k -> statements [doc, call "LawSpecKeptRecord" [quoted (keptSpec k), text keptName, values]]
+          remembered doc' = let doc = withRecord doc' in case descriptors of
             Nothing -> doc
             Just _ -> text "func() " <> block (statements
               [ text "defer func() " <> block (text "if problem := recover(); problem != nil " <> block (statements
                   [call "LawSpecSearchRemember" [quoted label, text inputsName, values], text "panic(problem)"])) <> text "()"
               , doc ]) <> text "()"
           withCase = text caseName
-          searchDocs = case descriptors of
-            Nothing -> ([], [])
-            Just ds ->
-              let refinements = concatMap inputRefinements (inputs e)
-                  caseDoc = text ("func " ++ caseName ++ "(values []LawSpecValue) (float64, bool) ") <> block (body
+          refinements = concatMap inputRefinements (inputs e)
+          caseDoc = text ("func " ++ caseName ++ "(values []LawSpecValue) (float64, bool) ") <> block (body
                     ([symbols] ++ plainAll (handlerInstalls e) ++
                      [Declare (inputId inp) (checked (inputType inp) (text ("values[" ++ show i ++ "]"))) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
                      [Plain (text "if !(" <> conjunction (map (truth . expr) refinements) <> text ") " <> block (text "return 0, false")) | not (null refinements)] ++
                      resourceDocs e ++ [Plain (check (quoted (shown ++ " search"))),
                      Plain (text "return " <> maybe (text "0") (\score -> call "lsSearchNumber" [expr score]) (C.harnessTarget h) <> text ", true")]))
-              in ( [ text ("var " ++ inputsName ++ " = []string{") <> D.joinWith (text ", ") (map quoted ds) <> text "}"
+          keptDocs = case kept of
+            Nothing -> []
+            Just k -> [ text ("var " ++ keptName ++ " = []string{") <> D.joinWith (text ", ") (map quoted (keptDescriptors k)) <> text "}" ]
+              ++ [caseDoc | descriptors == Nothing]
+              ++ [goTest (base ++ "_Kept") (call "LawSpecKeptReplay" [quoted label, quoted (keptSpec k), text keptName, text "_lawspecSchema",
+                    text "[]lawSpecTypeRef" <> text "{" <> D.joinWith (text ", ") [reference (inputType inp) | inp <- inputs e] <> text "}", bitsDoc, withCase])]
+          searchDocs = case descriptors of
+            Nothing -> (keptDocs, [])
+            Just ds ->
+              ( keptDocs ++ [ text ("var " ++ inputsName ++ " = []string{") <> D.joinWith (text ", ") (map quoted ds) <> text "}"
                    , caseDoc
                    , goTest (base ++ "_Replay") (call "LawSpecSearchReplay" [quoted label, text inputsName, withCase]) ]
                  , [goTest (base ++ "_Search") (call "LawSpecSearchClimb" [quoted label, text inputsName, withCase]) | C.harnessTarget h /= Nothing] )
