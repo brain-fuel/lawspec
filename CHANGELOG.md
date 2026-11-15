@@ -6,6 +6,47 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Haskell and JavaScript/TypeScript tests draw half their integers between
+  -128 and 127. A wide range alone held almost no small value, so a
+  restriction to small numbers (`value >= 0 && value <= 100`) refused nearly
+  every draw. A law's cases for a seed differ from those of 0.34.0 on these
+  targets.
+- `make package` and `make release-check` run `lawspec-dev integrity`, which
+  refuses a staged core or host component that differs from what
+  `npm/build.json` records, and `make package` builds the lesson assets
+  again. The package ships build outputs that git ignores, and a worktree
+  that had not rebuilt them packed a stale copy.
+
+### Fixed
+
+- A law could pass without ever drawing a value of a restricted type it has
+  no literal of. On Rust, Haskell, JavaScript and TypeScript a restricted
+  integer under a `List` or a `Maybe` (`List Percent`) was drawn only as an
+  empty list or an absent value: the Rust and JavaScript/TypeScript runtimes
+  filtered the law's whole input, so one refused element refused the case,
+  and the Haskell and JavaScript/TypeScript integer ranges held no small
+  value. These runtimes and Python's now draw a restricted type's values
+  through its restriction where they stand, and Python and Rust probe the
+  budgets no witness fits, as the JVM, Kotlin, Scala, Go and
+  JavaScript/TypeScript runtimes have since 0.34.0.
+- On Elixir a restriction that no small integer meets (`prelude.rem value 16 =
+  5`) failed with `FilterTooNarrowError`: StreamData draws every attempt of a
+  filter at one size. Each quarter of the attempts now gets a larger size.
+- A probe that found no value of a restricted type removed its constructor
+  from every case without saying so when the restriction was one that draws
+  seldom meet. A probe is now believed only when a probe at the law's whole
+  budget finds a value. Otherwise the type stays in the plan, its values are
+  left to the filter, and the runtime says once on standard error that it
+  found none (`LawSpec: no value of ... found in ... draws`).
+- Generated Python wrapped `lsf_length(...)` around a call too long for the
+  line in a way `ruff format` changes.
+- The `nested-refinements` acceptance suite runs on every program target,
+  under three fixed seeds besides the run's own (`"seeds"` in a suite's
+  `suite.json`), with laws and mutants for each shape of a restricted type
+  that no law writes a value of.
+
 ## [0.34.0] - 2026-11-14
 
 ### Added

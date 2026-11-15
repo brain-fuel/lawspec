@@ -159,25 +159,53 @@ type reserves the size of its smallest witness, the smallest value the
 compiler found for it, so a record that holds one some levels down gives it
 room for a value its restriction accepts. A type without a restriction, or
 without a witness, reserves its smallest shape as before. The JVM runtime
-(Java, Groovy, Clojure) and the Kotlin, Scala, Go, Python and
-JavaScript/TypeScript runtimes do this. The Haskell, Rust, Swift, .NET and
-BEAM runtimes do not yet: there a restricted value that needs more than its
-shape's minimum is drawn only from the witnesses.
+(Java, Groovy, Clojure) and the Kotlin, Scala, Go, Python (which the Prolog
+target runs on) and JavaScript/TypeScript runtimes do this.
 
-A law that writes no value of a restricted type gives it no witness. For that
-case the same runtimes, except Python's, probe: once for each restricted type
-and budget that no witness fits, they draw from the type's unfiltered
-generator with a fixed seed, as many times as the filter may (at least 100, at
-most 10,000; Go uses the thousand tries of Rapid's `Example`), and ask
-whether any draw passes the restriction. A budget where none does counts as
-too small, so the enclosing constructor gives the field more or is not
-offered at that size. The probe has its own seed and its answers are kept for
-the run, so the cases a law draws from a seed are the same every time. A
-restriction that draws seldom meet can fail a probe; if that leaves the law's
-own input nothing to generate, the plan is made again without probes and the
-filter alone decides, as it did before. Python's Hypothesis strategies cannot
-be sampled inside a running test, and Python filters whole inputs, not their
-parts, so a draw with such a field is rejected there, not failed.
+A law that writes no value of a restricted type gives it no witness. Those
+runtimes, and Rust's, then probe: once for each restricted type and budget
+that no witness fits, they draw from the type's unfiltered generator with a
+fixed seed, and ask whether any draw passes the restriction. They make as
+many draws as the filter may (at least 100, at most 10,000); the Python, Rust
+and Go probes make a thousand. A budget where no draw passes counts as too
+small, so the enclosing constructor gives the field more or is not offered at
+that size. The probe has its own seed and its answers are kept for the run,
+so the cases a law draws from a seed are the same every time.
+
+A probe that finds nothing is believed only if a probe at the law's whole
+budget finds a value: then it is the smaller budget that holds none. When the
+whole budget yields none either, the restriction is one that draws seldom
+meet, and the probes decide nothing. The type keeps its place in the plan,
+its values are left to the filter, as they were before probes, and the
+runtime says so once on standard error (`LawSpec: no value of ... found in
+... draws`): the law's cases hold a value of that type only when a draw
+happens to meet the restriction. Write a value of the type in the law, or
+bind a generator for it.
+
+A restricted type's values are drawn through its restriction where they
+stand, each with attempts of its own, so that one refused element does not
+refuse a whole list. The Python, Rust and JavaScript/TypeScript runtimes do
+this for a type whose values a witness or a probe found, and leave the others
+to the filter on the law's whole input. Integer generators draw small values
+often enough for a restriction to a small range to be met: half of the
+Haskell and JavaScript/TypeScript draws lie between -128 and 127.
+
+The Haskell runtime has no reservation and no probe. Hedgehog filters each
+restricted part, discards the case when the retries of a part run out, and
+fails the law when 10,000 cases are discarded. The .NET, Swift and BEAM
+runtimes plan differently: the budget grows with the test's size, scalar
+draws follow the bounds a restriction's comparisons give, and a part that no
+attempt satisfies fails the law. StreamData draws every attempt of a filter
+at one size, so the Elixir runtime gives each quarter of the attempts a
+larger one.
+
+The `nested-refinements` acceptance suite holds these shapes for every
+program target: a restricted list some records down, a restricted scalar, a
+record whose rule relates two fields, restricted values under `Maybe` and
+`List`, and a restriction one integer in sixteen meets, alone and under a sum
+with other constructors. Each law can only fail on a generated value of the
+restricted type, each has a mutant, and the suite passes again under three
+fixed seeds.
 
 ## Custom generators
 

@@ -1106,13 +1106,13 @@ targetSteps target =
   -- count it: with every layer, and with the property layer alone on the
   -- targets that suite has adapters for. ref:DEC-vacuous-outcome
   [ step (target ++ "-vacuity") (acceptance ["vacuity", target]) | target `elem` reachTargets ] ++
-  -- A restricted wrapper some records below a law's input, on the targets
-  -- the suite has been run on. The first nine reserve the wrapper's smallest
-  -- witness, and all of those but Python probe a budget no witness fits; the
-  -- Haskell and Rust runtimes draw such a value from witnesses alone, as the
-  -- targets not listed do. ref:DEC-structural-size-budget
-  [ step (target ++ "-nested-refinements") (acceptance ["nested-refinements", target])
-  | target `elem` ["java", "groovy", "clojure", "kotlin", "scala", "go", "python", "javascript", "typescript", "haskell", "rust"] ] ++
+  -- Restricted types that no law writes a value of, in the shapes a
+  -- generator plans differently (some records below a law's input, under a
+  -- sum, a Maybe and a List, a rule relating two fields, a restriction few
+  -- draws meet), on every program target, under the run's own seed and three
+  -- fixed ones. Its mutants are laws that only a generated value of such a
+  -- type can fail. ref:DEC-structural-size-budget
+  [ step (target ++ "-nested-refinements") (acceptance ["nested-refinements", target]) ] ++
   [ step (target ++ "-vacuity-sampled") (acceptance ["vacuity-sampled", target]) | target `elem` ["java", "javascript", "python"] ] ++
   -- Record rules and masking on every program target. Four targets also
   -- have native tests of their own renderings; on the targets the masking
