@@ -1661,6 +1661,18 @@ impl Schema
             .any(|predicates| !predicates.is_empty())
     }
 
+    /// Whether a constructor of the type carries a predicate.
+    pub fn restricted(&self, ty: &TypeRef) -> Result<bool>
+    {
+        Ok(self.constructor_fields(ty)?.is_some_and(|constructors| {
+            constructors.iter().any(|constructor| {
+                self.contracts
+                    .get(constructor.tag)
+                    .is_some_and(|predicates| !predicates.is_empty())
+            })
+        }))
+    }
+
     pub fn new(definitions: Vec<DataSchema>) -> Result<Self>
     {
         Self::with_contracts(definitions, vec![])
