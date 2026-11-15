@@ -715,9 +715,17 @@ arrayDoc ds = D.group (D.text "[" <> D.nest indentation (D.softbreak <> D.commaS
 signature :: String -> [String] -> String -> D.Doc -> D.Doc
 signature opening [] closing body =
   -- With no parameters to break, a signature that does not fit puts its
-  -- brace on a line of its own, as swift-format does.
-  D.text (opening ++ "()" ++ closing) <> D.group D.softline <> D.text "{" <>
+  -- brace on a line of its own, as swift-format does. One too long even
+  -- without its brace breaks inside the angle brackets of its result type
+  -- (-> Codec<, the argument, > {), as swift-format does.
+  result <> D.group D.softline <> D.text "{" <>
   D.nest indentation (D.hardline <> body) <> D.hardline <> D.text "}"
+  where
+    result = case break (== '<') closing of
+      (generic, '<' : rest) | not (null rest), last rest == '>' ->
+        D.text (opening ++ "()" ++ generic ++ "<") <>
+        D.group (D.nest indentation (D.softbreak <> D.text (init rest)) <> D.softbreak <> D.text ">")
+      _ -> D.text (opening ++ "()" ++ closing)
 signature opening parameters closing body =
   D.text opening <> argumentsDoc (map D.text parameters) <> D.text closing <> blockDoc body
 

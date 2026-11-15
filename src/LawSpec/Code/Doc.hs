@@ -791,8 +791,9 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
               [] -> False
             preferNext = '\n' `notElem` nextText || newlines sameText > newlines nextText + 1 ||
               any (\c -> firstEnds c sameText && not (firstEnds c nextText)) ("({[" :: String)
+            -- (an arm's broken body keeps a column for its comma)
             firstFits = case linesOf sameText of
-              l : _ -> column + measure l <= margin
+              l : _ -> column + measure l + 1 <= margin
               [] -> True
             chosen = case layout of
               Compact -> sameLayout

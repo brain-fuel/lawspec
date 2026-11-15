@@ -253,7 +253,11 @@ emitRustData layout declarations = do
           -- Fields keep their LawSpec names, which Rust's lint may not call
           -- snake case.
           camelFields = or [any isUpper f | (_,_,_,fs) <- rendered, (f,_) <- fs]
+          -- Two units' types of one name are told apart by a number after
+          -- an underscore (Label_2), which the lint does not call camel case.
+          numbered = '_' `elem` takeWhile (/= '<') generic
           declarationDoc = (if camelFields then D.text "#[allow(non_snake_case)]" <> D.hardline else mempty) <>
+            (if numbered then D.text "#[allow(non_camel_case_types)]" <> D.hardline else mempty) <>
             D.text (if ordered then "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]" else "#[derive(Clone, Debug)]") <> D.hardline <>
             if product then (if null structFields then D.text ("pub struct " ++ generic ++ ";")
               else D.text ("pub struct " ++ generic) <> D.hardline <> D.block 4 (D.joinWith D.hardline structFields)) else

@@ -1,0 +1,17 @@
+unit example.long_names_again
+
+-- The second declaration of Label: see long-names.lawspec.
+wrapper Label is Text where prelude.length value > 1 end wrapper
+
+function letters (label :: Label) -> Integer is
+  prelude.length (valueOfLabel label)
+end function
+
+law "|a label has two letters| is
+  definition:
+    for all (label :: Label) =>
+      letters label > 1
+    end for all
+  end definition
+end law
+end unit

@@ -1,0 +1,8 @@
+{
+  "languageProfile": "1.0-rc.2",
+  "verification": {"layers": ["property", "examples"]},
+  "specs": [
+    "test/fixtures/long-names.lawspec",
+    "test/fixtures/long-names-again.lawspec"
+  ]
+}

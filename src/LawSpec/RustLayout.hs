@@ -424,9 +424,14 @@ oneOf = D.bestFit
 -- (callee is what the arguments follow: rustfmt lets a broken chain
 -- overflow only a callee shorter than an indent, such as Ok)
 arguments :: String -> Maybe Int -> String -> String -> Int -> [Expr] -> D.Doc
+arguments = argumentsTrailing 0
+
+-- | As arguments, within calls that overflow into it: rustfmt's shape keeps
+-- room for the closing delimiters of every one of them (trailing counts).
+argumentsTrailing :: Int -> String -> Maybe Int -> String -> String -> Int -> [Expr] -> D.Doc
 -- (rustfmt breaks even empty brackets on a line that has no room)
-arguments _ _ open close _ [] = oneOf [D.text (open ++ close), D.text open <> D.hardline <> D.text close]
-arguments callee cap open close limit args =
+argumentsTrailing _ _ _ open close _ [] = oneOf [D.text (open ++ close), D.text open <> D.hardline <> D.text close]
+argumentsTrailing trailing callee cap open close limit args =
   case mapM oneLine args of
     Just texts | fitsArguments limit open args texts
                , maybe True (\c -> width (open ++ intercalate ", " texts ++ close) <= c) cap ->
@@ -496,7 +501,7 @@ arguments callee cap open close limit args =
       Just c -> Just (c - width (open ++ concatMap (++ ", ") initialTexts))
       Nothing | nestedCall (last args) -> Just 60
               | otherwise -> Nothing
-    overflowed = D.text open <> mconcat [D.text (t ++ ", ") | t <- initialTexts] <> overflowing lastCap lastArg <> D.text close
+    overflowed = D.text open <> mconcat [D.text (t ++ ", ") | t <- initialTexts] <> overflowingTrailing (trailing + width close) lastCap lastArg <> D.text close
     -- rustfmt overflows the last argument whenever the line up to its
     -- opening fits.
     firstLine = open ++ concatMap (++ ", ") initialTexts ++ opening lastArg
@@ -505,6 +510,8 @@ arguments callee cap open close limit args =
     twoLines = case (args, lastArg) of
       -- (so does a single operation)
       ([_], Infix {}) -> True
+      -- (a cast of a call is one value too)
+      ([_], Cast {}) -> True
       ([_], Method {}) -> length (snd (unchain lastArg)) == 1
       ([_], Try a@(Method {})) -> length (snd (unchain a)) == 1
       _ -> False
@@ -519,7 +526,7 @@ arguments callee cap open close limit args =
     -- The first line's width counts the call's closing delimiter, and the
     -- enclosing call's when this one overflows in it: rustfmt's shape
     -- leaves room for both.
-    reserved = firstLine ++ close ++ (if isJust cap then ")" else "")
+    reserved = firstLine ++ close ++ replicate trailing ')'
     -- The available page width can reject an inline closure even when its
     -- argument budget accepts it. Retry its block opening before placing the
     -- entire argument list vertically, as rustfmt does for closure arrays.
@@ -583,16 +590,16 @@ castType t = case parseType t of
 -- | A call's overflowing last argument, within the columns left to it: a
 -- call or macro there keeps its arguments on its line only when the whole
 -- fits.
-overflowing :: Maybe Int -> Expr -> D.Doc
-overflowing cap e = case e of
+overflowingTrailing :: Int -> Maybe Int -> Expr -> D.Doc
+overflowingTrailing trailing cap e = case e of
   -- Its closing delimiter is counted too.
-  Call f args | Just name <- flat f -> D.text name <> arguments name (subtract (width name + 1) <$> cap) "(" ")" 60 args
-  Macro name open close args -> D.text name <> arguments name (subtract (width name + 1) <$> cap) open close 60 args
-  Prefix op a -> D.text op <> overflowing (subtract (width op) <$> cap) a
-  Try a@(Call {}) -> overflowing (subtract 1 <$> cap) a <> D.text "?"
+  Call f args | Just name <- flat f -> D.text name <> argumentsTrailing trailing name (subtract (width name + 1) <$> cap) "(" ")" 60 args
+  Macro name open close args -> D.text name <> argumentsTrailing trailing name (subtract (width name + 1) <$> cap) open close 60 args
+  Prefix op a -> D.text op <> overflowingTrailing trailing (subtract (width op) <$> cap) a
+  Try a@(Call {}) -> overflowingTrailing (trailing + 1) (subtract 1 <$> cap) a <> D.text "?"
   -- An overflowing cast breaks inside its value, then before as.
   Cast a@(Call {}) t | maybe True (\line' -> maybe False (width line' >) cap) (oneLine e) ->
-    overflowing cap a <> D.nest 4 (D.hardline <> castType t)
+    overflowingTrailing trailing cap a <> D.nest 4 (D.hardline <> castType t)
   -- rustfmt keeps an overflowing chain on one line up to its last call.
   _ | isChain e, Just prefix <- chainPrefix e, (_, links@(_ : _)) <- unchain e, l@(LinkCall name _ _) <- last links
     , width (prefix ++ "." ++ name ++ "(") <= 60 ->
@@ -903,7 +910,11 @@ armDoc (ArmOf pat guard body) = case unblocked body of
     in if shallow inner
       then headDoc <> D.prefer (D.ArmBody extend) (D.text " " <> expr inner <> comma inner) (D.nest 4 (D.hardline <> expr inner))
         (D.text " " <> expr inner <> comma inner) (D.hardline <> D.text "{" <> D.nest 4 (D.hardline <> expr inner) <> D.hardline <> D.text "}")
-      else if extend then sameLine else blocked
+      else if extend
+        -- rustfmt leaves room for the arm's comma after the opening.
+        then headDoc <> D.prefixChoice (" " ++ opening inner ++ ",") (D.text " " <> expr inner <> (if endsInBlock inner then mempty else D.text ","))
+          (D.hardline <> D.text "{" <> D.nest 4 (D.hardline <> expr inner) <> D.hardline <> D.text "}")
+        else blocked
   where
     -- (a pattern that fits with its arrow and a brace stays on one line)
     patternDoc = case oneLine pat of

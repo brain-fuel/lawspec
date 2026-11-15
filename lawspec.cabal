@@ -408,6 +408,8 @@ extra-source-files:
     test/fixtures/induction-product-record.lawspec
     test/fixtures/law-sets.lawspec
     test/fixtures/list_contracts.lawspec
+    test/fixtures/long-names-again.lawspec
+    test/fixtures/long-names.lawspec
     test/fixtures/model-counters.lawspec
     test/fixtures/model-deadlines.lawspec
     test/fixtures/native_empty_domains.lawspec

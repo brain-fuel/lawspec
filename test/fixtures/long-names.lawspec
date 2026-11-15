@@ -1,0 +1,20 @@
+unit example.long_names_for_generated_code
+
+-- A unit name long enough that a generated signature naming one of its
+-- types passes a target's line width, and a type that another unit of the
+-- same suite also declares, so one of the two is numbered where a target
+-- has one namespace for both.
+wrapper Label is Text where prelude.length value > 0 end wrapper
+
+function letters (label :: Label) -> Integer is
+  prelude.length (valueOfLabel label)
+end function
+
+law "|a label has a letter| is
+  definition:
+    for all (label :: Label) =>
+      letters label > 0
+    end for all
+  end definition
+end law
+end unit
