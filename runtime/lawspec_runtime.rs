@@ -6527,7 +6527,9 @@ struct KeptEntry
 
 fn kept_file(spec: &str) -> Option<std::path::PathBuf>
 {
-    let directory = match std::env::var("LAWSPEC_FOUND").ok().filter(|d| !d.is_empty())
+    let directory = match std::env::var("LAWSPEC_FOUND")
+        .ok()
+        .filter(|d| !d.is_empty())
     {
         Some(directory) => std::path::PathBuf::from(directory),
         // The failure database is .lawspec/failures/<target>/<project>.
@@ -6664,7 +6666,14 @@ pub fn kept_record(spec: &str, descriptors: &[&str], values: &[Value])
     {
         return;
     }
-    let file = if kept_cap(spec) > 0 { kept_file(spec) } else { None };
+    let file = if kept_cap(spec) > 0
+    {
+        kept_file(spec)
+    }
+    else
+    {
+        None
+    };
     let Some(file) = file
     else
     {
@@ -6740,7 +6749,14 @@ pub fn kept_replay(
     mut check: impl FnMut(&[Value]) -> Result<Option<f64>>,
 ) -> Result<()>
 {
-    let file = if kept_cap(spec) > 0 { kept_file(spec) } else { None };
+    let file = if kept_cap(spec) > 0
+    {
+        kept_file(spec)
+    }
+    else
+    {
+        None
+    };
     let Some(file) = file
     else
     {

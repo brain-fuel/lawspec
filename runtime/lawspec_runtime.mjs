@@ -7838,7 +7838,9 @@ function keptRead(file)
 {
   try
   {
-    const entries = JSON.parse(nodeModule('node:fs').readFileSync(file, 'utf8'));
+    const entries = JSON.parse(
+      nodeModule('node:fs').readFileSync(file, 'utf8'),
+    );
     return entries.values.filter(
       entry => Array.isArray(entry.inputs) && Number.isInteger(entry.used),
     );
@@ -7871,7 +7873,9 @@ function keptHolds(value, tags)
 {
   if (Array.isArray(value)) return value.some(item => keptHolds(item, tags));
   if (value instanceof DataValue)
-    return tags.has(value.tag) || value.fields.some(item => keptHolds(item, tags));
+    return (
+      tags.has(value.tag) || value.fields.some(item => keptHolds(item, tags))
+    );
   return false;
 }
 

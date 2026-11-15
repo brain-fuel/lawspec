@@ -11,3 +11,23 @@ law "|an even number leaves no remainder| is
     end for all
   end definition
 end law
+
+-- A second law over the same restricted number, so both laws keep one file:
+-- the key names the input types and what they reach, not the law.
+law "|an even number is its own double over two| is
+  definition:
+    for all (n :: Even) =>
+      prelude.rem (valueOfEven n + valueOfEven n) 2 = 0
+    end for all
+  end definition
+end law
+
+-- A third law, over the same input type again.
+law "|twice an even number is a multiple of four| is
+  definition:
+    for all (n :: Even) =>
+      prelude.rem (valueOfEven n * 2) 4 = 0
+    end for all
+  end definition
+end law
+end unit

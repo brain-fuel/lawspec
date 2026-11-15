@@ -173,7 +173,7 @@ emitBeamWithBindings target minify bindings plan = do
             (testSupport ++ "lawspec_beam_tasks.erl") `notElem` map artifactPath modelRuntimes] ++
         [Artifact "test-support/src/lawspec_beam_qcheck.erl" (runtimeSource "beam-qcheck") "generated" "test" | target == "gleam"] ++
         [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") (runtimeSource ("beam-" ++ name)) "generated" "test"
-          | any ((/= Nothing) . Properties.searchDescriptors plan)
+          | any (\p -> Properties.searchDescriptors plan p /= Nothing || Properties.keptSpecOf plan p /= Nothing)
               (concatMap plannedProperties (plannedUnits plan)),
             name <- ["search","values","random"], name `notElem` runtimeNames,
             (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") `notElem` map artifactPath modelRuntimes]

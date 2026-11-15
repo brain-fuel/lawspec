@@ -323,6 +323,7 @@ export interface Generation
   maxAttempts: number;
   maxShrinks: number;
   exhaustiveLimit: number;
+  keptValues: number;
 }
 
 export interface Binder

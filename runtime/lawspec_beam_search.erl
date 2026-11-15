@@ -5,7 +5,9 @@
 %% trials do not change the property test's coverage denominator.
 %% ref:REQ-harness-units ref:DEC-portable-seeded-generation
 -module(lawspec_beam_search).
--export([climb/3, moves/3, remember/3, replay/3, guard/4, kept_record/3, kept_replay/6, kept_admit/3]).
+-export([
+    climb/3, moves/3, remember/3, replay/3, guard/4, kept_record/3, kept_replay/6, kept_admit/3
+]).
 
 %% Native frameworks still generate and shrink. Keep each failing candidate,
 %% so the final counterexample can run before the next generated cases, even
@@ -147,7 +149,7 @@ kept_record(Spec, Descriptors, Values) ->
         true ->
             ok;
         false ->
-            [Name, Cap | Tags] = string:lexemes(Spec, " "),
+            [Name, Cap | Tags] = string:lexemes(unicode:characters_to_list(Spec), " "),
             case kept_file(Name) of
                 none ->
                     persistent_term:put(Key, true);
@@ -161,7 +163,9 @@ kept_record(Spec, Descriptors, Values) ->
                             persistent_term:put(Key, true),
                             try
                                 Inputs = [
-                                    binary:encode_hex(lawspec_beam_values:encode(D, V, Table), lowercase)
+                                    binary:encode_hex(
+                                        lawspec_beam_values:encode(D, V, Table), lowercase
+                                    )
                                  || {Descriptor, V} <- lists:zip(Descriptors, Values),
                                     {Table, D} <- [lawspec_beam_values:from_text(Descriptor)]
                                 ],
@@ -183,7 +187,7 @@ kept_record(Spec, Descriptors, Values) ->
 %% Admit(Values) is true when the values meet the current definitions and the
 %% law's own input refinements; Check(Values) then runs the law.
 kept_replay(Law, Spec, Descriptors, Admit, Check, _Bits) ->
-    [Name, Cap | _] = string:lexemes(Spec, " "),
+    [Name, Cap | _] = string:lexemes(unicode:characters_to_list(Spec), " "),
     case {kept_file(Name), list_to_integer(Cap)} of
         {none, _} ->
             ok;
@@ -254,7 +258,10 @@ kept_replay(Law, Spec, Descriptors, Admit, Check, _Bits) ->
 %% Whether each value meets the current definitions of its type.
 kept_admit(Values, References, Schema) ->
     try
-        _ = [lawspec_beam_schema:validate(V, Ref, Schema) || {V, Ref} <- lists:zip(Values, References)],
+        _ = [
+            lawspec_beam_schema:validate(V, Ref, Schema)
+         || {V, Ref} <- lists:zip(Values, References)
+        ],
         true
     catch
         _:_ -> false
@@ -301,9 +308,13 @@ kept_update(File, Name, Limit, Change) ->
             ok = filelib:ensure_dir(File),
             ok = file:write_file(filename:join(Directory, ".gitignore"), "*\n")
     end,
-    Temporary = File ++ "." ++ os:getpid() ++ "." ++ integer_to_list(erlang:unique_integer([positive])) ++ ".tmp",
+    Temporary =
+        File ++ "." ++ os:getpid() ++ "." ++ integer_to_list(erlang:unique_integer([positive])) ++
+            ".tmp",
     try
-        ok = file:write_file(Temporary, [json:encode(#{<<"key">> => list_to_binary(Name), <<"values">> => Kept}), "\n"]),
+        ok = file:write_file(Temporary, [
+            json:encode(#{<<"key">> => list_to_binary(Name), <<"values">> => Kept}), "\n"
+        ]),
         ok = file:rename(Temporary, File)
     after
         file:delete(Temporary)

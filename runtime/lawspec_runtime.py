@@ -6012,7 +6012,9 @@ def _kept_file(spec):
         if not failures:
             return None
         # The failure database is .lawspec/failures/<target>/<project>.
-        directory = os.path.normpath(os.path.join(failures, "..", "..", "..", "found"))
+        directory = os.path.normpath(
+            os.path.join(failures, "..", "..", "..", "found")
+        )
     return os.path.join(directory, spec.split(" ")[0] + ".json")
 
 
@@ -6024,7 +6026,8 @@ def _kept_read(path):
             return [
                 entry
                 for entry in json.load(source)["values"]
-                if isinstance(entry.get("inputs"), list) and isinstance(entry.get("used"), int)
+                if isinstance(entry.get("inputs"), list)
+                and isinstance(entry.get("used"), int)
             ]
     except (OSError, ValueError, KeyError, TypeError):
         return []
@@ -6042,7 +6045,9 @@ def _kept_update(path, spec, change):
     directory = os.path.dirname(path)
     if not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
-        with open(os.path.join(directory, ".gitignore"), "w", encoding="utf-8") as ignore:
+        with open(
+            os.path.join(directory, ".gitignore"), "w", encoding="utf-8"
+        ) as ignore:
             ignore.write("*\n")
     temporary = f"{path}.{os.getpid()}.tmp"
     with open(temporary, "w", encoding="utf-8") as out:
@@ -6055,7 +6060,9 @@ def _kept_holds(value, tags):
     if isinstance(value, (list, tuple)):
         return any(_kept_holds(item, tags) for item in value)
     if isinstance(value, DataValue):
-        return value.tag in tags or any(_kept_holds(item, tags) for item in value.fields)
+        return value.tag in tags or any(
+            _kept_holds(item, tags) for item in value.fields
+        )
     return False
 
 
@@ -6106,10 +6113,16 @@ def kept_replay(law, spec, descriptors, schema, references, bits, case):
         for entry in _kept_read(path)[-int(words[1]) :]:
             try:
                 values = []
-                for text, reference, encoded in zip(descriptors, references, entry["inputs"]):
+                for text, reference, encoded in zip(
+                    descriptors, references, entry["inputs"]
+                ):
                     table, d = values_from(text)
                     values.append(
-                        schema.validate(reference, wire_decode(table, d, bytes.fromhex(encoded)), bits)
+                        schema.validate(
+                            reference,
+                            wire_decode(table, d, bytes.fromhex(encoded)),
+                            bits,
+                        )
                     )
                 if len(values) != len(descriptors):
                     raise ValueError("fewer inputs than the law takes")
@@ -6126,13 +6139,17 @@ def kept_replay(law, spec, descriptors, schema, references, bits, case):
                 path,
                 spec,
                 lambda entries: [
-                    {**entry, "used": entry["used"] + 1} if entry["inputs"] in used else entry
+                    {**entry, "used": entry["used"] + 1}
+                    if entry["inputs"] in used
+                    else entry
                     for entry in entries
                     if entry["inputs"] not in dropped
                 ],
             )
     if used:
-        print(f"{law}: ran {len(used)} kept value(s) found by earlier runs in .lawspec/found")
+        print(
+            f"{law}: ran {len(used)} kept value(s) found by earlier runs in .lawspec/found"
+        )
 
 
 def wire_round_trips(text, seed, size, count):

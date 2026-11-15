@@ -10627,8 +10627,7 @@ public final class LawSpecRuntime
         inputs.add(java.util.HexFormat.of()
             .formatHex(wireEncode(described.values(), described.descriptor(), values.get(i))));
       }
-      keptUpdate(file, spec, entries ->
-      {
+      keptUpdate(file, spec, entries -> {
         var kept = new ArrayList<KeptEntry>();
         KeptEntry same = null;
         for (var entry : entries)
@@ -10698,8 +10697,7 @@ public final class LawSpecRuntime
     {
       if (!dropped.isEmpty() || !used.isEmpty())
       {
-        keptUpdate(file, spec, entries ->
-        {
+        keptUpdate(file, spec, entries -> {
           var kept = new ArrayList<KeptEntry>();
           for (var entry : entries)
           {

@@ -887,7 +887,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
         let descriptors = if searchable (finiteCases pp /= Nothing) p then lawDescriptors planMachineBits planDataDeclarations p else Nothing
             lawKey = unitName ++ "::" ++ label
         score <- traverse (render names) (harnessTarget (propertyHarness p))
-        keptReferences <- sequence [schemaType (binderType (quantifiedBinder q)) | Just _ <- [kept], q <- propertyInputs p]
+        keptReferences <- sequence [Schema.typeReference [] (binderType (quantifiedBinder q)) | Just _ <- [kept], q <- propertyInputs p]
         let keptItems = [RL.stmt (RL.Let' "const KEPT_INPUTS: &[&str]" (RL.prefix "&" (RL.Macro "" "[" "]" (map (RL.atom . q) (keptDescriptors k))))) | Just k <- [kept]]
             caseItems = [function "score" (parameters scored) "ls::Result<f64>" scored | descriptors /= Nothing, Just s <- [score], let scored = statements [binding "score" s, Doc.text "Ok(ls::search_number(&score))"]] ++
                 [function "search_case" [Doc.text "values: &[ls::Value]"] "ls::Result<Option<f64>>" (statements
@@ -898,7 +898,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                 | descriptors /= Nothing || kept /= Nothing]
             searchItems = keptItems ++ [RL.stmt (RL.Let' "const SEARCH_INPUTS: &[&str]" (RL.prefix "&" (RL.Macro "" "[" "]" (map (RL.atom . q) ds)))) | Just ds <- [descriptors]] ++ caseItems
             keptReplay = [statement (invoke "ls::kept_replay" [string lawKey, string (keptSpec k), Doc.text "KEPT_INPUTS",
-              Doc.text "lawspec_schema::schema()?", Doc.text "&" <> Expression.vector keptReferences, bits, Doc.text "search_case"] <> Doc.text "?") | Just k <- [kept]]
+              Doc.text "lawspec_schema::schema()?", Doc.text "&" <> typeReferences keptReferences, bits, Doc.text "search_case"] <> Doc.text "?") | Just k <- [kept]]
             replay = keptReplay ++ [statement (invoke "ls::search_replay" [string lawKey, Doc.text "SEARCH_INPUTS", Doc.text "search_case"] <> Doc.text "?") | descriptors /= Nothing]
             climb = [statement (invoke "ls::search_climb" [string lawKey, Doc.text "SEARCH_INPUTS", Doc.text "search_case"] <> Doc.text "?")
                     | descriptors /= Nothing, harnessTarget (propertyHarness p) /= Nothing]
