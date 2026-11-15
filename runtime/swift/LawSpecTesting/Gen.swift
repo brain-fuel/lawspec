@@ -130,6 +130,16 @@ public struct Gen<Element> {
     retry(predicate, limit) { nil }
   }
 
+  /// As constrain, for a domain some accepted values are known of: when no
+  /// draw is accepted within a hundred, the value is the first of them. A
+  /// restriction no draw meets then still has the value its witness showed.
+  public func constrain(
+    _ limit: Int, _ known: [Element], _ predicate: @escaping (Element) throws -> Bool
+  ) -> Gen<Element> {
+    guard let first = known.first else { return constrain(limit, predicate) }
+    return retry(predicate, Swift.min(limit, 100)) { Tree.leaf(first) }
+  }
+
   /// A dependent input's domain: an impossible value discards the tuple, so
   /// an earlier input is redrawn rather than retried in vain.
   public func refine(_ predicate: @escaping (Element) throws -> Bool) -> Gen<Element> {

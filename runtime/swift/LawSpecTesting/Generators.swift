@@ -24,6 +24,9 @@ public enum Generators {
     public let symbols: SymbolContext
     public let factories: [String: Factory]
     public let attempts: Int
+    /// The data values inside the law's witnesses: a restricted type whose
+    /// draws are all refused takes one of its own from here.
+    var seeds: [Value] = []
     public init(schema: Schema, symbols: SymbolContext, factories: [String: Factory], attempts: Int)
     {
       self.schema = schema
@@ -359,8 +362,22 @@ public enum Generators {
       }
     }
     let schema = context.schema
-    return Gens.oneOf(choices).map { try canonical(t, $0) }.constrain(context.attempts) {
+    let tags = raw.flatMap { Schema.witnessInstances($0) }.map { $0.tag }
+    let seeds = context.seeds.filter { value in
+      guard case .data(let tag, _) = value, tags.contains(tag) else { return false }
+      return (try? accepted(value, t, schema)) ?? false
+    }
+    return Gens.oneOf(choices).map { try canonical(t, $0) }.constrain(context.attempts, seeds) {
       try accepted($0, t, schema)
+    }
+  }
+
+  private static func parts(_ value: Value) -> [Value] {
+    switch value {
+    case .data(_, let fields): return [value] + fields.flatMap(parts)
+    case .list(let items): return items.flatMap(parts)
+    case .presence(_, let inner?): return parts(inner)
+    default: return []
     }
   }
 
@@ -637,7 +654,9 @@ public enum Generators {
   public static func generator(
     _ context: Context, _ t: TypeRef, _ bounds: [Bound], _ witnesses: [Value], _ index: IndexTarget?
   ) -> Gen<Value> {
-    Gen.sized { size in
+    var context = context
+    context.seeds = witnesses.flatMap(parts)
+    return Gen.sized { [context] size in
       if let f = factory(context, t) { return try custom(context, t, size + 1, bounds, f) }
       let limit = ([64] + witnesses.map(valueNodes)).max()!
       guard let least = try minimum(context, t, limit) else {
