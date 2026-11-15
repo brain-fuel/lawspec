@@ -128,6 +128,9 @@ public final class LawSpecDataStrategies
   {}
 
   private static final Map<Probe, Boolean> PROBES = new ConcurrentHashMap<>();
+
+  /** The types a run has said it found no value of, each said once. */
+  private static final Set<String> UNPROVEN = ConcurrentHashMap.newKeySet();
   private static final long PROBE_SEED = 0x4c61775370656cL;
   private static final int PROBE_MINIMUM = 100;
   private static final int PROBE_ATTEMPTS = 10_000;
@@ -742,7 +745,9 @@ public final class LawSpecDataStrategies
     private final Map<Named, List<Value>> witnesses = new HashMap<>();
     private final Map<Request, Boolean> inhabited = new HashMap<>();
     private final Map<Named, Integer> reservations = new HashMap<>();
-    private boolean probing = true;
+    private int limit;
+    private final Map<Named, Boolean> proofs = new HashMap<>();
+    private final Set<Named> proving = new HashSet<>();
     private final Map<Request, Generator<Value>> generators = new HashMap<>();
     private final Map<String, NativeFactory> factories;
 
@@ -836,20 +841,34 @@ public final class LawSpecDataStrategies
       return reservations.get(type);
     }
 
-    /**
-     * The generator of the law's own input. A probe that found nothing where a value exists (a
-     * restriction a draw seldom meets) can leave no constructor at all; the plan is then made
-     * again without probes, and sampling alone decides, as it did before them.
-     */
+    /** The generator of the law's own input, whose budget is the most any part of it gets. */
     Generator<Value> root(Named type, int budget)
     {
-      if (probing && !canGenerate(type, budget))
-      {
-        probing = false;
-        inhabited.clear();
-        generators.clear();
-      }
+      limit = budget;
       return generate(type, budget);
+    }
+
+    /**
+     * Whether a probe that found no value of a type at some budget is to be believed: one found a
+     * value at the law's whole budget, so it is the smaller budget that has none. A restriction
+     * that draws seldom meet fails that probe too, and then decides nothing: the type is planned
+     * by its shape and the filter alone finds its values, or says that it cannot. A type met again
+     * inside its own proof is taken as proven.
+     */
+    private boolean proven(Named type)
+    {
+      if (proofs.containsKey(type))
+      {
+        return proofs.get(type);
+      }
+      if (!proving.add(type))
+      {
+        return true;
+      }
+      canGenerate(type, limit);
+      proving.remove(type);
+      proofs.putIfAbsent(type, true);
+      return proofs.get(type);
     }
 
     /**
@@ -934,20 +953,39 @@ public final class LawSpecDataStrategies
                     tag ->
                         schema.instances(type, tag).stream()
                             .anyMatch(choice -> allocation(choice.fields(), budget - 1) != null));
-        // A witness that fits is a value, and needs no probe.
-        if (result
-            && probing
-            && unchecked
-            && schema.restricted(type)
-            && witnesses.getOrDefault(type, List.of()).stream()
-                .noneMatch(value -> nodes(value) <= budget))
+        if (result && unchecked && schema.restricted(type))
         {
-          var probe = new Probe(schema, request, bits, maxAttempts);
-          if (!PROBES.containsKey(probe))
+          // A witness that fits is a value, and needs no probe.
+          boolean found =
+              witnesses.getOrDefault(type, List.of()).stream()
+                  .anyMatch(value -> nodes(value) <= budget);
+          if (!found)
           {
-            PROBES.put(probe, satisfiable(type, candidates(type, budget)));
+            var probe = new Probe(schema, request, bits, maxAttempts);
+            if (!PROBES.containsKey(probe))
+            {
+              PROBES.put(probe, satisfiable(type, candidates(type, budget)));
+            }
+            found = PROBES.get(probe);
           }
-          result = PROBES.get(probe);
+          if (budget == limit)
+          {
+            proofs.put(type, found);
+            if (!found && UNPROVEN.add(LawSpecSchema.key(type)))
+            {
+              System.err.println(
+                  "LawSpec: no value of "
+                      + LawSpecSchema.key(type)
+                      + " found in "
+                      + Math.clamp(maxAttempts, PROBE_MINIMUM, PROBE_ATTEMPTS)
+                      + " draws: no case of this law holds one unless a draw happens to meet"
+                      + " its restriction. Write a value of it in the law, or bind a generator.");
+            }
+          }
+          else if (!found && proven(type))
+          {
+            result = false;
+          }
         }
       }
       inhabited.put(request, result);

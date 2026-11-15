@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"math/big"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -166,6 +167,9 @@ type lawSpecProbe struct {
 // plan starts from no symbols.
 var lsProbes sync.Map
 
+// The types a run has said it found no value of, each said once.
+var lsUnproven sync.Map
+
 // rapid's Example retries a filtered generator a thousand times from the seed.
 const lsProbeSeed = 0x4c617753
 
@@ -290,7 +294,30 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 	var inhabited func(lawSpecTypeRef, int) bool
 	var allocation func([]lawSpecFieldSchema, int) ([]int, bool)
 	var build func(lawSpecTypeRef, int) *rapid.Generator[LawSpecValue]
-	probing := checked != nil
+	// Whether a probe that found no value of a type at some budget is to be
+	// believed: one found a value at the law's whole budget, so it is the
+	// smaller budget that has none. A restriction that draws seldom meet fails
+	// that probe too, and then decides nothing: the type is planned by its
+	// shape and the filter alone finds its values. A type met again inside
+	// its own proof is taken as proven.
+	proofs := map[string]bool{}
+	proving := map[string]bool{}
+	proven := func(typeRef lawSpecTypeRef) bool {
+		name := typeRef.key()
+		if known, exists := proofs[name]; exists {
+			return known
+		}
+		if proving[name] {
+			return true
+		}
+		proving[name] = true
+		inhabited(typeRef, budget)
+		delete(proving, name)
+		if _, exists := proofs[name]; !exists {
+			proofs[name] = true
+		}
+		return proofs[name]
+	}
 	// Whether a restricted type has a value at this budget: its filtered
 	// generator yields one from a fixed seed. A budget that only holds shapes
 	// the restriction refuses (an empty list in a wrapper that needs an
@@ -403,18 +430,31 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 					}
 				}
 			}
-			// A witness that fits is a value, and needs no probe.
-			if result && probing && restricted(constructors) && !seeded(typeRef, available) {
-				probe := lawSpecProbe{schema, key, bits, checked.attempts}
-				known, probed := lsProbes.Load(probe)
-				if !probed {
-					// The candidates are built as an inhabited type's are.
-					inhabitants[key] = true
-					known = satisfiable(typeRef, available)
-					lsProbes.Store(probe, known)
-					delete(arbitraries, key)
+			if result && checked != nil && restricted(constructors) {
+				// A witness that fits is a value, and needs no probe.
+				found := seeded(typeRef, available)
+				if !found {
+					probe := lawSpecProbe{schema, key, bits, checked.attempts}
+					known, probed := lsProbes.Load(probe)
+					if !probed {
+						// The candidates are built as an inhabited type's are.
+						inhabitants[key] = true
+						known = satisfiable(typeRef, available)
+						lsProbes.Store(probe, known)
+						delete(arbitraries, key)
+						delete(inhabitants, key)
+					}
+					found = known.(bool)
 				}
-				result = known.(bool)
+				if available == budget {
+					proofs[key.typeName] = found
+					if _, said := lsUnproven.Load(key.typeName); !found && !said {
+						lsUnproven.Store(key.typeName, true)
+						fmt.Fprintln(os.Stderr, "LawSpec: no value of "+key.typeName+" found in a thousand draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator.")
+					}
+				} else if !found && proven(typeRef) {
+					result = false
+				}
 			}
 		} else {
 			switch typeRef.name {
@@ -589,15 +629,6 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 	// The root's own witnesses always fit, whatever budget the caller states.
 	if constructors, custom := schema.constructors(reference); custom {
 		budget = max(budget, reservation(reference, constructors))
-	}
-	// A probe that found nothing where a value exists (a restriction a draw
-	// seldom meets) can leave the law's own input no constructor at all; the
-	// plan is then made again without probes, as it was before them.
-	if probing && !inhabited(reference, budget) {
-		probing = false
-		clear(minima)
-		clear(inhabitants)
-		clear(arbitraries)
 	}
 	return build(reference, budget)
 }

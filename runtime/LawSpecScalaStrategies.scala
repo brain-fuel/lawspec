@@ -195,6 +195,9 @@ object LawSpecScalaStrategies:
     scala.collection.concurrent
       .TrieMap[(LawSpecSchema, Request, Int, Int), Boolean]()
   private val ProbeSeed = 0x4c61775370656cL
+
+  /** The types a run has said it found no value of, each said once. */
+  private val Unproven = scala.collection.concurrent.TrieMap[String, Unit]()
   private val ProbeMinimum = 100
   private val ProbeAttempts = 10000
   private val IndexSlack = 16L
@@ -483,19 +486,33 @@ object LawSpecScalaStrategies:
     val witnesses = mutable.Map[Named, mutable.ArrayBuffer[Value]]()
     val cache = mutable.Map[Request, Option[Arb[Value]]]()
     val reservations = mutable.Map[Named, Int]()
-    var probing = true
+    var limit = 0
+    val proofs = mutable.Map[Named, Boolean]()
+    val proving = mutable.Set[Named]()
 
-    /** The generator of the law's own input. A probe that found nothing where a
-      * value exists (a restriction a draw seldom meets) can leave no
-      * constructor at all; the plan is then made again without probes, and
-      * sampling alone decides, as it did before them.
+    /** The generator of the law's own input, whose budget is the most any part
+      * of it gets.
       */
     def root(tpe: Named, budget: Int): Option[Arb[Value]] =
-      build(tpe, budget).orElse {
-        probing = false
-        cache.clear()
-        build(tpe, budget)
-      }
+      limit = budget
+      build(tpe, budget)
+
+    /** Whether a probe that found no value of a type at some budget is to be
+      * believed: one found a value at the law's whole budget, so it is the
+      * smaller budget that has none. A restriction that draws seldom meet fails
+      * that probe too, and then decides nothing: the type is planned by its
+      * shape and the filter alone finds its values, or says that it cannot. A
+      * type met again inside its own proof is taken as proven.
+      */
+    def proven(tpe: Named): Boolean =
+      proofs.getOrElse(
+        tpe,
+        if !proving.add(tpe) then true
+        else
+          build(tpe, limit)
+          proving.remove(tpe)
+          proofs.getOrElseUpdate(tpe, true)
+      )
 
     /** Whether a restricted type has a value at this budget: one of as many
       * draws as the filter may make (at least ProbeMinimum, at most
@@ -683,15 +700,23 @@ object LawSpecScalaStrategies:
           result = Some(
             Arb.choice(result.get, Arb.int(0 to seeds.size - 1).map(seeds))
           )
-        if probing && seeds.isEmpty && !schema.isScalar(tpe)
-          && schema.restricted(tpe)
-          && !Probes.getOrElseUpdate(
+        if !schema.isScalar(tpe) && schema.restricted(tpe) then
+          val found = seeds.nonEmpty || Probes.getOrElseUpdate(
             (schema, request, bits, maxAttempts),
             inhabited(tpe, result.get)
           )
-        then
-          cache(request) = None
-          return None
+          if available == limit then
+            proofs(tpe) = found
+            if !found && Unproven
+                .putIfAbsent(LawSpecSchema.key(tpe), ())
+                .isEmpty
+            then
+              System.err.println(
+                s"LawSpec: no value of ${LawSpecSchema.key(tpe)} found in ${maxAttempts.max(ProbeMinimum).min(ProbeAttempts)} draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator."
+              )
+          else if !found && proven(tpe) then
+            cache(request) = None
+            return None
         result = Some(
           Arb.bounded(result.get, maxAttempts, LawSpecSchema.key(tpe))(value =>
             try

@@ -517,6 +517,18 @@ object LawSpecKotlinStrategies {
 
     private val PROBES = java.util.concurrent.ConcurrentHashMap<Probe, Boolean>()
 
+    /** The types a run has said it found no value of, each said once. */
+    private val UNPROVEN = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private fun unproven(type: Named, attempts: Int) {
+        val name = LawSpecSchema.key(type)
+        if (UNPROVEN.add(name)) {
+            System.err.println(
+                "LawSpec: no value of $name found in $attempts draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator."
+            )
+        }
+    }
+
     private class Builder(
         val schema: LawSpecSchema,
         val bits: Int,
@@ -528,19 +540,30 @@ object LawSpecKotlinStrategies {
         val witnesses = mutableMapOf<Named, MutableList<Value>>()
         val cache = mutableMapOf<Request, Arb<Value>?>()
         val reservations = mutableMapOf<Named, Int>()
-        var probing = true
+        var limit = 0
+        val proofs = mutableMapOf<Named, Boolean>()
+        val proving = mutableSetOf<Named>()
+
+        /** The generator of the law's own input, whose budget is the most any part of it gets. */
+        fun root(type: Named, budget: Int): Arb<Value>? {
+            limit = budget
+            return build(type, budget)
+        }
 
         /**
-         * The generator of the law's own input. A probe that found nothing where a value exists (a
-         * restriction a draw seldom meets) can leave no constructor at all; the plan is then made
-         * again without probes, and sampling alone decides, as it did before them.
+         * Whether a probe that found no value of a type at some budget is to be believed: one found
+         * a value at the law's whole budget, so it is the smaller budget that has none. A
+         * restriction that draws seldom meet fails that probe too, and then decides nothing: the
+         * type is planned by its shape and the filter alone finds its values, or says that it
+         * cannot. A type met again inside its own proof is taken as proven.
          */
-        fun root(type: Named, budget: Int): Arb<Value>? =
-            build(type, budget)
-                ?: run {
-                    probing = false
-                    cache.clear()
-                    build(type, budget)
+        fun proven(type: Named): Boolean =
+            proofs[type]
+                ?: if (!proving.add(type)) true
+                else {
+                    build(type, limit)
+                    proving.remove(type)
+                    proofs.getOrPut(type) { true }
                 }
 
         /**
@@ -731,17 +754,21 @@ object LawSpecKotlinStrategies {
                     result = lawspecChoice(result, sample)
                 }
                 val candidates = result
-                if (
-                    probing &&
-                        seeds.isEmpty() &&
-                        !schema.isScalar(type) &&
-                        schema.restricted(type) &&
-                        !PROBES.getOrPut(Probe(schema, request, bits, maxAttempts)) {
-                            inhabited(type, candidates, symbols)
+                if (!schema.isScalar(type) && schema.restricted(type)) {
+                    val found =
+                        seeds.isNotEmpty() ||
+                            PROBES.getOrPut(Probe(schema, request, bits, maxAttempts)) {
+                                inhabited(type, candidates, symbols)
+                            }
+                    if (available == limit) {
+                        proofs[type] = found
+                        if (!found) {
+                            unproven(type, maxAttempts.coerceIn(PROBE_MINIMUM, PROBE_ATTEMPTS))
                         }
-                ) {
-                    cache[request] = null
-                    return null
+                    } else if (!found && proven(type)) {
+                        cache[request] = null
+                        return null
+                    }
                 }
                 result =
                     bounded(result, maxAttempts, LawSpecSchema.key(type)) { value ->

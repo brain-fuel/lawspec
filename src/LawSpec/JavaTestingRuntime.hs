@@ -13,7 +13,7 @@ renderDataStrategies :: TestStyle -> String -> String
 renderDataStrategies style body = unlines
   ([ "package lawspec.testing;", "" ] ++
    map (\name -> "import " ++ name ++ ";")
-     [ "java.util.ArrayList", "java.util.HashMap", "java.util.List", "java.util.Map"
+     [ "java.util.ArrayList", "java.util.HashMap", "java.util.HashSet", "java.util.List", "java.util.Map", "java.util.Set"
      , "java.util.concurrent.ConcurrentHashMap"
      , "java.util.function.Function", "java.util.function.Predicate"
      , "lawspec.runtime.LawSpecRuntime.Data", "lawspec.runtime.LawSpecRuntime.Presence"
