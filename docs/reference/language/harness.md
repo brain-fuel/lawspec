@@ -305,7 +305,7 @@ of which nothing is known, so LawSpec restates it for the functions your law
 writes at its `map`, `filter`, `all` and fold calls, once for each way they
 fit, and for the types of its lists:
 
-```lawspec
+```lawspec fragment
 for law "|doubling commutes with reversal|
   prove by induction on xs using "|map distributes over append|
 end for law
