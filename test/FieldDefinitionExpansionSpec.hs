@@ -123,6 +123,14 @@ test_fieldDefinitionExpansion=describe "checked field predicate expansion" $ do
                                                                                       , "type Reading (a :: Type) is one of | Reading of type a where a = record{value :: (n :: UInt8 where positive n)} end type\n"
                                                                                       , "function reciprocal (input :: Reading a) -> Rational is first matching case of input: when Reading payload then 1 / payload.value end case end function"
                                                                                       , "law selected is definition: reciprocal (Reading record{value = 2}) = rational(1,2) end definition end law" ]
+  it "names the recursive function a field restriction calls" $ do
+    let body=unlines ["function count (xs :: List Int8) -> Integer is first matching case of xs: when Nil then 0 when Cons head tail then 1 + count tail end case end function\n",
+          "type Roster is a record{  names :: (v :: List Int8 where count v > 0)} end type\n"]
+    case compile 64 body of
+      Left diagnostics -> do
+        diagnostics `shouldSatisfy` any (isInfixOf "calls count, which is recursive" . message)
+        diagnostics `shouldSatisfy` all (not . isInfixOf "unknown value" . message)
+      Right _ -> expectationFailure "a recursive field restriction was accepted"
   it "keeps validation-only names out of field diagnostics" $ do
     let body=unlines ["function keep (n :: Bool) -> Bool is true end function\n",
           "function invalid (input :: record{value :: (n :: UInt8 where keep n)}) -> Bool is true end function\n"]

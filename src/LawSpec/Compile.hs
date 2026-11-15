@@ -523,6 +523,20 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
      either (\reason->Left [Diagnostic "definition" ("field restriction: "++reason) (Just (spanStart (functionSpan check)))]) (const (Right ()))
        (typedExpressionWithSchemesContext headerContext headers bits scope (Annotate (mapExprTypes rigid (functionBody check)) (Named "Bool")))
    let us=map (inlineFieldDefinitions headerContext headers bits) beforeExpansion
+   -- A call left after unfolding names a recursive definition (or one whose
+   -- call could not be typed, reported above). Constructor predicates run
+   -- with no definitions in scope, so say that, not "unknown value".
+   forM_ us $ \unit -> forM_ (dataTypes unit) $ \declaration ->
+     forM_ (dataTypeConstructors declaration) $ \constructor ->
+       forM_ (dataConstructorFields constructor) $ \(field,ty) ->
+         case [name | predicate <- typePredicates (Var field) ty, name <- exprVars predicate,
+                 name `notElem` map fst (dataConstructorFields constructor),
+                 name `elem` map functionName (functionDefinitions unit)] of
+           name:_ -> Left [Diagnostic "data-type"
+             ("the restriction on field " ++ field ++ " calls " ++ name ++
+              ", which is recursive; a field restriction is checked wherever a value is built and may call only functions that are not recursive. State the restriction on the parameters of the functions that take the value instead.")
+             (Just (spanStart (dataTypeSpan declaration)))]
+           [] -> pure ()
    mapM_ checkRegexes us
    (nominalTypes,sourceTypes) <- Memo.staged "data-types" "" (elaborateDataDeclarationsWithContext bits us)
    declaredRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
