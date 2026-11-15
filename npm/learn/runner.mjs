@@ -12,7 +12,7 @@ export function runnerEntry({
   return `import {details,coverage,beginTest,namedCalls} from './run-support.mjs';
 ${testFiles.map(file => `import ${JSON.stringify('./' + file)};`).join('\n')}
 (async()=>{try{
- globalThis.process={env:{LAWSPEC_SEED:${JSON.stringify(String(seed))},LAWSPEC_STATS:'/browser-stats'},once(){}};
+ globalThis.process={env:{LAWSPEC_SEED:${JSON.stringify(String(seed))},LAWSPEC_STATS:'/browser-stats'},once(){},getBuiltinModule(){}};
  globalThis.__lessonPropertyMetadata=${JSON.stringify(propertyMetadata)};globalThis.__lessonSeed=${seed};globalThis.__lessonReplay=${JSON.stringify({path, test: replayTest})};
  const result={tests:[],properties:details,coverage,seed:${seed},mode:${JSON.stringify(mode)},harnessReports:(globalThis.__harnessReports??=[])};
  const selected=(globalThis.__lawspecTests??[]).filter(row=>${JSON.stringify(mode)}==='sample'?row.name.endsWith(' property'):${JSON.stringify(mode)}==='examples'?!row.name.endsWith(' property')&&!row.name.endsWith(' replay'):true).filter(row=>!${JSON.stringify(replayTest)}||row.name===${JSON.stringify(replayTest)});

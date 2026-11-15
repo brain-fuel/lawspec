@@ -22,9 +22,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rare value". A law over a request holding an ISBN-13, whose check digit
   random numbers almost never get right, is refused for want of a value; the
   lesson repairs it with an example and with a generator that computes the
-  check digit, in F#, TypeScript and JavaScript. Its steps that need the
-  compiler to find a value from an example or generator are skipped by the
-  story checks until it can.
+  check digit, in F#, TypeScript and JavaScript, and shows a wrong check digit
+  being caught.
 
 ### Changed
 
@@ -64,8 +63,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- The Learn browser runner defines `process.once`, so a law over generated
-  records no longer fails with "process.once is not a function".
+- The Learn browser runner defines `process.once` and
+  `process.getBuiltinModule`, so a law over generated records no longer fails
+  with "process.once is not a function" or "process.getBuiltinModule is not a
+  function".
 - A law could pass without ever drawing a value of a restricted type it has
   no literal of. On Rust, Haskell, JavaScript and TypeScript a restricted
   integer under a `List` or a `Maybe` (`List Percent`) was drawn only as an

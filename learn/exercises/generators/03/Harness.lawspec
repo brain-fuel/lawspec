@@ -1,5 +1,6 @@
 harness learn.lending.testing for learn.lending is
-  strategy bodies :: (n :: Integer where n >= 978000000000 and n <= 979999999999) is any end strategy
+  strategy bodies :: (n :: Integer where n >= 978000000000 and n <=
+      979999999999) is any end strategy
 
   -- Twelve random digits, then the check digit worked out from them.
   strategy isbns :: Isbn is
@@ -8,7 +9,8 @@ harness learn.lending.testing for learn.lending is
     end bind
   end strategy
 
-  strategy renewalCounts :: (n :: Int32 where n >= 0 and n <= 5) is any end strategy
+  strategy renewalCounts :: (n :: Int32 where n >= 0 and n <= 5) is any
+  end strategy
 
   strategy requests :: Request is
     bind book :: Isbn from isbns in

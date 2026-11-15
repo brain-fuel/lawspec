@@ -11,17 +11,17 @@ end function
 function checkDigitFor (body :: Integer) -> Integer is
   prelude.rem (10 - prelude.rem (
     digitAt body 100000000000
-    + 3 * digitAt body 10000000000
-    + digitAt body 1000000000
-    + 3 * digitAt body 100000000
-    + digitAt body 10000000
-    + 3 * digitAt body 1000000
-    + digitAt body 100000
-    + 3 * digitAt body 10000
-    + digitAt body 1000
-    + 3 * digitAt body 100
-    + digitAt body 10
-    + 3 * digitAt body 1
+      + 3 * digitAt body 10000000000
+      + digitAt body 1000000000
+      + 3 * digitAt body 100000000
+      + digitAt body 10000000
+      + 3 * digitAt body 1000000
+      + digitAt body 100000
+      + 3 * digitAt body 10000
+      + digitAt body 1000
+      + 3 * digitAt body 100
+      + digitAt body 10
+      + 3 * digitAt body 1
   ) 10) 10
 end function
 
@@ -31,8 +31,9 @@ wrapper Isbn is Integer where
     and prelude.rem value 10 = checkDigitFor (prelude.quot value 10)
 end wrapper
 
-type Request is a record{
-  book :: Isbn,
+type Request is a record
+{
+  book :: Isbn
   renewals :: Int32
 }
 end type
@@ -42,7 +43,8 @@ loanDays :: Int32 -> Int32
 law "|a request for a catalogued book gets the long loan| is
   definition:
     for all (request :: Request) =>
-      request.renewals >= 0 and request.renewals <= 3 implies loanDays request.renewals >= 28
+      request.renewals >= 0 and request.renewals <= 3 implies loanDays
+        request.renewals >= 28
     end for all
   end definition
 end law

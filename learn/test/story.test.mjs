@@ -2,7 +2,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile, writeFile, mkdir} from 'node:fs/promises';
-import {course, compile, execute, refusesWithoutValue} from './helpers.mjs';
+import {course, compile, execute, refusal} from './helpers.mjs';
 import {buildCourse} from '../build-course.mjs';
 import {expectationProblems} from '../browser/story.mjs';
 /** Check complete scene projects against their actual authored source files.
@@ -71,15 +71,12 @@ for (const language of ['fsharp', 'typescript', 'javascript'])
           if (stage.run.expect === 'refused')
           {
             // The compiler refuses the law: no code is built and no check runs.
-            assert.equal(refusesWithoutValue(plan), true);
+            assert.equal(
+              refusal(plan)?.message,
+              stage.run.refusal,
+              JSON.stringify(plan.diagnostics),
+            );
             assert.equal(plan.code, undefined);
-            return;
-          }
-          if (stage.run.awaitsCompiler && refusesWithoutValue(plan))
-          {
-            // This compiler cannot yet use an example or a bound generator to
-            // find a value; the scene runs in full once it can.
-            t.skip('the compiler does not yet find a value from this scene');
             return;
           }
           assert.deepEqual(

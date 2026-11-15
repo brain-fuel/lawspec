@@ -35,7 +35,8 @@
       "run": {
         "mode": "all",
         "expect": "refused",
-        "seed": 424242
+        "seed": 424242,
+        "refusal": "no value of Isbn found by the boundary search or in 1000 sampled values, so no case of this law could hold one. Give the law an example whose input holds one, or bind a generator."
       },
       "action": "Run all checks and read the refusal. Explain in your own words what the law would have checked if it had been allowed to pass.",
       "reason": "A claim that is never exercised on its restricted input is not evidence. A refusal keeps that visible; a silent pass hides it.",
@@ -61,8 +62,7 @@
       "run": {
         "mode": "all",
         "expect": "failed",
-        "seed": 424242,
-        "awaitsCompiler": true
+        "seed": 424242
       },
       "action": "Read the example, run all checks and find the ISBN in the failing input.",
       "reason": "An example is the quickest way to give a law a witness, and it also documents one valid value. It does not vary.",
@@ -89,8 +89,7 @@
         "mode": "all",
         "expect": "failed",
         "sampled": "failed",
-        "seed": 424242,
-        "awaitsCompiler": true
+        "seed": 424242
       },
       "action": "Open the Harness tab, read bodies, isbns and requests, then run all checks and read the failing request.",
       "reason": "Binding a generator makes valid values part of every run, so the law keeps exercising the case that the restriction makes rare.",
@@ -110,7 +109,7 @@
       "title": "Repair the loan and keep the generator",
       "story": [
         "The failing request is real: a request for a catalogued book with no renewals gets 14 days, not at least 28. Change loanDays so such a request gets 28 days plus 7 for each renewal, then run all checks again.",
-        "As your own challenge, change the isbns strategy to build body * 10 + checkDigitFor body + 1 and predict what the run does. That ISBN has a wrong check digit, so the value is checked against the restriction and the run reports it instead of trusting the generator."
+        "As your own challenge, change the isbns strategy in the Harness to build body * 10 + checkDigitFor body + 1 and predict what the run does. That ISBN has a wrong check digit. The run reports “field refinement 1 failed” for Isbn: the value is checked against the restriction instead of being trusted."
       ],
       "focus": "Solution",
       "project": "exercises/generators/04",
@@ -118,12 +117,11 @@
         "mode": "all",
         "expect": "failed",
         "sampled": "failed",
-        "seed": 424242,
-        "awaitsCompiler": true
+        "seed": 424242
       },
       "action": "Repair loanDays and run all checks. Then break the generator’s check digit as described and read what the run reports.",
       "reason": "The generator exposes the bug and then keeps guarding the repair: every run draws ISBNs.",
-      "expect": "The supplied starter fails the generated law. After the repair, the same run passes; the challenge edit makes the run report an ISBN that fails its restriction.",
+      "expect": "The supplied starter fails the generated law. After the repair, the same run passes; with the wrong check digit the run stops with “field refinement 1 failed” for Isbn.",
       "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
       "challenge": true,
       "editor": "Solution",

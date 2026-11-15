@@ -490,9 +490,9 @@ try
         for (let step = 0; step < lesson.stages.length; step++)
         {
           const stage = lesson.stages[step];
-          if (stage.run.expect === 'refused' || stage.run.awaitsCompiler)
+          if (stage.run.expect === 'refused')
           {
-            continue; // Covered by the story checks until the compiler finds these values.
+            continue; // The browser shows a diagnostic here; the story checks assert its exact text.
           }
           await selectScene(lesson, step);
           const focus =
@@ -550,10 +550,6 @@ try
             await page.locator('#teaching-feedback').textContent(),
             /differs from the supplied/,
           );
-        }
-        if (lesson.stages.some(stage => stage.run.awaitsCompiler))
-        {
-          continue; // The solution runs once the compiler finds a value from a bound generator.
         }
         for (const language of ['fsharp', 'typescript', 'javascript'])
         {

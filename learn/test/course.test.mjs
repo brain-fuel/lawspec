@@ -1,13 +1,7 @@
 /** @file Check the course contract with actual execution and negative controls. ref:REQ-learn-local-execution ref:REQ-learn-progress-portability ref:REQ-learn-generated-boundaries */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  course,
-  compile,
-  execute,
-  refusesWithoutValue,
-  services,
-} from './helpers.mjs';
+import {course, compile, execute, services} from './helpers.mjs';
 import {bundle} from '../browser/bundle.mjs';
 import {adapterSource} from '../browser/adapters.mjs';
 import {validateImport, draftKey} from '../browser/store.mjs';
@@ -21,13 +15,6 @@ for (const language of ['fsharp', 'typescript', 'javascript'])
     for (const lesson of course.lessons)
     {
       const plan = await compile(lesson, language, lesson.solutions[language]);
-      if (
-        refusesWithoutValue(plan) &&
-        lesson.stages.some(stage => stage.run.awaitsCompiler)
-      )
-      {
-        continue; // The solution runs once the compiler finds a value from a bound generator.
-      }
       assert.deepEqual(
         plan.diagnostics.filter(row => row.severity === 'error'),
         [],
@@ -402,13 +389,6 @@ async function verifyDeterministicGeneration()
         language,
         lesson.solutions[language],
       );
-      if (
-        refusesWithoutValue(first) &&
-        lesson.stages.some(stage => stage.run.awaitsCompiler)
-      )
-      {
-        continue; // Nothing is generated until the compiler finds a value from a bound generator.
-      }
       assert.ok(first.code, JSON.stringify(first.diagnostics));
       assert.ok(second.code, JSON.stringify(second.diagnostics));
       assert.deepEqual(second.binding, first.binding);
@@ -557,4 +537,34 @@ test('a false threshold claim shrinks to 80, replays, and accepts the corrected 
       row => row.name.includes('eighty is not below eighty') && !row.ok,
     ),
   );
+});
+test('a generator that builds a wrong check digit is caught by the restriction, and the repaired lesson passes', async () =>
+{
+  const lesson = course.lessons.find(row => row.id === 'generators');
+  for (const language of ['fsharp', 'typescript', 'javascript'])
+  {
+    const solution = lesson.solutions[language];
+    const passed = await execute(
+      (await compile(lesson, language, solution)).code,
+    );
+    assert.equal(passed.ok, true);
+    const harness = solution['Harness.lawspec'].replace(
+      'body * 10 + checkDigitFor body',
+      'body * 10 + checkDigitFor body + 1',
+    );
+    assert.notEqual(harness, solution['Harness.lawspec']);
+    const caught = await execute(
+      (
+        await compile(lesson, language, {
+          ...solution,
+          'Harness.lawspec': harness,
+        })
+      ).code,
+    );
+    assert.equal(caught.ok, false);
+    assert.match(
+      JSON.stringify(caught.tests),
+      /Isbn.*field refinement 1 failed/,
+    );
+  }
 });
