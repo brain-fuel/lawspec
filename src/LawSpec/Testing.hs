@@ -282,9 +282,22 @@ planPopulatedProperty registry programMachineBits invoke definitions p = do
       unless (finite /= Just []) (Left "refined input domain has no valid tuples")
       -- A text refined by a regex starts from texts the regex matches, and
       -- a value whose field is, from values with such fields.
+      -- An example's inputs are values the law's author wrote: they count as
+      -- witnesses of the restricted types they hold.
+      written <- mapM (\example -> mapM (\(name,value) -> (,) name <$>
+        evaluateValuePure registry programMachineBits [] value) (exampleBindings example)) (propertyExamples p)
+      let harness = propertyHarness p
+          bound q = binderId (quantifiedBinder q) `elem`
+            ([target | (target,_,_,_) <- harnessSearches harness] ++ map witnessTarget (harnessWitnesses harness))
       bs <- sequence [case domain of
           Just values | hasValueContracts registry ty -> pure values
-          _ -> (\base -> patternValues definitions hinted ++ fieldPatternValues definitions hinted base ++ memberValues hinted ++ base) <$> boundariesWithRegistry registry programMachineBits ty
+          _ -> do
+            base <- boundariesWithRegistry registry programMachineBits ty
+            let known = patternValues definitions hinted ++ fieldPatternValues definitions hinted base ++ memberValues hinted ++ base
+                given = [value | bindings <- written, Just value <- [lookup (binderId (quantifiedBinder q)) bindings]]
+            shown <- if hasValueContracts registry ty && not (bound q)
+              then restrictedWitnesses registry programMachineBits ty known given else pure []
+            pure (known ++ shown)
         | (q,ty,domain) <- zip3 qs types domains, let hinted = guardedQuantifier (propertyBody p) q]
       unless (all (not . null) bs) (Left "uninhabited input domain")
       let tuples = if null bs then [[]] else [[xs !! (i `mod` length xs) | xs <- bs] | i <- [0..maximum (map length bs)-1]]
@@ -911,6 +924,152 @@ boundariesWithRegistry registry bits ty = do
                   | otherwise = [[values !! (index `mod` length values) | values <- sets]
                       | index <- [0 .. maximum (map length sets) - 1]]
 
+
+-- | A restricted type a law's input can hold, but no boundary value does, is
+-- shown here to have a value, or the law is refused: a generator that never
+-- builds one would let the law pass on the cases that avoid it (always not p,
+-- so p implies q). The value comes from an example the law wrote, from the
+-- boundary search of the type itself, or from a fixed sequence of sampled
+-- values, each checked by the evaluator; it is returned inside a value of the
+-- input's type, so it joins the law's boundary cases and every target's
+-- generator starts from it. A type shown to have a value that no checked
+-- value of the input can be built around returns nothing: the runtimes then
+-- decide, and fail the law if they find none either.
+-- ref:DEC-never-pass-vacuously ref:DEC-planned-generation
+restrictedWitnesses :: TypeRegistry -> Int -> Type -> [Value] -> [Value] -> Either String [Value]
+restrictedWitnesses registry bits root known given = concat <$> mapM witness missing
+  where
+    table = population registry
+    step ty = case ty of
+      Constructor name [] | Just _ <- primitive name -> []
+      Constructor name [TypeArgument element] | name `elem` ["Nullable", "Optional", "List"] -> [element]
+      Constructor _ _ -> either (const []) (concatMap snd) (viableConstructors registry table ty)
+      _ -> []
+    grow seen [] = reverse seen
+    grow seen (ty : rest)
+      | ty `elem` seen = grow seen rest
+      | otherwise = grow (ty : seen) (step ty ++ rest)
+    reachable = grow [] [root]
+    restricted ty = case ty of
+      Constructor name _ | Right declaration <- lookupData registry (Id name) ->
+        any (not . null . constructorPredicates) (dataConstructors declaration)
+      _ -> False
+    held value = case value of
+      DataValue ty _ fields -> ty : concatMap held fields
+      PresenceValue _ (Just inner) -> held inner
+      _ -> []
+    present = nubOrd (concatMap held known)
+    missing = [ty | ty <- reachable, ty /= root, restricted ty, inhabited table ty, ty `notElem` present]
+    accepted ty value = acceptsValue registry bits ty value == Right True
+    witness target = case filter ((target `elem`) . held) given of
+      value : _ -> pure [value]
+      [] -> do
+        let searched = either (const []) id (boundariesWithRegistry registry bits target)
+            values = if null searched then sampledValues registry bits target else searched
+        when (null values) (Left ("no value of " ++ restrictedName target ++
+          " found by the boundary search or in " ++ show sampleAttempts ++
+          " sampled values, so no case of this law could hold one. " ++
+          "Give the law an example whose input holds one, or bind a generator."))
+        pure (take 1 (holding target (take 4 values) (length reachable) [] root))
+    fill ty = take 3 (either (const []) id (boundariesWithRegistry registry bits ty))
+    holding target values depth path ty
+      | ty == target = values
+      | depth <= 0 || ty `elem` path || target `notElem` grow [] [ty] = []
+      | otherwise = case ty of
+          Constructor name [TypeArgument element] | name `elem` ["Nullable", "Optional"] ->
+            map (PresenceValue ty . Just) (inner element)
+          Constructor "List" [TypeArgument element] -> [listValue element [value] | value <- inner element]
+          Constructor _ _ -> take 2
+            [ candidate
+            | (tag, fields) <- either (const []) id (viableConstructors registry table ty)
+            , index <- [0 .. length fields - 1]
+            , value <- take 2 (inner (fields !! index))
+            , payload <- take 8 (sequence [if position == index then [value] else fill field
+                | (position, field) <- zip [0 :: Int ..] fields])
+            , let candidate = DataValue ty tag payload
+            , accepted ty candidate ]
+          _ -> []
+      where inner = holding target values (depth - 1) (ty : path)
+
+-- | The name a restricted type has in the specification.
+restrictedName :: Type -> String
+restrictedName ty = case ty of
+  Constructor name arguments -> unwords (short name : [argument | TypeArgument t <- arguments
+    , let argument = if ' ' `elem` restrictedName t then "(" ++ restrictedName t ++ ")" else restrictedName t])
+  _ -> show ty
+  where
+    short name = case stripPrefix "::epyt::" (dropWhile (/= ':') (reverse name)) of
+      Just _ -> reverse (takeWhile (/= ':') (reverse name))
+      Nothing -> name
+
+-- | How many sampled values a restricted type is given before it is said to
+-- have none found; the runtimes' probes use the same number.
+sampleAttempts :: Int
+sampleAttempts = 1000
+
+-- | Values of a restricted type the boundary search found none of, drawn from
+-- a fixed linear congruential sequence and kept when the evaluator accepts
+-- them. Deterministic: the same specification gives the same values on every
+-- machine and target. Not finding one never claims the type empty.
+sampledValues :: TypeRegistry -> Int -> Type -> [Value]
+sampledValues registry bits target = take 4
+  [value | seed <- take sampleAttempts [1 ..], let value = fst (draw (4 :: Int) target (next seed))
+         , acceptsValue registry bits target value == Right True]
+  where
+    table = population registry
+    next :: Integer -> Integer
+    next state = (state * 6364136223846793005 + 1442695040888963407) `mod` (2 ^ (64 :: Int))
+    pick :: Integer -> Int -> (Int, Integer)
+    pick state choices = let advanced = next state
+      in (fromInteger ((advanced `div` (2 ^ (33 :: Int))) `mod` toInteger (max 1 choices)), advanced)
+    unknown = ScalarValue (SAbsent "sample")
+    many depth element count state
+      | count <= 0 = ([], state)
+      | otherwise = let (value, after) = draw depth element state
+                        (rest, final) = many depth element (count - 1 :: Int) after
+                    in (value : rest, final)
+    draw depth ty state = case ty of
+      Constructor name [] | isInteger name ->
+        let (width, chosen) = pick state 4
+            advanced = next chosen
+            reach = [256, 65536, 2 ^ (32 :: Int), 2 ^ (62 :: Int)] !! width :: Integer
+            number = (advanced `div` 65536) `mod` reach - reach `div` 2
+            fits = [ScalarValue scalar | candidate <- [number, abs number `mod` 128]
+                   , Right scalar <- [validateScalar bits (SInteger name candidate)]]
+        in (case fits of value : _ -> value; [] -> unknown, advanced)
+      Constructor "Text" [] ->
+        let (count, chosen) = pick state 9
+            letters = "abcxyzABC019 -_@."
+            spell 0 current = ([], current)
+            spell remaining current = let (index, after) = pick current (length letters)
+                                          (rest, final) = spell (remaining - 1 :: Int) after
+                                      in (letters !! index : rest, final)
+            (text, final) = spell count chosen
+        in (ScalarValue (textScalar text), final)
+      Constructor name [] | Just _ <- primitive name ->
+        let cases = scalarCases bits name
+            (index, chosen) = pick state (length cases)
+        in (if null cases then unknown else cases !! index, chosen)
+      Constructor name [TypeArgument element] | name `elem` ["Nullable", "Optional"] ->
+        let (choice, chosen) = pick state 2
+        in if choice == 0 || depth <= 0 then (PresenceValue ty Nothing, chosen)
+           else let (value, final) = draw (depth - 1) element chosen in (PresenceValue ty (Just value), final)
+      Constructor "List" [TypeArgument element] ->
+        let (count, chosen) = pick state (if depth <= 0 then 1 else 4)
+            (values, final) = many (depth - 1) element count chosen
+        in (listValue element values, final)
+      Constructor _ _ | depth > -8 -> case either (const []) id (viableConstructors registry table ty) of
+        [] -> (unknown, state)
+        constructors ->
+          let smallest = take 1 (sortOn (length . snd) constructors)
+              choices = if depth <= 0 then smallest else constructors
+              (index, chosen) = pick state (length choices)
+              (tag, fields) = choices !! index
+              step (values, current) field = let (value, after) = draw (depth - 1) field current
+                                             in (values ++ [value], after)
+              (payload, final) = foldl step ([], chosen) fields
+          in (DataValue ty tag payload, final)
+      _ -> (unknown, state)
 
 -- | A bounded witness search is deliberately separate from finite enumeration:
 -- failure to find a value does not establish that its type is empty. Memoized

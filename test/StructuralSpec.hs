@@ -4,7 +4,7 @@ module StructuralSpec (test_structuralTypesHaveOneRegistryAndNativeDeclarations)
 import Test.Hspec
 import Data.Either (isLeft, isRight)
 import Control.Monad (forM_)
-import Data.List (sortOn, isSuffixOf, isInfixOf)
+import Data.List (sortOn, isPrefixOf, isSuffixOf, isInfixOf)
 import qualified Data.Map.Strict as M
 import LawSpec.Common
 import LawSpec.Core
@@ -433,6 +433,53 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
               mapM_ (\values -> T.validTuple r bits
                 (propertyInputs (T.plannedProperty property)) values `shouldBe` Right True)
                 (T.boundaryCases property)
+    it "shows a value of every restricted type a law's input can hold, or refuses the law" $ do
+      source <- readFile "test/fixtures/witnessless-refinements.lawspec"
+      let planned text = either (Left . show) (either (Left . show) Right . T.planTesting)
+            (compileCore 64 defaultGeneration [Source "witnessless" text])
+          replaced old new text = case breakOn old text of
+            Just (before, after) -> before ++ new ++ after
+            Nothing -> error ("fixture no longer holds: " ++ old)
+          breakOn old text = case [(take index text, drop (index + length old) text)
+                                  | index <- [0 .. length text - length old], old `isPrefixOf` drop index text] of
+            found : _ -> Just found
+            [] -> Nothing
+          residue = "wrapper Residue is Integer where prelude.rem (value + 4) 53 = 0 end wrapper"
+          example = "    envelope = Sealed (Keyed 999999)\n"
+      case compileCore 64 defaultGeneration [Source "witnessless" source] of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right program -> do
+          r <- registry (programDataDeclarations program)
+          let named name = [Constructor (idText (dataId declaration)) []
+                | declaration <- programDataDeclarations program, name `isSuffixOf` idText (dataId declaration)]
+          forM_ (named "::Residue") $ \ty -> do
+            T.boundariesWithRegistry r 64 ty `shouldSatisfy` isLeft
+            T.sampledValues r 64 ty `shouldSatisfy` (not . null)
+          forM_ (named "::Keyed") $ \ty -> do
+            T.boundariesWithRegistry r 64 ty `shouldSatisfy` isLeft
+            T.sampledValues r 64 ty `shouldBe` []
+          length (named "::Residue" ++ named "::Keyed") `shouldBe` 2
+      case planned source of
+        Left message -> expectationFailure message
+        Right plan -> do
+          let cases name = concat [show (T.boundaryCases property)
+                | property <- concatMap T.plannedProperties (T.plannedUnits plan)
+                , name `isInfixOf` show (propertyId (T.plannedProperty property))]
+          -- Found by neither a literal nor an edge: the sampled values.
+          cases "marked draw" `shouldSatisfy` isInfixOf "Marked"
+          -- Found by nothing: the value the law's example wrote.
+          cases "sealed envelope" `shouldSatisfy` isInfixOf "999999"
+      planned (replaced residue
+        "wrapper Residue is Integer where value > 0 && prelude.rem (value + 4) 1000003 = 0 && prelude.rem value 53 = 1 end wrapper"
+        source) `shouldSatisfy` either (isInfixOf "no value of Residue found") (const False)
+      -- An example whose value no longer meets its restriction is an error,
+      -- never a witness.
+      planned (replaced "prelude.rem (value + 4) 1000003 = 0 end wrapper"
+        "prelude.rem (value + 5) 1000003 = 0 end wrapper" source) `shouldSatisfy`
+        either (isInfixOf "Keyed: field refinement failed") (const False)
+      planned (replaced example "    envelope = Plain\n" (replaced "    expect seal envelope = 1\n"
+        "    expect seal envelope = 0\n" source)) `shouldSatisfy`
+        either (isInfixOf "no value of Keyed found") (const False)
     it "reports exhausted witness search without claiming an infinite domain empty" $ do
       let ty = app "Impossible" []
           never = (ctor "Impossible" [scalarType "BigInt"]){constructorPredicates=
