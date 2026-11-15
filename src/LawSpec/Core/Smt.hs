@@ -321,7 +321,7 @@ counterexampleQuery program law = do
 
 -- | A data type is its own SMT sort (lawspec-smtlib-v2): a closed instance,
 -- such as Maybe Int32, declared with its constructors and selectors.
-data Sort = BooleanSort | IntegerSort | RealSort | UnitSort | StringSort | FloatSort Int Int | DataSort Type deriving (Eq,Show)
+data Sort = BooleanSort | IntegerSort | RealSort | UnitSort | StringSort | FloatSort Int Int | DataSort Type | AbstractSort String deriving (Eq,Show)
 data Term = Term { termSort :: Sort, value :: String, defined :: String }
 data Certificate = Certificate { positive :: String, negative :: String }
 -- The encoding a task needs so far: the newest any feature it uses requires.
@@ -358,7 +358,9 @@ data Work = Work { nextName :: Int, visited :: Int, required :: Encoding
                  , concluding :: Bool
                  -- The definitions without arguments met so far: each is
                  -- defined once, and named wherever it is used.
-                 , constants :: [Id] }
+                 , constants :: [Id]
+                 -- The uninterpreted sorts used so far.
+                 , abstractSorts :: [String] }
 
 -- | The conclusion of an assumed law.
 concluded :: Encode a -> Encode a
@@ -370,7 +372,7 @@ concluded action = do
   pure result
 
 start :: Encoding -> Program -> Recursion -> Work
-start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty [] M.empty False []
+start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty [] M.empty False [] []
 
 -- | With recursive definitions, the solver options that keep unfolding
 -- bounded (as Dafny sets them: no model-based quantifier instantiation, so
@@ -443,6 +445,11 @@ sort (Constructor name []) | isInteger name = Right IntegerSort
 -- Text uses UTF-32BE bytes in SMT strings, preserving the full Unicode
 -- scalar domain despite Z3's smaller native character alphabet.
 sort (Constructor "Text" []) = Right StringSort
+-- A type of which nothing is known: a handle of the capability laws' unit
+-- (LawSpec.Instances), which declares no other type. It is an
+-- uninterpreted sort, so a law proved over it holds at every type.
+-- ref:DEC-capability-laws
+sort (Constructor name []) | "lawspec.instances.laws::type::" `isPrefixOf` name = Right (AbstractSort name)
 sort ty = Left ("unsupported SMT carrier: " ++ show ty)
 -- | Every data declaration the program can use, by type name.
 type Catalog = M.Map String DataDeclaration
@@ -596,12 +603,16 @@ sortOf program ty = do
   s <- lift (sortIn types ty)
   when (s == StringSort || ty == Constructor "Decimal" [] || isFloat s) (requires SmtLibV2)
   case s of
+    AbstractSort name -> do
+      requires SmtLibV2
+      modify (\w -> w{abstractSorts = if name `elem` abstractSorts w then abstractSorts w else abstractSorts w ++ [name]})
     DataSort _ -> do
       requires SmtLibV2
       declared <- gets datatypes
       unless (ty `elem` declared) $ do
         modify (\w -> w{datatypes = datatypes w ++ [ty]})
         forM_ (fieldTypes types ty) $ \fieldType -> case sort fieldType of
+          Right (AbstractSort _) -> () <$ sortOf program fieldType
           Right _ -> pure ()
           Left _ -> () <$ sortOf program fieldType
     _ -> pure ()
@@ -622,9 +633,15 @@ quantifierSortOf program ty = do
 -- with define-funs-rec, which is sound because a datum is finite.
 datatypePreamble :: Program -> Encode String
 datatypePreamble program = do
+  body <- declaredDatatypes program
+  sorts <- gets abstractSorts
+  pure (concat ["(declare-sort " ++ sortText (AbstractSort name) ++ " 0)\n" | name <- sorts] ++ body)
+
+declaredDatatypes :: Program -> Encode String
+declaredDatatypes program = do
   initial <- gets datatypes
   if null initial then pure "" else do
-    bodies <- wellFormed []
+    found <- wellFormed []
     final <- gets datatypes
     types <- gets known
     let bits = programMachineBits program
@@ -639,8 +656,16 @@ datatypePreamble program = do
         -- a list, by its length) is stated after the definitions, which
         -- themselves name well-formedness: declared here, and given its
         -- meaning by an axiom that follows them.
+        -- A type that restricts nothing, and holds only such types, is well
+        -- formed whatever its value: its predicate is true outright, not a
+        -- recursion the solver must unfold to learn as much.
+        free = shrink [t | (t, (_, Just _)) <- found]
+        shrink candidates =
+          let kept = [t | t <- candidates, Just (_, Just needs) <- [lookup t found], all (`elem` candidates) needs]
+          in if length kept == length candidates then kept else shrink kept
+        bodies = [(t, if t `elem` free then "true" else text) | (t, (text, _)) <- found]
         calls t = any (`isInfixOf` body t) ["|lawspec_function", "|lawspec_defined"]
-        graph = [(t, typeSymbol t, [typeSymbol f | f <- fieldTypes types t, f `elem` final]) | t <- final]
+        graph = [(t, typeSymbol t, [typeSymbol f | t `notElem` free, f <- fieldTypes types t, f `elem` final]) | t <- final]
         later = concat [members | component <- stronglyConnComp graph, let members = flattenSCCs [component], any calls members]
         early = [t | t <- final, t `notElem` later]
         components = stronglyConnComp [node | node@(t, _, _) <- graph, t `elem` early]
@@ -665,7 +690,9 @@ datatypePreamble program = do
         new <- forM pending (\ty -> (,) ty <$> wellFormedBody program ty)
         wellFormed (done ++ new)
 
-wellFormedBody :: Program -> Type -> Encode String
+-- | A type's well-formedness of x, and, when that asks no more than that
+-- the data it holds be well formed, the types of that data.
+wellFormedBody :: Program -> Type -> Encode (String, Maybe [Type])
 wellFormedBody program ty = do
   types <- gets known
   (declaration, table) <- lift (declarationOf types ty)
@@ -675,15 +702,20 @@ wellFormedBody program ty = do
           selected = app (selectorSymbol ty c i) ["x"]
       s <- sortOf program fieldType
       range <- lift (domain (programMachineBits program) fieldType selected)
-      pure ((binderId f, Term s selected "true"), range)
+      let needs | range == "true" = Just []
+                | range == app (wellFormedSymbol fieldType) [selected] = Just [fieldType]
+                | otherwise = Nothing
+      pure ((binderId f, Term s selected "true"), (range, needs))
     invariant <- restrictions program [] (M.fromList (map fst fields)) (map (instantiateExpression table) (constructorPredicates c))
-    pure (app "=>" [tester ty c "x", both (map snd fields ++ [positive invariant])])
-  pure (both conditions)
+    pure ( app "=>" [tester ty c "x", both (map (fst . snd) fields ++ [positive invariant])]
+         , if null (constructorPredicates c) then concat <$> mapM (snd . snd) fields else Nothing )
+  pure (both (map fst conditions), concat <$> mapM snd conditions)
 
 sortText :: Sort -> String
 sortText BooleanSort = "Bool"
 sortText UnitSort = "Bool"
 sortText (DataSort ty) = "|" ++ typeSymbol ty ++ "|"
+sortText (AbstractSort name) = "|" ++ name ++ "|"
 sortText IntegerSort = "Int"
 sortText RealSort = "Real"
 sortText StringSort = "String"
@@ -1022,6 +1054,7 @@ expression program active scope source = do
         s <- sortOf program (expressionType source)
         case s of
           DataSort _ -> lift (Left "unsupported SMT expression (an unreachable data value); no uninterpreted replacement was introduced")
+          AbstractSort _ -> lift (Left "unsupported SMT expression (an unreachable value of an unknown type)")
           _ -> pure (Term s (case s of BooleanSort -> "false"; UnitSort -> "false"; _ -> "0") "false")
       Helper Checked [argument] -> do
         term <- recurse argument

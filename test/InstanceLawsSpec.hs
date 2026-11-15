@@ -60,8 +60,8 @@ proved z3 task = do
 
 uses :: [String]
 uses =
-  [ "import lawspec.instances.laws (same)"
-  , "law \"|uses| is definition: same 1 = 1 end definition end law" ]
+  [ "import lawspec.instances.laws (negated)"
+  , "law \"|uses| is definition: negated true = false end definition end law" ]
 
 test_capabilityLawsAreProved :: Spec
 test_capabilityLawsAreProved = describe "capability laws" $ do

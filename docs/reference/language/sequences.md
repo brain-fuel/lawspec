@@ -287,9 +287,10 @@ retain the two dimension representations from examples 48 and 49.
 ## The laws of the list operations
 
 The built-in unit `lawspec.instances.laws` states the laws of the list
-operations once. Each is about functions of which nothing is known (`first`,
-`second`, `accepts`, `alsoAccepts`, `combine`), so a proof of one holds for
-whatever function a spec writes in their place.
+operations once. Each is about types and functions of which nothing is known
+(elements of type `Element`; functions `first`, `second`, `accepts`,
+`alsoAccepts`, `combineLeft`, `combineRight`), so a proof of one holds for
+whatever type and function a spec writes in their place.
 
 | Operations | Laws |
 | --- | --- |
@@ -300,7 +301,7 @@ whatever function a spec writes in their place.
 | together | map keeps the length; map, filter and all distribute over `++`; each fold of an append folds one list then the other; filter after map is map after filter |
 
 LawSpec's own checks prove every one of these with Z3, by induction over the
-list. The solver treats the functions as unknown only in this unit. An
-adapter of your own is native code, and a law that calls it stays unsupported
-by the solver.
+list. The solver treats the types and functions as unknown only in this unit.
+A handle or an adapter of your own is native, and a law over it stays
+unsupported by the solver.
 

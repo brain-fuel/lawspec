@@ -27,11 +27,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The built-in unit `lawspec.instances.laws` states the laws of the list
   operations (map, filter, the folds, all, any, length, `++` and how they
-  combine) over functions the solver knows nothing about. LawSpec's own
+  combine) over element types and functions the solver knows nothing
+  about. LawSpec's own
   checks prove each of them with Z3. See
   [the laws of the list operations](docs/reference/language/sequences.md#the-laws-of-the-list-operations).
 
 ### Changed
+
+- The solver no longer unfolds a recursion to learn that a list (or other
+  data) of unrestricted values is well formed, which let Z3 time out on
+  some induction steps.
 
 - The solver reasons about `prelude.map`, `prelude.filter`, `prelude.all`,
   `prelude.any`, `prelude.contains`, the folds, `prelude.concat`, and
