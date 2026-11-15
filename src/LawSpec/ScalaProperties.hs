@@ -523,8 +523,7 @@ emitTestsWith split Config{..} unit laws = do
                         else [braced (L.condition "if" (text "!(" <> L.conjunction (map (truth . expr) refinements) <> text ")")) [text "null"] <>
                           text " else " <> L.block checkedCase])))
           keptDefinition = [bind "keptInputs" (call "java.util.List.of[String]" (map quoted (keptDescriptors k))) | Just k <- [kept]]
-          keptTest = [braced (call register [quoted (base' ++ "_kept")]) [runtime "keptReplay" [quoted label, quoted (keptSpec k), text "keptInputs", text "Schema",
-                 call "java.util.List.of[lawspec.runtime.LawSpecSchema.TypeRef]" [reference (inputType inp) | inp <- inputs e], text "MachineBits", searchCase]] | Just k <- [kept]]
+          keptTest = [braced (call register [quoted (base' ++ "_kept")]) [runtime "keptReplay" [quoted label, quoted (keptSpec k), text "keptInputs", call "Schema.kept" [call "java.util.List.of[lawspec.runtime.LawSpecSchema.TypeRef]" [reference (inputType inp) | inp <- inputs e], text "MachineBits"], searchCase]] | Just k <- [kept]]
           (searchBefore, searchAfter) =
             ( keptDefinition ++ [bind "searchInputs" (call "java.util.List.of[String]" (map quoted ds)) | Just ds <- [descriptors]] ++
               [caseDefinition | descriptors /= Nothing || kept /= Nothing] ++ keptTest ++

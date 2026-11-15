@@ -487,8 +487,7 @@ emitTests Config{..} unit laws = do
                         [bracketed e [lawAssertion (quoted (linked e (shown ++ " search")))],
                          maybe (text "0.0") (\score -> runtime "searchNumber" [expr score]) (C.harnessTarget h)]))
           keptDefinition = [bind keptName (call "listOf" (map quoted (keptDescriptors k))) | Just k <- [kept]]
-          keptTest = [quoted (base' ++ "_kept") <> text " " <> L.lambda [] [runtime "keptReplay" [quoted label, quoted (keptSpec k), text keptName, text "SCHEMA",
-                 call "listOf" [reference (inputType inp) | inp <- inputs e], text "MACHINE_BITS", searchCase]] | Just k <- [kept]]
+          keptTest = [quoted (base' ++ "_kept") <> text " " <> L.lambda [] [runtime "keptReplay" [quoted label, quoted (keptSpec k), text keptName, call "SCHEMA.kept" [call "listOf" [reference (inputType inp) | inp <- inputs e], text "MACHINE_BITS"], searchCase]] | Just k <- [kept]]
           (searchBefore, searchAfter) =
             ( keptDefinition ++ [bind inputsName (call "listOf" (map quoted ds)) | Just ds <- [descriptors]] ++
               [caseDefinition | descriptors /= Nothing || kept /= Nothing] ++ keptTest ++

@@ -10651,8 +10651,14 @@ public final class LawSpecRuntime
     }
   }
 
+  /** Checks the decoded input at an index against its type's definition; throws if it fails. */
+  public interface KeptAdmit
+  {
+    Value admit(int index, Value value);
+  }
+
   public static void keptReplay(String law, String spec, List<String> descriptors,
-      LawSpecSchema schema, List<LawSpecSchema.TypeRef> references, int bits, SearchCase check)
+      KeptAdmit admit, SearchCase check)
       throws Exception
   {
     var file = keptCap(spec) > 0 ? keptFile(spec) : null;
@@ -10675,7 +10681,7 @@ public final class LawSpecRuntime
             var described = valuesFrom(descriptors.get(i));
             var value = wireDecode(described.values(), described.descriptor(),
                 java.util.HexFormat.of().parseHex(entry.inputs().get(i)));
-            values.add(schema.validate((LawSpecSchema.Named) references.get(i), value, bits));
+            values.add(admit.admit(i, value));
           }
         }
         catch (RuntimeException e)

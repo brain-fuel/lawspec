@@ -268,7 +268,7 @@ emitTests Config{..} unit laws = do
     -- uses the law's case method, which checks one tuple of inputs.
     searchHooks =
       [ (propertyName index e ++ "_property", (statements ([statement (runtime "keptReplay" [quoted label, quoted (keptSpec k), text (constantName fn "_KEPT"),
-              text "SCHEMA", call "java.util.List.of" [reference (inputType inp) | inp <- inputs e], text "MACHINE_BITS", caseRef]) | Just k <- [keptSpecOf e]] ++
+              call "SCHEMA.kept" [call "java.util.List.of" [reference (inputType inp) | inp <- inputs e], text "MACHINE_BITS"], caseRef]) | Just k <- [keptSpecOf e]] ++
             [statement (runtime "searchReplay" [quoted label, inputs', caseRef]) | Just _ <- [searchDescriptors e]]),
           [statement (runtime "searchClimb" [quoted label, inputs', caseRef]) | Just _ <- [searchDescriptors e], C.harnessTarget (C.propertyHarness (original e)) /= Nothing]))
       | (index, e) <- zip [0::Int ..] laws, searchDescriptors e /= Nothing || keptSpecOf e /= Nothing

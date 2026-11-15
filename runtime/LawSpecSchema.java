@@ -885,6 +885,12 @@ public final class LawSpecSchema
     return true;
   }
 
+  /** The check a kept value passes before a run uses it: each input against its type. */
+  public LawSpecRuntime.KeptAdmit kept(List<? extends TypeRef> types, int bits)
+  {
+    return (index, value) -> validate((Named) types.get(index), value, bits);
+  }
+
   public Value validate(Named type, Value value, int bits)
   {
     return validate(type, value, bits, new HashMap<>());
