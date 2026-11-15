@@ -1,22 +1,24 @@
 harness learn.lending.testing for learn.lending is
-  -- The two vouchers that pass both checks and fit in an Int32.
-  strategy vouchers :: Voucher is
-    bind k :: Int32 from (one of 0, 1) in
-      one of Voucher (900690137 + 900720143 * k)
+  strategy bodies :: (n :: Integer where n >= 978000000000 and n <= 979999999999) is any end strategy
+
+  -- Twelve random digits, then the check digit worked out from them.
+  strategy isbns :: Isbn is
+    bind body :: Integer from bodies in
+      one of Isbn (body * 10 + checkDigitFor body)
     end bind
   end strategy
 
   strategy renewalCounts :: (n :: Int32 where n >= 0 and n <= 5) is any end strategy
 
   strategy requests :: Request is
-    bind voucher :: Voucher from vouchers in
+    bind book :: Isbn from isbns in
       bind renewals :: Int32 from renewalCounts in
-        one of Request record{ voucher = voucher , renewals = renewals }
+        one of Request record{ book = book , renewals = renewals }
       end bind
     end bind
   end strategy
 
-  for law "|a voucher request gets the long loan|
+  for law "|a request for a catalogued book gets the long loan|
     use requests for request
   end for law
 end harness

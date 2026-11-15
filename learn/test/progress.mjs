@@ -11,7 +11,9 @@ export async function verifyProgress(page, course)
     errors = [];
   legacy.on('pageerror', error => errors.push(error.message));
   const addition = course.lessons[0],
-    other = course.lessons.at(-1);
+    other = course.lessons.findLast(
+      lesson => !lesson.stages.some(stage => stage.run.awaitsCompiler),
+    );
   const address = (lesson, track, stage = lesson.stages[0]) =>
   {
     const url = new URL(page.url());

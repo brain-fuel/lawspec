@@ -19,11 +19,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   law's inputs now cover restricted types and generic types applied to
   arguments, for this store only.
 - The Learn course has a seventh lesson, "Practice: bind a generator for a
-  rare value". A law over a record that holds a restricted type no draw
-  almost ever meets is refused for want of a value; the lesson repairs it
-  with an example and with a bound generator in F#, TypeScript and
-  JavaScript. Its steps that need the compiler to find a value from an example
-  or generator are skipped by the story checks until it can.
+  rare value". A law over a request holding an ISBN-13, whose check digit
+  random numbers almost never get right, is refused for want of a value; the
+  lesson repairs it with an example and with a generator that computes the
+  check digit, in F#, TypeScript and JavaScript. Its steps that need the
+  compiler to find a value from an example or generator are skipped by the
+  story checks until it can.
 
 ### Changed
 

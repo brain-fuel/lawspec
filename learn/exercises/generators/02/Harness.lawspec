@@ -1,4 +1,0 @@
-harness learn.lending.testing for learn.lending is
-  for law "|a voucher request gets the long loan|
-  end for law
-end harness

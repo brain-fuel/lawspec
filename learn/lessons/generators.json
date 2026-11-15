@@ -2,33 +2,33 @@
   "id": "generators",
   "title": "Practice: bind a generator for a rare value",
   "section": "Apply the ideas",
-  "vision": "Give a law the valid values it needs when random draws almost never produce one, and see the law exercised with them.",
-  "slogan": "No value, no evidence.",
-  "symbol": "900690137 + 900720143 * k",
+  "vision": "Give a law the valid ISBNs it needs when random numbers almost never carry the right check digit, and see the law exercised with them.",
+  "slogan": "No valid ISBN, no evidence.",
+  "symbol": "12 digits + a computed check digit",
   "explanation": "Laws and generation strategies are authored in LawSpec. Only the implementation changes language.",
   "news": "A law over a restricted type needs a valid value to test; a generator or an example supplies it.",
-  "contributions": "A voucher-loan law refused for lack of a value, repaired once with an example and once with a bound generator. The generator exposes a 14-day bug on real vouchers; every value is checked against the restriction. Evidence covers the two valid vouchers and renewal counts built here.",
+  "contributions": "A catalogued-book loan law refused for lack of a valid ISBN, repaired once with an example and once with a generator that computes the check digit. The generator exposes a 14-day bug on real ISBNs; every value is checked against the restriction. Evidence covers the ISBNs the generator draws, with renewal counts from 0 to 5.",
   "star": {
-    "salient": "A law over a restricted type needs a value of that type, and a generator supplies one every run.",
-    "slogan": "No value, no evidence.",
-    "symbol": "900690137 + 900720143 * k",
+    "salient": "A law over a restricted type needs a value of that type, and a generator can build one every run.",
+    "slogan": "No valid ISBN, no evidence.",
+    "symbol": "12 digits + a computed check digit",
     "surprise": "A law can compile and pass while never meeting the case it names; LawSpec refuses it instead.",
-    "story": "The library gives voucher holders long loans, but vouchers pass two checks that random numbers almost never meet. Without a voucher the law proves nothing; with a bound generator it tests every run and finds the 14-day bug."
+    "story": "The library catalogues books by ISBN-13, whose last digit is a check digit. Random numbers almost never carry the right one, so without a valid ISBN the loan law proves nothing; a generator that computes the check digit exercises it every run and finds the 14-day bug."
   },
   "attribution": [],
   "hints": [
-    "Which request would show that a voucher holder gets 14 days? Find the voucher in the failing input.",
+    "Which request would show that a catalogued book gets 14 days? Find the ISBN in the failing input.",
     "Compare loanDays 0 with the 28 the law demands. What constant should the formula start from?",
     "Start from 28 and add 7 for each renewal. Load solution shows the complete repair."
   ],
   "stages": [
     {
       "id": "refused",
-      "title": "The law has no voucher to test",
+      "title": "The law has no valid ISBN to test",
       "story": [
-        "The library gives a reserve-shelf voucher’s holder a long loan: at least 28 days when a request has at most three renewals. A Voucher is a wrapper over Int32 with a restriction: its number must leave remainder 5 when divided by 30011 and remainder 7 when divided by 30013. Both checks hold for about one Int32 in 900 million.",
-        "The law is “for all requests” (a voucher and a renewal count), and nothing in Tests.lawspec or the harness shows a voucher that passes. Predict what Run checks does, then run it. A random draw almost never meets the restriction, so without a voucher the law could only ever check other cases, and it would look as if it passed.",
-        "LawSpec does not let that happen. Once the compiler can show a value neither by its boundary search nor from the law’s examples nor from 1000 sampled values, it refuses the law, with the message: “no value of Voucher found by the boundary search or in 1000 sampled values”. It then tells the author to give the law an example whose input holds a voucher, or to bind a generator for the input. The next two steps do each."
+        "The library gives a catalogued book a long loan: at least 28 days when a request has at most three renewals. A catalogued book is known by its ISBN-13, thirteen digits that start 978 or 979. The last digit is a check digit: weight the first twelve digits 1, 3, 1, 3 and so on, and the check digit brings the total up to a multiple of ten. About one thirteen-digit number in ten has the right one.",
+        "The law is “for all requests” (a book and a renewal count), and nothing in Tests.lawspec or the harness shows an ISBN that passes. Predict what Run checks does, then run it. Without a valid ISBN the law could only ever check other cases, and it would look as if it passed.",
+        "LawSpec does not let that happen. Once the compiler can show a value neither by its boundary search nor from the law’s examples nor from 1000 sampled values, it refuses the law, with the message: “no value of Isbn found by the boundary search or in 1000 sampled values”. It then tells the author to give the law an example whose input holds an ISBN, or to bind a generator for the input. The next two steps do each."
       ],
       "focus": "Tests",
       "project": "exercises/generators/01",
@@ -42,19 +42,19 @@
       "expect": "The compiler refuses the law and no checks run. Read the diagnostic: it names the type that has no value.",
       "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
       "editor": "Tests",
-      "syntax": "wrapper Voucher is Int32 where … end wrapper declares a restricted type: a number that fails the restriction is not a Voucher. A record field of that type means every Request holds a voucher that passes it.",
+      "syntax": "wrapper Isbn is Integer where … end wrapper declares a restricted type: a number that fails the restriction is not an Isbn. Its restriction says the last digit must equal checkDigitFor the first twelve. A record field of that type means every Request holds a valid ISBN.",
       "harnessNotes": [
-        "This harness only names the law. It supplies no strategy, so the compiler must find a voucher on its own, and it cannot.",
-        "A harness changes which inputs are tried, not what the law claims. The next steps change Tests or the Harness so that a voucher exists."
+        "This harness only names the law. It supplies no strategy, so the compiler must find an ISBN on its own, and it cannot.",
+        "A harness changes which inputs are tried, not what the law claims. The next steps change Tests or the Harness so that a valid ISBN exists."
       ],
-      "symbol": "Voucher 900690137 passes both checks; a random Int32 does not"
+      "symbol": "9780306406157 is an ISBN; most 13-digit numbers are not"
     },
     {
       "id": "example",
-      "title": "Fix A: show the law one voucher",
+      "title": "Fix A: show the law one ISBN",
       "story": [
-        "The smallest repair is an example: a concrete input for the law. voucher 900690137 is the smallest number that leaves 5 after dividing by 30011 and 7 after dividing by 30013. The law now has an example whose input holds a voucher, so the compiler has a value to work from.",
-        "That is enough to lift the refusal, but it is one voucher. The law is still exercised on a single value of the restricted type, and every later change has the same lone voucher to check. Run the checks and see that the starter, which gives only 14 days, fails the example."
+        "The smallest repair is an example: a concrete input for the law. 9780306406157 is a real ISBN-13: its first twelve digits weigh 93, and a check digit of 7 brings the total to 100. The law now has an example whose input holds an ISBN, so the compiler has a value to work from.",
+        "That is enough to lift the refusal, but it is one ISBN. The law is still exercised on a single value of the restricted type. Run the checks and see that the starter, which gives only 14 days, fails the example."
       ],
       "focus": "Tests",
       "project": "exercises/generators/02",
@@ -64,24 +64,24 @@
         "seed": 424242,
         "awaitsCompiler": true
       },
-      "action": "Read the example, run all checks and find the voucher in the failing input.",
+      "action": "Read the example, run all checks and find the ISBN in the failing input.",
       "reason": "An example is the quickest way to give a law a witness, and it also documents one valid value. It does not vary.",
-      "expect": "The compiler accepts the law because its example holds a voucher, then the 14-day starter fails the law on that voucher.",
+      "expect": "The compiler accepts the law because its example holds an ISBN, then the 14-day starter fails the law on that ISBN.",
       "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
       "editor": "Tests",
-      "syntax": "example \"|…| : request = Request record{ voucher = Voucher 900690137 , renewals = 0 } expect … end example binds the quantified input request, then states what must hold. Voucher 900690137 builds a voucher; a number that fails the restriction is rejected.",
+      "syntax": "example \"|…| : request = Request record{ book = Isbn 9780306406157 , renewals = 0 } expect … end example binds the quantified input request, then states what must hold. Isbn 9780306406157 builds an ISBN; a number with the wrong check digit is rejected.",
       "harnessNotes": [
-        "The harness is unchanged: still no strategy. The example, not the harness, supplied the voucher."
+        "The harness is unchanged: still no strategy. The example, not the harness, supplied the ISBN."
       ],
-      "symbol": "one example = one voucher"
+      "symbol": "one example = one ISBN"
     },
     {
       "id": "generator",
-      "title": "Fix B: bind a generator for the voucher",
+      "title": "Fix B: bind a generator that computes the check digit",
       "story": [
-        "The main repair is a generator: a recipe that builds valid vouchers so that every run draws them. The example is gone from Tests.lawspec; the Harness now declares strategy vouchers, strategy requests and binds the law to requests with use requests for request.",
-        "A generator is the right tool when valid values follow a pattern you can build directly. Here, adding 30011 * 30013 to a valid number keeps both remainders, so the strategy draws k from 0 or 1 and builds 900690137 + 900720143 * k. The compiler no longer needs to search: the law is exercised with those vouchers on every run, with renewal counts from 0 to 5.",
-        "A found or generated value is always checked against the restriction, so a strategy that built a number such as 900690138 would be caught instead of silently trusted. Run all checks: the law now meets real vouchers, and the 14-day starter fails it, with the failing request shown."
+        "The main repair is a generator: a recipe that builds valid ISBNs so that every run draws them. The example is gone from Tests.lawspec; the Harness now declares strategy bodies, isbns and requests, and binds the law to requests with use requests for request.",
+        "A generator is the right tool when valid values follow a rule you can compute. Here the first twelve digits can be anything that starts 978 or 979, and the check digit follows from them. The strategy draws twelve digits as the number body, then builds Isbn (body * 10 + checkDigitFor body): the same checkDigitFor the restriction uses. The compiler no longer needs to search, and the law is exercised with those ISBNs on every run, with renewal counts from 0 to 5.",
+        "A found or generated value is always checked against the restriction, so a strategy that built a wrong check digit would be caught instead of silently trusted. Run all checks: the law now meets real ISBNs, and the 14-day starter fails it, with the failing request shown."
       ],
       "focus": "Tests",
       "project": "exercises/generators/03",
@@ -92,25 +92,25 @@
         "seed": 424242,
         "awaitsCompiler": true
       },
-      "action": "Open the Harness tab, read vouchers and requests, then run all checks and read the failing request.",
+      "action": "Open the Harness tab, read bodies, isbns and requests, then run all checks and read the failing request.",
       "reason": "Binding a generator makes valid values part of every run, so the law keeps exercising the case that the restriction makes rare.",
-      "expect": "The law is accepted and exercised, and the starter fails it on a request whose voucher is one of the two built numbers.",
+      "expect": "The law is accepted and exercised, and the starter fails it on a request whose book is a generated ISBN.",
       "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
       "editor": "Solution",
       "syntax": "strategy name :: T is … end strategy declares a recipe. bind x :: S from g in … draws x from g and uses it below. one of e builds the value e. for law \"|…| use requests for request end for law connects the strategy to the law’s quantified input.",
       "harnessNotes": [
-        "A strategy is a recipe for drawing inputs. vouchers builds a Voucher from one of its two valid numbers: bind k from (one of 0, 1) makes k available in the next expression, and 900690137 + 900720143 * k is the number that passes both checks (900720143 is 30011 times 30013, so adding it keeps both remainders).",
-        "requests combines a Voucher from vouchers with a renewal count from 0 through 5 into one Request. The count is wider than the law’s 0 to 3 on purpose: the law’s own guard decides which cases it speaks about, not the strategy.",
-        "The binding for “a voucher request gets the long loan” selects the claim in Laws; use requests for request supplies the quantified input request. The generator does not provide the expected answer, and a drawn value is checked against the Voucher restriction before the law sees it."
+        "bodies draws a twelve-digit number from 978000000000 through 979999999999, so every ISBN starts 978 or 979. isbns binds one such body, then builds the ISBN by putting the check digit that checkDigitFor works out after it.",
+        "requests combines a book from isbns with a renewal count from 0 through 5. The count is wider than the law’s 0 to 3 on purpose: the law’s own guard decides which cases it speaks about, not the strategy.",
+        "The binding for “a request for a catalogued book gets the long loan” selects the claim in Laws; use requests for request supplies the quantified input request. The generator does not provide the expected answer, and a drawn value is checked against the Isbn restriction before the law sees it."
       ],
-      "symbol": "900690137 + 900720143 * k"
+      "symbol": "body * 10 + checkDigitFor body"
     },
     {
       "id": "repair",
       "title": "Repair the loan and keep the generator",
       "story": [
-        "The failing request is real: a voucher holder with no renewals gets 14 days, not at least 28. Change loanDays so a voucher request gets 28 days plus 7 for each renewal, then run all checks again.",
-        "As your own challenge, change 900690137 in the vouchers strategy to 900690138 and predict what the run does. That number fails the remainder checks, so the value is checked against the restriction and the run reports it instead of trusting the generator."
+        "The failing request is real: a request for a catalogued book with no renewals gets 14 days, not at least 28. Change loanDays so such a request gets 28 days plus 7 for each renewal, then run all checks again.",
+        "As your own challenge, change the isbns strategy to build body * 10 + checkDigitFor body + 1 and predict what the run does. That ISBN has a wrong check digit, so the value is checked against the restriction and the run reports it instead of trusting the generator."
       ],
       "focus": "Solution",
       "project": "exercises/generators/04",
@@ -121,17 +121,17 @@
         "seed": 424242,
         "awaitsCompiler": true
       },
-      "action": "Repair loanDays and run all checks. Then change the generator to build 900690138 and read what the run reports.",
-      "reason": "The generator exposes the bug and then keeps guarding the repair: every run draws vouchers.",
-      "expect": "The supplied starter fails the generated law. After the repair, the same run passes; the challenge edit makes the run report a voucher that fails its restriction.",
+      "action": "Repair loanDays and run all checks. Then break the generator’s check digit as described and read what the run reports.",
+      "reason": "The generator exposes the bug and then keeps guarding the repair: every run draws ISBNs.",
+      "expect": "The supplied starter fails the generated law. After the repair, the same run passes; the challenge edit makes the run report an ISBN that fails its restriction.",
       "recovery": "Reset this step restores its supplied files and seed. After an edit, use the actual result to judge your version; the story’s prediction describes the supplied files.",
       "challenge": true,
       "editor": "Solution",
       "syntax": "The law needs the result to be at least 28 for 0 through 3 renewals. A formula that starts at 28 and adds 7 per renewal satisfies it.",
       "harnessNotes": [
-        "A strategy is a recipe for drawing inputs. vouchers builds a Voucher from one of its two valid numbers: bind k from (one of 0, 1) makes k available in the next expression, and 900690137 + 900720143 * k is the number that passes both checks (900720143 is 30011 times 30013, so adding it keeps both remainders).",
-        "requests combines a Voucher from vouchers with a renewal count from 0 through 5 into one Request. The count is wider than the law’s 0 to 3 on purpose: the law’s own guard decides which cases it speaks about, not the strategy.",
-        "The binding for “a voucher request gets the long loan” selects the claim in Laws; use requests for request supplies the quantified input request. The generator does not provide the expected answer, and a drawn value is checked against the Voucher restriction before the law sees it."
+        "bodies draws a twelve-digit number from 978000000000 through 979999999999, so every ISBN starts 978 or 979. isbns binds one such body, then builds the ISBN by putting the check digit that checkDigitFor works out after it.",
+        "requests combines a book from isbns with a renewal count from 0 through 5. The count is wider than the law’s 0 to 3 on purpose: the law’s own guard decides which cases it speaks about, not the strategy.",
+        "The binding for “a request for a catalogued book gets the long loan” selects the claim in Laws; use requests for request supplies the quantified input request. The generator does not provide the expected answer, and a drawn value is checked against the Isbn restriction before the law sees it."
       ],
       "symbol": "28 + 7 × renewals"
     }

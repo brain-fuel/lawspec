@@ -551,6 +551,10 @@ try
             /differs from the supplied/,
           );
         }
+        if (lesson.stages.some(stage => stage.run.awaitsCompiler))
+        {
+          continue; // The solution runs once the compiler finds a value from a bound generator.
+        }
         for (const language of ['fsharp', 'typescript', 'javascript'])
         {
           await page

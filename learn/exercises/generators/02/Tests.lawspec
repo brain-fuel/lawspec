@@ -1,27 +1,53 @@
 -- ref:DEC-learn-tests-in-lawspec
 unit learn.lending
 
--- A reserve-shelf voucher number passes two checks at once. One Int32 in about
--- 900 million is a voucher, and no short search finds one.
-wrapper Voucher is Int32 where prelude.rem value 30011 = 5 and prelude.rem value 30013 = 7 end wrapper
+-- The digit of a number at one place: 1 is the last, 10 the one before it.
+function digitAt (number :: Integer) (place :: Integer) -> Integer is
+  if place < 1 then 0 else prelude.rem (prelude.quot number place) 10 end if
+end function
+
+-- ISBN-13: weight the first twelve digits 1, 3, 1, 3 and so on. The check digit
+-- brings the weighted total up to the next multiple of ten.
+function checkDigitFor (body :: Integer) -> Integer is
+  prelude.rem (10 - prelude.rem (
+    digitAt body 100000000000
+    + 3 * digitAt body 10000000000
+    + digitAt body 1000000000
+    + 3 * digitAt body 100000000
+    + digitAt body 10000000
+    + 3 * digitAt body 1000000
+    + digitAt body 100000
+    + 3 * digitAt body 10000
+    + digitAt body 1000
+    + 3 * digitAt body 100
+    + digitAt body 10
+    + 3 * digitAt body 1
+  ) 10) 10
+end function
+
+-- A catalogued book's ISBN: thirteen digits that start 978 or 979, ending in the right check digit.
+wrapper Isbn is Integer where
+  value >= 9780000000000 and value <= 9799999999999
+    and prelude.rem value 10 = checkDigitFor (prelude.quot value 10)
+end wrapper
 
 type Request is a record{
-  voucher :: Voucher,
+  book :: Isbn,
   renewals :: Int32
 }
 end type
 
 loanDays :: Int32 -> Int32
 
-law "|a voucher request gets the long loan| is
+law "|a request for a catalogued book gets the long loan| is
   definition:
     for all (request :: Request) =>
       request.renewals >= 0 and request.renewals <= 3 implies loanDays request.renewals >= 28
     end for all
   end definition
 
-  example "|voucher 900690137 with no renewals| :
-    request = Request record{ voucher = Voucher 900690137 , renewals = 0 }
+  example "|the ISBN 9780306406157 with no renewals| :
+    request = Request record{ book = Isbn 9780306406157 , renewals = 0 }
     expect loanDays request.renewals >= 28
   end example
 end law
