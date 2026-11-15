@@ -236,11 +236,9 @@ export function strategy(
   }
 
   // Whether a probe that found no value of a type at some budget is to be
-  // believed: one found a value at the law's whole budget, so it is the
-  // smaller budget that has none. A restriction that draws seldom meet fails
-  // that probe too, and then decides nothing: the type is planned by its shape
-  // and the filter alone finds its values. A type met again inside its own
-  // proof is taken as proven.
+  // believed: one found a value at the law's whole budget, so it is the smaller
+  // budget that has none. A type no probe finds a value of at the whole budget
+  // fails the law. A type met again inside its own proof is taken as proven.
   const rootBudget = Math.max(budget, reservation(reference));
   const proofs = new Map();
   const proving = new Set();
@@ -343,13 +341,10 @@ export function strategy(
         if (available === rootBudget)
         {
           proofs.set(JSON.stringify(type), found);
-          if (!found && !UNPROVEN.has(type.name))
-          {
-            UNPROVEN.add(type.name);
-            console.error(
-              `LawSpec: no value of ${type.name} found in ${Math.min(Math.max(maxAttempts, PROBE_MINIMUM), PROBE_ATTEMPTS)} draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator.`,
+          if (!found)
+            throw new Error(
+              `LawSpec: no value of ${type.name} found in ${Math.min(Math.max(maxAttempts, PROBE_MINIMUM), PROBE_ATTEMPTS)} draws, so no case of this law could hold one. Give the law an example whose input holds one, or bind a generator.`,
             );
-          }
         }
         else if (!found && proven(type)) result = false;
       }
@@ -600,8 +595,6 @@ const CANONICAL = {
 // answer is the same each time: a witness that fits needs no probe, and each
 // plan starts from no symbols.
 const PROBES = new WeakMap();
-// The types a run has said it found no value of, each said once.
-const UNPROVEN = new Set();
 const PROBE_SEED = 0x4c617753;
 const PROBE_MINIMUM = 100;
 const PROBE_ATTEMPTS = 10_000;

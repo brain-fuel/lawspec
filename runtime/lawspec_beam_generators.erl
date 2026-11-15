@@ -5,6 +5,9 @@
 -module(lawspec_beam_generators).
 -export([generator/6, generator/7, with_cache/1, with_native/3, check_drawn/4]).
 
+%% The draws a restricted type with a witness makes before it takes the witness.
+-define(SEEDED_DRAWS, 16).
+
 %% A chosen strategy cannot widen the law's input domain. Apply this to each
 %% generated value and shrink, before any later input can discard the tuple.
 %% ref:REQ-harness-units ref:DEC-never-pass-vacuously
@@ -83,7 +86,8 @@ automatic(F, T, Schema, Symbols, Size, Bounds, Witnesses, Index) ->
                         end
                     );
                 none ->
-                    Native = build(F, T, Schema, Symbols, Budget, Bounds),
+                    Seeded = Schema#{lawspec_seeds => parts(Witnesses)},
+                    Native = build(F, T, Seeded, Symbols, Budget, Bounds),
                     with_witnesses(F, Native, Witnesses)
             end
     end.
@@ -211,7 +215,49 @@ build_native(F, T, S, Symbols, Budget, Bounds) ->
                 Allocation =/= none
             ],
             Canonical = F:map(F:oneof(Choices), fun(V) -> canonical(T, V) end),
-            F:constrain(Canonical, fun(V) -> accepted(V, T, S) end)
+            Accept = fun(V) -> accepted(V, T, S) end,
+            Tags = [
+                maps:get(tag, C)
+             || Raw <- Constructors, C <- lawspec_beam_schema:witness_instances(Raw)
+            ],
+            Seeds = [
+                W
+             || {ls_data, Tag, _} = W <- maps:get(lawspec_seeds, S, []),
+                lists:member(Tag, Tags),
+                holds(W, T, S)
+            ],
+            case Seeds of
+                [] -> F:constrain(Canonical, Accept);
+                _ -> seeded(F, Canonical, Accept, Seeds, ?SEEDED_DRAWS)
+            end
+    end.
+
+%% A restricted type the law's witnesses hold a value of never exhausts its
+%% draws: after a few that its restriction refuses it takes a witness. A
+%% restriction no draw meets (one value in a million) then still has the value
+%% the compiler showed, where constrain alone would fail the law.
+%% ref:DEC-never-pass-vacuously
+seeded(F, _, _, Seeds, 0) ->
+    F:oneof([F:exactly(V) || V <- Seeds]);
+seeded(F, Generator, Accept, Seeds, Draws) ->
+    F:bind(Generator, fun(V) ->
+        case Accept(V) of
+            true -> F:exactly(V);
+            false -> seeded(F, Generator, Accept, Seeds, Draws - 1)
+        end
+    end).
+
+%% Every data value inside the witnesses, each a candidate seed of its type.
+parts(Values) when is_list(Values) -> lists:flatmap(fun parts/1, Values);
+parts({ls_data, _, Fields} = Value) -> [Value | parts(Fields)];
+parts({ls_presence, _, {some, Value}}) -> parts(Value);
+parts(_) -> [].
+
+holds(Value, T, S) ->
+    try
+        accepted(Value, T, S)
+    catch
+        _:_ -> false
     end.
 
 constructor(F, C, Allocation, S, Symbols) ->

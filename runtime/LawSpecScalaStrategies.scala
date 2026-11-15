@@ -195,9 +195,6 @@ object LawSpecScalaStrategies:
     scala.collection.concurrent
       .TrieMap[(LawSpecSchema, Request, Int, Int), Boolean]()
   private val ProbeSeed = 0x4c61775370656cL
-
-  /** The types a run has said it found no value of, each said once. */
-  private val Unproven = scala.collection.concurrent.TrieMap[String, Unit]()
   private val ProbeMinimum = 100
   private val ProbeAttempts = 10000
   private val IndexSlack = 16L
@@ -499,10 +496,9 @@ object LawSpecScalaStrategies:
 
     /** Whether a probe that found no value of a type at some budget is to be
       * believed: one found a value at the law's whole budget, so it is the
-      * smaller budget that has none. A restriction that draws seldom meet fails
-      * that probe too, and then decides nothing: the type is planned by its
-      * shape and the filter alone finds its values, or says that it cannot. A
-      * type met again inside its own proof is taken as proven.
+      * smaller budget that has none. A type no probe finds a value of at the
+      * whole budget fails the law. A type met again inside its own proof is
+      * taken as proven.
       */
     def proven(tpe: Named): Boolean =
       proofs.getOrElse(
@@ -707,12 +703,9 @@ object LawSpecScalaStrategies:
           )
           if available == limit then
             proofs(tpe) = found
-            if !found && Unproven
-                .putIfAbsent(LawSpecSchema.key(tpe), ())
-                .isEmpty
-            then
-              System.err.println(
-                s"LawSpec: no value of ${LawSpecSchema.key(tpe)} found in ${maxAttempts.max(ProbeMinimum).min(ProbeAttempts)} draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator."
+            if !found then
+              throw IllegalStateException(
+                s"LawSpec: no value of ${LawSpecSchema.key(tpe)} found in ${maxAttempts.max(ProbeMinimum).min(ProbeAttempts)} draws, so no case of this law could hold one. Give the law an example whose input holds one, or bind a generator."
               )
           else if !found && proven(tpe) then
             cache(request) = None

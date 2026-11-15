@@ -769,9 +769,9 @@ fn shape_strategy_planned(
                         self.proofs.insert(ty.clone(), valued);
                         if !valued
                         {
-                            eprintln!(
-                                "LawSpec: no value of {ty:?} found in {PROBE_ATTEMPTS} draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator."
-                            );
+                            return Err(format!(
+                                "LawSpec: no value of {ty:?} found in {PROBE_ATTEMPTS} draws, so no case of this law could hold one. Give the law an example whose input holds one, or bind a generator."
+                            ));
                         }
                     }
                     else if !valued && self.proven(ty)?
@@ -847,10 +847,9 @@ fn shape_strategy_planned(
 
         /// Whether a probe that found no value of a type at some budget is to
         /// be believed: one found a value at the law's whole budget, so it is
-        /// the smaller budget that has none. A restriction that draws seldom
-        /// meet fails that probe too, and then decides nothing: the type is
-        /// planned by its shape and the law's own filter finds its values. A
-        /// type met again inside its own proof is taken as proven.
+        /// the smaller budget that has none. A type no probe finds a value of
+        /// at the whole budget fails the law. A type met again inside its own
+        /// proof is taken as proven.
         fn proven(&mut self, ty: &ls::TypeRef) -> ls::Result<bool>
         {
             if let Some(known) = self.proofs.get(ty)

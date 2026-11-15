@@ -517,17 +517,11 @@ object LawSpecKotlinStrategies {
 
     private val PROBES = java.util.concurrent.ConcurrentHashMap<Probe, Boolean>()
 
-    /** The types a run has said it found no value of, each said once. */
-    private val UNPROVEN = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-
-    private fun unproven(type: Named, attempts: Int) {
-        val name = LawSpecSchema.key(type)
-        if (UNPROVEN.add(name)) {
-            System.err.println(
-                "LawSpec: no value of $name found in $attempts draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator."
-            )
-        }
-    }
+    /** A restricted type no witness and no probe shows a value of fails its law. */
+    private fun unproven(type: Named, attempts: Int): Nothing =
+        throw IllegalStateException(
+            "LawSpec: no value of ${LawSpecSchema.key(type)} found in $attempts draws, so no case of this law could hold one. Give the law an example whose input holds one, or bind a generator."
+        )
 
     private class Builder(
         val schema: LawSpecSchema,
@@ -552,10 +546,9 @@ object LawSpecKotlinStrategies {
 
         /**
          * Whether a probe that found no value of a type at some budget is to be believed: one found
-         * a value at the law's whole budget, so it is the smaller budget that has none. A
-         * restriction that draws seldom meet fails that probe too, and then decides nothing: the
-         * type is planned by its shape and the filter alone finds its values, or says that it
-         * cannot. A type met again inside its own proof is taken as proven.
+         * a value at the law's whole budget, so it is the smaller budget that has none. A type no
+         * probe finds a value of at the whole budget fails the law. A type met again inside its own
+         * proof is taken as proven.
          */
         fun proven(type: Named): Boolean =
             proofs[type]

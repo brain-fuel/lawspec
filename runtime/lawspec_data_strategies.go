@@ -13,7 +13,6 @@ import (
 	"flag"
 	"fmt"
 	"math/big"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -167,9 +166,6 @@ type lawSpecProbe struct {
 // plan starts from no symbols.
 var lsProbes sync.Map
 
-// The types a run has said it found no value of, each said once.
-var lsUnproven sync.Map
-
 // rapid's Example retries a filtered generator a thousand times from the seed.
 const lsProbeSeed = 0x4c617753
 
@@ -295,11 +291,9 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 	var allocation func([]lawSpecFieldSchema, int) ([]int, bool)
 	var build func(lawSpecTypeRef, int) *rapid.Generator[LawSpecValue]
 	// Whether a probe that found no value of a type at some budget is to be
-	// believed: one found a value at the law's whole budget, so it is the
-	// smaller budget that has none. A restriction that draws seldom meet fails
-	// that probe too, and then decides nothing: the type is planned by its
-	// shape and the filter alone finds its values. A type met again inside
-	// its own proof is taken as proven.
+	// believed: one found a value at the law's whole budget, so it is the smaller
+	// budget that has none. A type no probe finds a value of at the whole budget
+	// fails the law. A type met again inside its own proof is taken as proven.
 	proofs := map[string]bool{}
 	proving := map[string]bool{}
 	proven := func(typeRef lawSpecTypeRef) bool {
@@ -448,9 +442,8 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 				}
 				if available == budget {
 					proofs[key.typeName] = found
-					if _, said := lsUnproven.Load(key.typeName); !found && !said {
-						lsUnproven.Store(key.typeName, true)
-						fmt.Fprintln(os.Stderr, "LawSpec: no value of "+key.typeName+" found in a thousand draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator.")
+					if !found {
+						panic("LawSpec: no value of " + key.typeName + " found in a thousand draws, so no case of this law could hold one. Give the law an example whose input holds one, or bind a generator.")
 					}
 				} else if !found && proven(typeRef) {
 					result = false

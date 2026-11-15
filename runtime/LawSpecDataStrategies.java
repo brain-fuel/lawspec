@@ -148,9 +148,6 @@ public final class LawSpecDataStrategies
   {}
 
   private static final Map<Probe, Boolean> PROBES = new ConcurrentHashMap<>();
-
-  /** The types a run has said it found no value of, each said once. */
-  private static final Set<String> UNPROVEN = ConcurrentHashMap.newKeySet();
   private static final long PROBE_SEED = 0x4c61775370656cL;
   private static final int PROBE_MINIMUM = 100;
   private static final int PROBE_ATTEMPTS = 10_000;
@@ -870,10 +867,9 @@ public final class LawSpecDataStrategies
 
     /**
      * Whether a probe that found no value of a type at some budget is to be believed: one found a
-     * value at the law's whole budget, so it is the smaller budget that has none. A restriction
-     * that draws seldom meet fails that probe too, and then decides nothing: the type is planned
-     * by its shape and the filter alone finds its values, or says that it cannot. A type met again
-     * inside its own proof is taken as proven.
+     * value at the law's whole budget, so it is the smaller budget that has none. A type no probe
+     * finds a value of at the whole budget fails the law. A type met again inside its own proof is
+     * taken as proven.
      */
     private boolean proven(Named type)
     {
@@ -991,15 +987,15 @@ public final class LawSpecDataStrategies
           if (budget == limit)
           {
             proofs.put(type, found);
-            if (!found && UNPROVEN.add(LawSpecSchema.key(type)))
+            if (!found)
             {
-              System.err.println(
+              throw new IllegalStateException(
                   "LawSpec: no value of "
                       + LawSpecSchema.key(type)
                       + " found in "
                       + Math.clamp(maxAttempts, PROBE_MINIMUM, PROBE_ATTEMPTS)
-                      + " draws: no case of this law holds one unless a draw happens to meet"
-                      + " its restriction. Write a value of it in the law, or bind a generator.");
+                      + " draws, so no case of this law could hold one. Give the law an example"
+                      + " whose input holds one, or bind a generator.");
             }
           }
           else if (!found && proven(type))

@@ -5,7 +5,6 @@ so failures shrink, replay and report as they expect; LawSpec supplies only the
 strategies for its own types. ref:DEC-native-property-frameworks ref:hypothesis
 """
 
-import sys
 import threading
 from functools import cache, cmp_to_key
 
@@ -21,8 +20,6 @@ from lawspec_schema import RefinementViolation, witness_instances, witnessed
 # is kept with the answer so that its identity is not given to another.
 _PROBE_ATTEMPTS = 1000
 _PROBES = {}
-# The types a run has said it found no value of, each said once.
-_UNPROVEN = set()
 # The draws one restricted value may take within a case.
 _FILTER_ATTEMPTS = 100
 
@@ -192,10 +189,9 @@ def strategy(
         """Return whether a probe that found no value of a type is believed.
 
         It is when a probe found a value at the law's whole budget, so that
-        it is the smaller budget that has none. A restriction that draws
-        seldom meet fails that probe too, and then decides nothing: the type
-        is planned by its shape and the law's filter finds its values. A
-        type met again inside its own proof is taken as proven."""
+        it is the smaller budget that has none. A type no probe finds a
+        value of at the whole budget fails the law. A type met again inside
+        its own proof is taken as proven."""
         if ty in proofs:
             return proofs[ty]
         if ty in proving:
@@ -238,12 +234,12 @@ def strategy(
         founds[ty, available] = found
         if available == limit:
             proofs[ty] = found
-            if not found and ty not in _UNPROVEN:
-                _UNPROVEN.add(ty)
-                print(
+            if not found:
+                raise ValueError(
                     f"LawSpec: no value of {ty} found in {_PROBE_ATTEMPTS}"
-                    " draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator.",
-                    file=sys.stderr,
+                    " draws, so no case of this law could hold one. Give the"
+                    " law an example whose input holds one, or bind a"
+                    " generator."
                 )
             return True
         return found or not proven(ty)
