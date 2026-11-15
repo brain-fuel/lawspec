@@ -745,9 +745,8 @@ async function solve(task, selected, config)
         cases
           .map(c => c.case + ' by ' + recursionName(c.recursion))
           .join(', ') +
-        (induction.using.length
-          ? '; citing ' +
-            induction.using.map(law => law.split('::law::').pop()).join(', ')
+        (induction.citing.length
+          ? '; citing ' + induction.citing.join(', ')
           : '') +
         '; trusts the typed translation and selected solver, without a kernel-checked certificate',
     };

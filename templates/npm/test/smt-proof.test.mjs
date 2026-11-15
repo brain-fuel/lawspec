@@ -236,6 +236,26 @@ test('induction: each case has its own receipt, and a law rests on the laws it c
   assert.match(twice.reason,/it cites \|reverse of append\|, which is incomplete/);
 });
 
+test('induction: the evidence names a cited law of the list operations as the compiler words it',requiresZ3,async()=>{
+  const doubling=`function double (n :: Integer) -> Integer is n * 2 end function
+
+function backwards (xs :: List Integer) -> List Integer is
+  first matching case of xs :
+    when Nil then []
+    when Cons head tail then backwards tail ++ [head]
+  end case
+end function
+
+law "|doubling commutes with reversal| is definition: for all (xs :: List Integer) => prelude.map double (backwards xs) = backwards (prelude.map double xs) end for all end definition end law
+`;
+  const proved=await proveWithZ3(compiler,request(doubling+harness([
+    ['doubling commutes with reversal',['prove by induction on xs','  using "|map distributes over append|']]])),{binary:z3});
+  assert.deepEqual(proved.diagnostics,[]);
+  const found=proved.solverEvidence.find(e=>e.declaration==='smt::law::|doubling commutes with reversal|');
+  assert.equal(found.status,'proved',found.reason);
+  assert.ok(found.reason.includes('; citing |map distributes over append| (a law of the list operations, on LawSpec\'s receipt); trusts'),found.reason);
+});
+
 test('an induction case whose model the law survives says the hypothesis is too weak',async()=>{
   const directory=await mkdtemp(path.join(tmpdir(),'lawspec-induction-'));
   try {

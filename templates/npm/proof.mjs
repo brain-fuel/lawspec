@@ -278,7 +278,7 @@ async function solve(task,selected,config) {
   if(cases.every(c=>c.outcome==='unsat'))
     return {...best,status:'proved',outcome:'unsat',induction:record,model:undefined,modelValidated:undefined,
       reason:'Z3 established this law by induction on '+induction.on+', every case: '+cases.map(c=>c.case+' by '+recursionName(c.recursion)).join(', ')+
-        (induction.using.length?'; citing '+induction.using.map(law=>law.split('::law::').pop()).join(', '):'')+
+        (induction.citing.length?'; citing '+induction.citing.join(', '):'')+
         '; trusts the typed translation and selected solver, without a kernel-checked certificate'};
   const open=cases.filter(c=>c.outcome!=='unsat');
   return {...best,induction:record,reason:best.reason+'; induction on '+induction.on+': '+open.map(c=>'case '+c.case+' gave '+c.outcome).join(', ')};
