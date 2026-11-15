@@ -210,7 +210,6 @@ export function strategy(
   // constructor gives it more or is left out. The probe draws from its own
   // seeds, so a law's values for a seed do not depend on it. A draw that fails
   // for another reason decides nothing.
-  let probing = true;
   function satisfiable(type, available)
   {
     const candidates = build(type, available);
@@ -234,6 +233,28 @@ export function strategy(
       return true;
     }
     return false;
+  }
+
+  // Whether a probe that found no value of a type at some budget is to be
+  // believed: one found a value at the law's whole budget, so it is the
+  // smaller budget that has none. A restriction that draws seldom meet fails
+  // that probe too, and then decides nothing: the type is planned by its shape
+  // and the filter alone finds its values. A type met again inside its own
+  // proof is taken as proven.
+  const rootBudget = Math.max(budget, reservation(reference));
+  const proofs = new Map();
+  const proving = new Set();
+  const founds = new Map();
+  function proven(type)
+  {
+    const id = JSON.stringify(type);
+    if (proofs.has(id)) return proofs.get(id);
+    if (proving.has(id)) return true;
+    proving.add(id);
+    inhabited(type, rootBudget);
+    proving.delete(id);
+    if (!proofs.has(id)) proofs.set(id, true);
+    return proofs.get(id);
   }
 
   // The arbitrary at the largest budget, at most the one given, that has a
@@ -297,27 +318,40 @@ export function strategy(
             ([fields]) => allocation(fields, available - 1) !== null,
           ),
         );
-      // A witness that fits is a value, and needs no probe.
-      if (
-        result &&
-        probing &&
-        constructors.some(item => item.predicates.length !== 0) &&
-        !(seeds.get(JSON.stringify(type)) ?? []).some(
-          seed => seed.cost <= available,
-        )
-      )
+      if (result && constructors.some(item => item.predicates.length !== 0))
       {
-        if (!PROBES.has(schema)) PROBES.set(schema, new Map());
-        const known = PROBES.get(schema);
-        const probe = JSON.stringify([type, available, bits, maxAttempts]);
-        if (!known.has(probe))
+        // A witness that fits is a value, and needs no probe.
+        let found = (seeds.get(JSON.stringify(type)) ?? []).some(
+          seed => seed.cost <= available,
+        );
+        if (!found)
         {
-          // The candidates are built as an inhabited type's are.
-          inhabitants.set(id, true);
-          known.set(probe, satisfiable(type, available));
-          arbitraries.delete(id);
+          if (!PROBES.has(schema)) PROBES.set(schema, new Map());
+          const known = PROBES.get(schema);
+          const probe = JSON.stringify([type, available, bits, maxAttempts]);
+          if (!known.has(probe))
+          {
+            // The candidates are built as an inhabited type's are.
+            inhabitants.set(id, true);
+            known.set(probe, satisfiable(type, available));
+            arbitraries.delete(id);
+            inhabitants.delete(id);
+          }
+          found = known.get(probe);
         }
-        result = known.get(probe);
+        founds.set(id, found);
+        if (available === rootBudget)
+        {
+          proofs.set(JSON.stringify(type), found);
+          if (!found && !UNPROVEN.has(type.name))
+          {
+            UNPROVEN.add(type.name);
+            console.error(
+              `LawSpec: no value of ${type.name} found in ${Math.min(Math.max(maxAttempts, PROBE_MINIMUM), PROBE_ATTEMPTS)} draws: no case of this law holds one unless a draw happens to meet its restriction. Write a value of it in the law, or bind a generator.`,
+            );
+          }
+        }
+        else if (!found && proven(type)) result = false;
       }
     }
     else if (
@@ -508,23 +542,17 @@ export function strategy(
         fc.constantFrom(...values),
       );
     }
+    // A restricted type whose values a witness or a probe found draws them
+    // through its restriction. One whose values no probe found keeps its
+    // shape, and the filter on the whole input refuses a draw.
+    if (founds.get(id)) result = result.filter(value => accepts(type, value));
     arbitraries.set(id, result);
     return result;
   }
 
-  // A probe that found nothing where a value exists (a restriction a draw
-  // seldom meets) can leave the law's own input no constructor at all; the
-  // plan is then made again without probes, as it was before them.
-  const rootBudget = Math.max(budget, reservation(reference));
-  if (index === null && !inhabited(reference, rootBudget))
-  {
-    probing = false;
-    minima.clear();
-    inhabitants.clear();
-    arbitraries.clear();
-  }
-  // Reject complete candidates, not subtrees: an impossible child must not
-  // prevent choosing a viable sibling constructor on the next attempt.
+  // Reject complete candidates of a type no probe found a value of, not its
+  // subtrees: an impossible child must not prevent choosing a viable sibling
+  // constructor on the next attempt.
   const root =
     index === null
       ? build(reference, rootBudget)
@@ -572,6 +600,8 @@ const CANONICAL = {
 // answer is the same each time: a witness that fits needs no probe, and each
 // plan starts from no symbols.
 const PROBES = new WeakMap();
+// The types a run has said it found no value of, each said once.
+const UNPROVEN = new Set();
 const PROBE_SEED = 0x4c617753;
 const PROBE_MINIMUM = 100;
 const PROBE_ATTEMPTS = 10_000;
@@ -877,11 +907,19 @@ export function primitiveGenerators(bits)
   const integer = name =>
   {
     const [low, high] = ls.bounds(name, bits);
+    const min = low ?? (name === 'BigUInt' ? 0n : -(2n ** 256n));
+    const max = high ?? 2n ** 256n;
+    // A wide range holds almost no small value, so a restriction to small
+    // numbers (a percentage) would refuse nearly every draw. Half the draws
+    // are small, as the other targets' integer generators make them.
     return fc
-      .bigInt({
-        min: low ?? (name === 'BigUInt' ? 0n : -(2n ** 256n)),
-        max: high ?? 2n ** 256n,
-      })
+      .oneof(
+        fc.bigInt({min, max}),
+        fc.bigInt({
+          min: min > -128n ? min : -128n,
+          max: max < 127n ? max : 127n,
+        }),
+      )
       .map(x => ls.convert(x, name, bits));
   };
   const scalar = fc
