@@ -701,6 +701,8 @@ library
       LawSpec.Calendar
       LawSpec.Capabilities
       LawSpec.CapabilityCheck
+      LawSpec.CapabilityLaws
+      LawSpec.CapabilityReceipts
       LawSpec.CapabilityTable
       LawSpec.CaseFold
       LawSpec.CaseFoldData
@@ -755,6 +757,7 @@ library
       LawSpec.Core.SizeChange
       LawSpec.Core.Smt
       LawSpec.Core.SmtInstances
+      LawSpec.Core.SmtRestate
       LawSpec.Core.Stages
       LawSpec.Core.Total
       LawSpec.Core.Totality
@@ -1096,6 +1099,7 @@ executable lawspec-dev
       BeamVectors
       Bench
       Canon
+      CapabilityReceipts
       Ci
       Ci.Budget
       Ci.Cache

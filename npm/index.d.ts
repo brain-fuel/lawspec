@@ -1086,6 +1086,7 @@ export type InductionPlan =
       on: string;
       asked: boolean;
       using: string[];
+      capabilityLaws: string[];
       status: 'ready';
       cases: InductionCase[];
     }
@@ -1093,6 +1094,7 @@ export type InductionPlan =
       on: string;
       asked: boolean;
       using: string[];
+      capabilityLaws: string[];
       status: 'unsupported';
       reason: string;
     };

@@ -213,6 +213,7 @@ main = hspec $ do
   CalendarSpec.test_calendarDatesAreCheckedDefinitions
   InstancesSpec.test_instanceOperationsAreCheckedDefinitions
   InstanceLawsSpec.test_capabilityLawsAreProved
+  InstanceLawsSpec.test_capabilityLawsAreCited
   SmtInstancesSpec.test_solverUsesInstanceDefinitions
   FormatsSpec.test_formatsAreTheRecordedGrammars
   ContractRulesSpec.test_recordRulesBecomeCheckedValidators

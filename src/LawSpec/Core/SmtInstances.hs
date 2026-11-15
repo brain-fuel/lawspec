@@ -4,7 +4,9 @@
 -- eliminate_epsilon lifts a function with what it captures. The definition
 -- is ordinary Core, so the encoding declares, unfolds and inducts over it as
 -- it does any recursive definition. ref:DEC-capability-instances
-module LawSpec.Core.SmtInstances (Instance(..), Written(..), instanceOf, instanceKey, instanceArguments) where
+module LawSpec.Core.SmtInstances
+  ( Instance(..), Written(..), instanceOf, instanceKey, instanceArguments, writtenKey, mapExpressionTypes
+  ) where
 
 import Data.List (nub)
 import qualified Data.Map.Strict as M
@@ -96,6 +98,37 @@ instanceOf source = case expressionNode source of
             in definition name (liftedCaptures lifted ++ [listBinder]) result
                  (matchList listBinder element rest empty (consCase (local element) (liftedBody lifted) self))
       in Instance operation define (liftedArguments lifted) [list] (Just (OfElement (operation == "allList") binder body))
+
+-- | Equal for two written functions exactly when they are the same up to
+-- the names of their binders and where they were written.
+writtenKey :: [Binder] -> Expr -> String
+writtenKey binders body = show
+  ( map binderType binders, liftedBody lifted
+  , [i | Expr _ (Local i) _ <- liftedArguments lifted] )
+  where
+    lifted = lift [(binderId b, Id ("lawspec.instances::argument" ++ show i)) | (i, b) <- zip [0 :: Int ..] binders] body
+
+-- | An expression with every type it mentions changed.
+mapExpressionTypes :: (Type -> Type) -> Expr -> Expr
+mapExpressionTypes at e = typed { expressionType = at (expressionType typed), expressionNode = node }
+  where
+    typed = mapChildren (mapExpressionTypes at) e
+    binder b = b { binderType = at (binderType b) }
+    evidence proof = case proof of
+      Numeric t -> Numeric (at t)
+      Structural t -> Structural (at t)
+    node = case expressionNode typed of
+      Match value cases -> Match value [c { caseBinders = map binder (caseBinders c) } | c <- cases]
+      AllElements value b body -> AllElements value (binder b) body
+      MapElements value b body -> MapElements value (binder b) body
+      FilterElements value b body -> FilterElements value (binder b) body
+      FoldElements fromLeft value initial accumulator b body -> FoldElements fromLeft value initial (binder accumulator) (binder b) body
+      SearchElements universal value b body -> SearchElements universal value (binder b) body
+      AllPayloads value predicates -> AllPayloads value [(binder b, x) | (b, x) <- predicates]
+      Let b value body -> Let (binder b) value body
+      Binary op proof a b -> Binary op (evidence proof) a b
+      Convert conversion target a -> Convert conversion (at target) a
+      other -> other
 
 isList :: Expr -> Bool
 isList e = elementOf e /= Nothing

@@ -597,6 +597,7 @@ coreSteps sdkTests =
     step "boundaries" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "boundaries"],
     step "learn-install" ["npm", "ci", "--prefix", "learn"],
     step "generated" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "generate", "--check"],
+    step "capability-receipts" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "capability-receipts", "--check"],
     step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"],
     step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"],
     step "ci-coordination" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-coordination-test/Main.hs"],

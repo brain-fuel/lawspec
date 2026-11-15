@@ -10,6 +10,8 @@
 --                                   remove build output under .artifacts and,
 --                                   without --keep-cache, recorded passes
 --   lawspec-dev generate [--check]  generated JavaScript and runtimes; see dev/Generate.hs
+--   lawspec-dev capability-receipts [--check]
+--                                   the capability laws' proofs; see dev/CapabilityReceipts.hs
 --   lawspec-dev version [--check]   the release version
 --   lawspec-dev bump <x.y.z>        set the release version everywhere
 --   lawspec-dev docs [--check]      the documentation site; see dev/Docs.hs
@@ -24,6 +26,7 @@ module Main (main) where
 import BeamVectors (writeVectors)
 import Bench (benchCommand)
 import Canon (canonCommand, taxCommand)
+import CapabilityReceipts (capabilityReceiptsCommand)
 import Ci (ci, clean)
 import Control.Exception (bracket, bracketOnError)
 import Control.Monad (forM, forM_, unless, when)
@@ -62,6 +65,7 @@ main =
     "ci" : options -> ci options
     "clean" : options -> clean options
     "generate" : options -> generateCommand options
+    "capability-receipts" : options -> capabilityReceiptsCommand options
     "version" : options -> versionCommand options
     "bump" : options -> bumpCommand options
     "docs" : options -> docsCommand options
@@ -69,7 +73,7 @@ main =
     "bench" : options -> benchCommand options
     "email-vectors" : options -> emailVectorsCommand options
     "tax" : options -> taxCommand options
-    _ -> die "usage: lawspec-dev boundaries | integrity [--record] | native-check | native-acceptance --package <receipt.json> --out <new-directory> | ci [options] | clean --artifacts [--keep-cache] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | email-vectors [--check] <Address.pm> [corpus...] | bench <name> [--scale N] [--generate] [target...] | tax assess|pay [port]|audit"
+    _ -> die "usage: lawspec-dev boundaries | integrity [--record] | native-check | native-acceptance --package <receipt.json> --out <new-directory> | ci [options] | clean --artifacts [--keep-cache] | generate [--check|--list] | capability-receipts [--check] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | email-vectors [--check] <Address.pm> [corpus...] | bench <name> [--scale N] [--generate] [target...] | tax assess|pay [port]|audit"
 
 -- | Exercise the actual pinned distribution on the current host, uncached.
 -- Keep assembly controls, a fresh npm archive and both runtime modes together.

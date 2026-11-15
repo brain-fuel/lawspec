@@ -11,7 +11,7 @@ import Control.Monad.State.Strict
 import Data.Aeson (ToJSON(..), Value, object, (.=))
 import qualified Data.Map.Strict as M
 import Data.Graph (SCC(..), stronglyConnComp, flattenSCCs)
-import Data.List (intercalate, isInfixOf, isPrefixOf, findIndex)
+import Data.List (intercalate, isInfixOf, isPrefixOf, find, findIndex)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString as B
@@ -19,7 +19,8 @@ import LawSpec.Common (Diagnostic, InputDomain(..), Location, Quantification(..)
 import LawSpec.Core
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Core.Semantics (textWhiteSpaceRanges)
-import LawSpec.Core.SmtInstances (Instance(..), Written(..), instanceOf, instanceKey, instanceArguments)
+import LawSpec.Core.SmtInstances (Instance(..), Written(..), instanceOf, instanceKey, instanceArguments, mapExpressionTypes)
+import LawSpec.Core.SmtRestate (Restatement(..), restatements)
 import LawSpec.Core.Types (builtinDataDeclarations)
 import LawSpec.CorePersist ()
 import LawSpec.Digest (digestHex, digestString)
@@ -51,7 +52,11 @@ data ProofTask = ProofTask
 
 -- | How lawspec prove proves a law, from its harness (LawSpec.ProofSettings):
 -- the encoding of recursive definitions, and induction.
-data LawProof = LawProof { proofUnfolding :: Unfolding, proofInduction :: Induction } deriving (Eq, Show)
+data LawProof = LawProof
+  { proofUnfolding :: Unfolding, proofInduction :: Induction
+  -- The capability laws' unit, when the law cites one of its laws, or why
+  -- it may not cite them.
+  , proofLibrary :: Maybe (Either String Unit) } deriving (Eq, Show)
 
 -- | prove by unfolding step by step [up to n times] (GuardedAxioms n),
 -- prove by solver recursion (DefineFunRec), or both in turn: the default.
@@ -62,7 +67,7 @@ data Unfolding = Unfold Int | SolverRecursion | UnfoldThenSolver Int deriving (E
 data Induction = DefaultInduction | NoInduction | InductionOn String [Id] deriving (Eq, Show)
 
 defaultLawProof :: LawProof
-defaultLawProof = LawProof (UnfoldThenSolver defaultFuel) DefaultInduction
+defaultLawProof = LawProof (UnfoldThenSolver defaultFuel) DefaultInduction Nothing
 
 -- | Induction on one of the law's inputs: whether the harness asked for it
 -- (else it is the default try), the cited laws, and the cases, each a
@@ -70,6 +75,8 @@ defaultLawProof = LawProof (UnfoldThenSolver defaultFuel) DefaultInduction
 -- counterexample.
 data InductionPlan = InductionPlan
   { inductionOn :: String, inductionAsked :: Bool, inductionLemmas :: [Id]
+  -- The capability laws it cites, which are proved apart from the program.
+  , inductionCapabilityLaws :: [Id]
   , inductionCases :: Either String [InductionCase] } deriving (Eq, Show)
 
 -- | A case, in the law's first encoding, and in the other one when the law
@@ -147,7 +154,8 @@ instance ToJSON ProofTask where
                                   , "taskFingerprint" .= alternativeFingerprint task script ]
         | Just (recursion, script) <- [taskAlternative task] ] ++
         [ "induction" .= object ([ "on" .= inductionOn plan, "asked" .= inductionAsked plan
-                                 , "using" .= map idText (inductionLemmas plan) ] ++
+                                 , "using" .= map idText (inductionLemmas plan)
+                                 , "capabilityLaws" .= map idText (inductionCapabilityLaws plan) ] ++
             case inductionCases plan of
               Left reason -> ["status" .= ("unsupported" :: String), "reason" .= reason]
               Right cases -> ["status" .= ("ready" :: String), "cases" .=
@@ -198,7 +206,12 @@ proofTasksWith settings program = do
         ["lawspec.receipt.v2", encodingName encoding, show (programMachineBits program),
          show (proofUnfolding proof), inductionIdentity law (proofInduction proof), semanticKey graph "" law] ++
         [ semanticKey graph "lemma" lemma | InductionOn _ lemmas <- [proofInduction proof]
-                                         , Just lemma <- map (`M.lookup` lawsById) lemmas ]))))
+                                         , Just lemma <- map (`M.lookup` lawsById) lemmas ] ++
+        -- A cited capability law: what it says, of what.
+        [ "capability-lemma:" ++ digestHex (digestString (show (propertyParameters lemma, propertyInputs lemma, propertyBody lemma)))
+        | InductionOn _ lemmas <- [proofInduction proof], lemma <- general proof lemmas ]))))
+      general proof lemmas = [ lemma | i <- lemmas, M.notMember i lawsById, Just (Right unit) <- [proofLibrary proof]
+                                     , lemma <- unitProperties unit, propertyId lemma == i ]
       inductionIdentity law mode = case mode of
         DefaultInduction -> "default"
         NoInduction -> "none"
@@ -220,13 +233,21 @@ proofTasksWith settings program = do
   where
     induction lawsById proof law recursion = case proofInduction proof of
       NoInduction -> Nothing
-      InductionOn input lemmas -> Just (InductionPlan input True lemmas
-        (both (proofUnfolding proof) law input [l | i <- lemmas, Just l <- [M.lookup i lawsById]]))
+      InductionOn input lemmas -> Just (InductionPlan input True (filter (`M.member` lawsById) lemmas) (filter (`M.notMember` lawsById) lemmas)
+        (cited lawsById proof law lemmas >>= both (proofUnfolding proof) law input))
       -- One try, when the law calls a recursive definition and has a single
       -- input of a recursive data type.
       DefaultInduction -> case (recursion, structuralInputs program law) of
-        (Just _, [input]) -> Just (InductionPlan input False [] (both (proofUnfolding proof) law input []))
+        (Just _, [input]) -> Just (InductionPlan input False [] [] (both (proofUnfolding proof) law input []))
         _ -> Nothing
+    -- A cited law of the law's own unit is assumed as it is written; a
+    -- cited capability law, restated for the functions the law writes.
+    -- ref:DEC-capability-laws
+    cited lawsById proof law lemmas = concat <$> forM lemmas (\i -> case (M.lookup i lawsById, proofLibrary proof) of
+      (Just l, _) -> Right [Left l]
+      (Nothing, Just (Left reason)) -> Left reason
+      (Nothing, Just (Right unit)) | Just l <- find ((== i) . propertyId) (unitProperties unit) -> map Right <$> restatements unit law l
+      _ -> Right [])
     -- Each case in the law's encodings, in order.
     both unfolding law input lemmas = do
       let (first, second) = case unfolding of
@@ -536,26 +557,7 @@ instantiate table ty = case ty of
 -- it is used at.
 instantiateExpression :: [(Id, Type)] -> Expr -> Expr
 instantiateExpression [] e = e
-instantiateExpression table e = typed { expressionType = at (expressionType typed), expressionNode = node }
-  where
-    typed = mapChildren (instantiateExpression table) e
-    at = instantiate table
-    binder b = b { binderType = at (binderType b) }
-    evidence proof = case proof of
-      Numeric t -> Numeric (at t)
-      Structural t -> Structural (at t)
-    node = case expressionNode typed of
-      Match value cases -> Match value [c { caseBinders = map binder (caseBinders c) } | c <- cases]
-      AllElements value b body -> AllElements value (binder b) body
-      MapElements value b body -> MapElements value (binder b) body
-      FilterElements value b body -> FilterElements value (binder b) body
-      FoldElements fromLeft value initial accumulator b body -> FoldElements fromLeft value initial (binder accumulator) (binder b) body
-      SearchElements universal value b body -> SearchElements universal value (binder b) body
-      AllPayloads value predicates -> AllPayloads value [(binder b, x) | (b, x) <- predicates]
-      Let b value body -> Let (binder b) value body
-      Binary op proof a b -> Binary op (evidence proof) a b
-      Convert conversion target a -> Convert conversion (at target) a
-      other -> other
+instantiateExpression table e = mapExpressionTypes (instantiate table) e
 
 -- Symbols are quoted, so a type, constructor or selector keeps its LawSpec
 -- name: Maybe<Int32>, Maybe<Int32>#Just and Maybe<Int32>#Just#0.
@@ -1618,7 +1620,7 @@ data Shape = DataCase DataConstructor [Type] | IntegerBase Integer | IntegerStep
 -- there, the hypotheses are P at each smaller value (for those same other
 -- inputs, and for all of them), and each cited law is assumed.
 -- ref:DEC-smt-induction
-inductionTasks :: Program -> Recursion -> Property -> String -> [Property] -> Either String [InductionCase]
+inductionTasks :: Program -> Recursion -> Property -> String -> [Either Property Restatement] -> Either String [InductionCase]
 inductionTasks program mode law input lemmas = do
   let (outer, rest) = outerQuantifiers law
       bits = programMachineBits program
@@ -1676,7 +1678,28 @@ inductionTasks program mode law input lemmas = do
           specific <- concluded (proposition program [] here rest)
           pure [ app "=>" [both [range, positive guardAlone], general]
                , app "=>" [both (range : guardHere), positive specific] ]
-        cited <- plain $ forM lemmas $ \l -> closure program M.empty (propertyParameters l ++ propertyInputs l) (propertyBody l)
+        cited <- plain $ forM lemmas $ \lemma -> case lemma of
+          Left l -> closure program M.empty (propertyParameters l ++ propertyInputs l) (propertyBody l)
+          -- The capability law holds of a function that has a value, in its
+          -- type, at every element: that is asked of each function written
+          -- in its place, unless it is plain from the function.
+          Right restated -> do
+            total <- forM (restatedFunctions restated) $ \(binders, written) -> do
+              arguments <- forM binders $ \b -> do
+                s <- quantifierSortOf program (binderType b)
+                n <- fresh
+                range <- lift (domain bits (binderType b) n)
+                pure (b, s, n, range)
+              term <- expression program [] (foldl (\m (b, s, n, _) -> M.insert (binderId b) (Term s n "true") m) scope arguments) written
+              inType <- lift (domain bits (expressionType written) (value term))
+              let holds = both [c | c <- [defined term, inType], c /= "true"]
+              pure (if holds == "true" then "true" else
+                "(forall (" ++ unwords ["(" ++ n ++ " " ++ sortText s ++ ")" | (_, s, n, _) <- arguments] ++ ") " ++
+                  app "=>" [both [r | (_, _, _, r) <- arguments], holds] ++ ")")
+            law' <- closure program scope (restatedInputs restated) (restatedBody restated)
+            pure (case [t | t <- total, t /= "true"] of
+              [] -> law'
+              needed -> app "=>" [both needed, law'])
         prelude <- datatypePreamble program
         (options, functions) <- gets recursiveText
         let text = "; " ++ encodingName SmtLibV2 ++ "; induction on " ++ input ++ ": case " ++ label ++ "\n" ++

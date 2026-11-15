@@ -305,3 +305,7 @@ list. The solver treats the types and functions as unknown only in this unit.
 A handle or an adapter of your own is native, and a law over it stays
 unsupported by the solver.
 
+Your own proof by induction can assume any of these laws by name, with
+`using`, and no import. See
+[the harness's proof settings](harness.md#proof-settings).
+

@@ -288,16 +288,34 @@ end for law
 | `prove by solver recursion` | Let Z3 unfold the recursive definitions itself. |
 | `prove by unfolding step by step, then solver recursion` | Try the first, then the second. This is the default. |
 | `prove by induction on xs` | Prove the law by induction on its input `xs`: one case for each way of building `xs` (`[]` and `Cons head tail` for a list), or, for a whole number, `n = 0` and then `n` from `n - 1`. |
-| `prove by induction on xs using "|a|, "|b|` | The same, assuming the laws `a` and `b` of this unit. |
+| `prove by induction on xs using "|a|, "|b|` | The same, assuming the laws `a` and `b`: laws of this unit, or [laws of the list operations](sequences.md#the-laws-of-the-list-operations). |
 | `prove without induction` | Do not try induction. |
 
 When nothing is said, `lawspec prove` tries induction once, on the law's
 input of a recursive type (a list or a tree), if it has exactly one.
 
-A cited law must be a law of the unit, other than the law itself, and laws
-may not cite each other in a cycle. A law proved by induction is proved only
-while every law it cites is proved, or checked on every input. Each case has
-its own receipt. See [proof with Z3](../../explanation/smt-proof.md#induction).
+A cited law is a law of the unit, other than the law itself, or, when the unit
+has no law of that name, a law of the list operations. Laws may not cite each
+other in a cycle. A law proved by induction is proved only while every law of
+the unit it cites is proved, or checked on every input. Each case has its own
+receipt. See [proof with Z3](../../explanation/smt-proof.md#induction).
+
+A law of the list operations needs no import. It speaks of functions and types
+of which nothing is known, so LawSpec restates it for the functions your law
+writes at its `map`, `filter`, `all` and fold calls, once for each way they
+fit, and for the types of its lists:
+
+```lawspec
+for law "|doubling commutes with reversal|
+  prove by induction on xs using "|map distributes over append|
+end for law
+```
+
+Here the law maps `double` over lists, so `map distributes over append` is
+assumed for `double`. The citation is refused, and the law left `unsupported`
+by induction, when the law writes nothing the cited law could be about, when
+a function it would be about uses a value bound inside the law, or when there
+are more than 32 ways to fit.
 
 On Erlang, Elixir and Gleam, `repeat` applies separately to each example,
 exhaustive or boundary case, native property check, and targeted search.

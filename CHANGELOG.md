@@ -32,6 +32,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checks prove each of them with Z3. See
   [the laws of the list operations](docs/reference/language/sequences.md#the-laws-of-the-list-operations).
 
+- A proof by induction can cite a law of the list operations by name
+  (`prove by induction on xs using "|map distributes over append|`), with no
+  import. LawSpec restates the law for the functions your law writes at its
+  map, filter, all and fold calls. The laws are proved once by LawSpec's own
+  checks, and a receipt for each proof ships with LawSpec; a citation is
+  accepted only while its receipt matches. Proof tasks list these citations
+  as `induction.capabilityLaws`.
+
 ### Changed
 
 - The solver no longer unfolds a recursion to learn that a list (or other

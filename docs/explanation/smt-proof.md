@@ -256,7 +256,26 @@ the case.
 `using "|a|` assumes the cited law in every case. The citing law's evidence
 rests on the cited law's: while a cited law is not proved (or checked on every
 input), the citing law is `incomplete`, and the reason says which law it waits
-for. Cited laws must be laws of the same unit, and cycles are refused.
+for. Cited laws are laws of the same unit, and cycles are refused.
+
+A citation may instead name a
+[law of the list operations](../reference/language/sequences.md#the-laws-of-the-list-operations).
+Those laws are proved once, by LawSpec's own checks, over element types and
+functions the solver knows nothing about. LawSpec ships a receipt for each
+proof, bound to every script the proof ran. A citation is accepted only while
+the receipt matches the law as this LawSpec would prove it. Your project does
+not prove the law again, and it gains no unit and no task.
+
+The cited law is then stated for the functions your law writes. The proof
+was about functions that have a value, in their type, at every element. Where
+that is not plain from a function you wrote, the assumption says so: the law
+is assumed only if your function has a value in its type at every element,
+and Z3 must establish that before it may use the law.
+
+What this trusts: the receipt, and that a law proved for unknown types and
+functions holds for yours. The second is the usual rule for instantiating a
+proved lemma (Why3 uses a cloned theory's lemmas the same way). It is not
+proved again for your functions.
 
 When Z3 finds a model of a case, the evaluator checks the law at the model's
 input. If the law fails there, it is `refuted`. If it holds, the model fails
