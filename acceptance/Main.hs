@@ -653,7 +653,8 @@ checkSeeds suite target tool project seeds = do
 --   c  a stored value that no longer meets the restriction (3) is dropped,
 --      and one that does (4) is used;
 --   d  the cap holds: more than the default 16 stored values leave 16 at most;
---   e  with `:kept-values 0` the project records nothing and reads nothing.
+--   e  with `:kept-values 0` the project records nothing and reads nothing;
+--   f  without LAWSPEC_FOUND the store is found beside the nearest lawspec.edn.
 checkKept :: String -> String -> Toolchain -> FilePath -> [(FilePath, String)]
   -> ([(FilePath, String)] -> Either String [Generated]) -> [Generated] -> IO String
 checkKept suite target tool project sources regenerateZero generated = do
@@ -701,6 +702,18 @@ checkKept suite target tool project sources regenerateZero generated = do
   capped <- stored
   let count = sum [length entries' | (_, entries') <- capped]
   unless (count > 0 && count <= 16) (fail' ("the cap did not hold: " ++ show count ++ " values kept"))
+  -- f  without LAWSPEC_FOUND, the store is .lawspec/found beside the nearest
+  --    lawspec.edn above the working directory.
+  removePathForcibly found
+  removePathForcibly (project </> ".lawspec")
+  writeFile (project </> "lawspec.edn") "{}\n"
+  flip finally (removeFile (project </> "lawspec.edn") >> removePathForcibly (project </> ".lawspec")) $ do
+    (code, output) <- runToolWith [] tool (arguments tool ++ rerun) project
+    appendFile (project </> "kept.log") output
+    unless (code == ExitSuccess) (fail' "the run without LAWSPEC_FOUND failed")
+    beside <- doesDirectoryExist (project </> ".lawspec" </> "found")
+    names <- if beside then filter (".json" `isSuffixOf`) <$> listDirectory (project </> ".lawspec" </> "found") else pure []
+    when (null names) (fail' "without LAWSPEC_FOUND nothing was recorded beside lawspec.edn")
   -- Kept values off: regenerate the project, and nothing is read or written.
   zero <- either (\message -> die (target ++ ": " ++ suite ++ ": regenerating without kept values: " ++ message)) pure (regenerateZero sources)
   let compilerOwned gs = [g | g <- gs, generatedOwnership g /= "user"]

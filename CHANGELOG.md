@@ -63,6 +63,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with the empty text, or its length with zero. A wrapper of nonblank text
   is then a type the solver takes. `prelude.trim` as a value is still
   unsupported there.
+- The kept-values store no longer derives its folder from the failure
+  database's path. `lawspec test` gives every native test command
+  `LAWSPEC_FOUND`, the absolute `<project>/.lawspec/found`. A test run
+  directly (`mvn test`, `cargo test`) finds the store the same way on every
+  target: the nearest `lawspec.edn` in the working directory or a parent
+  directory, and `.lawspec/found` beside it. With neither the variable nor a
+  `lawspec.edn`, it neither records nor reads kept values.
 
 ## [0.34.1] - 2026-11-16
 

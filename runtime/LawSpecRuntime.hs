@@ -5918,16 +5918,23 @@ keptRecorded = unsafePerformIO (newIORef [])
 keptFile :: String -> IO (Maybe FilePath)
 keptFile spec = do
   found <- lookupEnv "LAWSPEC_FOUND"
-  failures <- lookupEnv "LAWSPEC_FAILURES"
   let key = takeWhile (/= ' ') spec
-      -- The failure database is .lawspec/failures/<target>/<project>.
-      parent path = reverse (drop 1 (dropWhile (/= '/') (reverse (dropWhile (== '/') (reverse path)))))
-  pure
-    ( case (found, failures) of
-        (Just d, _) | not (null d) -> Just (d ++ "/" ++ key ++ ".json")
-        (_, Just f) | not (null f) -> Just (parent (parent (parent f)) ++ "/found/" ++ key ++ ".json")
-        _ -> Nothing
-    )
+      file directory = directory ++ "/" ++ key ++ ".json"
+      parentOf path = case reverse (dropWhile (/= '/') (reverse path)) of
+        "" -> "/"
+        "/" -> "/"
+        up -> init up
+      -- Without the variable: .lawspec/found beside the nearest lawspec.edn
+      -- above the working directory, or no store.
+      search directory = do
+        here <- Directory.doesFileExist (directory ++ "/lawspec.edn")
+        let parent = parentOf directory
+        if here
+          then pure (Just (file (directory ++ "/.lawspec/found")))
+          else if parent == directory then pure Nothing else search parent
+  case found of
+    Just d | not (null d) -> pure (Just (file d))
+    _ -> Directory.getCurrentDirectory >>= search
 
 keptCap :: String -> Int
 keptCap spec = case words spec of

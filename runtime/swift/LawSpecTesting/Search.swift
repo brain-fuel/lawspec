@@ -119,12 +119,16 @@ public enum Search {
     let environment = ProcessInfo.processInfo.environment
     var directory = environment["LAWSPEC_FOUND"] ?? ""
     if directory.isEmpty {
-      guard let failures = environment["LAWSPEC_FAILURES"], !failures.isEmpty else { return nil }
-      // The failure database is .lawspec/failures/<target>/<project>.
-      directory =
-        URL(fileURLWithPath: failures).deletingLastPathComponent()
-        .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("found")
-        .path
+      // Without the variable: .lawspec/found beside the nearest lawspec.edn
+      // above the working directory, or no store.
+      var here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+      while !FileManager.default.fileExists(atPath: here.appendingPathComponent("lawspec.edn").path)
+      {
+        let parent = here.deletingLastPathComponent()
+        if parent.path == here.path { return nil }
+        here = parent
+      }
+      directory = here.appendingPathComponent(".lawspec").appendingPathComponent("found").path
     }
     let key = spec.split(separator: " ").first.map(String.init) ?? ""
     return URL(fileURLWithPath: directory).appendingPathComponent(key + ".json").path

@@ -7938,12 +7938,23 @@ type lsKeptEntry struct {
 func lsKeptFile(spec string) string {
 	directory := os.Getenv("LAWSPEC_FOUND")
 	if directory == "" {
-		failures := os.Getenv("LAWSPEC_FAILURES")
-		if failures == "" {
+		// Without the variable: .lawspec/found beside the nearest
+		// lawspec.edn above the working directory, or no store.
+		here, err := os.Getwd()
+		if err != nil {
 			return ""
 		}
-		// The failure database is .lawspec/failures/<target>/<project>.
-		directory = filepath.Join(failures, "..", "..", "..", "found")
+		for {
+			if info, err := os.Stat(filepath.Join(here, "lawspec.edn")); err == nil && !info.IsDir() {
+				break
+			}
+			parent := filepath.Dir(here)
+			if parent == here {
+				return ""
+			}
+			here = parent
+		}
+		directory = filepath.Join(here, ".lawspec", "found")
 	}
 	return filepath.Join(directory, strings.Fields(spec)[0]+".json")
 }

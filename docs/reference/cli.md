@@ -727,9 +727,18 @@ refused whatever the store holds.
 has: kept values are a cache of luck, not part of the project. A project that
 wants its found values in the repository removes that `.gitignore` and commits
 the files; they are plain JSON, `{"key": ..., "values": [{"inputs": [hex, ...],
-"used": N}]}`, where `used` counts the runs that ran the case. A run reads the
-`.lawspec/found` beside the `.lawspec/failures` it was given, or the folder
-`LAWSPEC_FOUND` names.
+"used": N}]}`, where `used` counts the runs that ran the case.
+
+Every native test command `lawspec test` starts gets `LAWSPEC_FOUND`, the
+absolute path of `<project>/.lawspec/found`, where the project is the folder
+of `lawspec.edn` (or of the file `--config` names). A test run directly, as
+`mvn test` or `cargo test` does, finds the store by one rule on every target:
+the runtime looks for `lawspec.edn` in its working directory and then in each
+parent directory in turn, and uses `.lawspec/found` beside the first one it
+finds. It does not depend on where the generated project sits, or on the
+failure database. If no `lawspec.edn` is found above the working directory,
+and `LAWSPEC_FOUND` is not set, the run neither records nor reads kept
+values.
 
 A law whose inputs the wire encoding cannot describe (a float, a handle, a type
 defined by the program's native code) keeps nothing, and a restricted type

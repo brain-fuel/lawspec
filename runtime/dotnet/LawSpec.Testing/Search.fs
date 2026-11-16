@@ -143,11 +143,17 @@ let private keptFile (spec: string) =
         match Environment.GetEnvironmentVariable "LAWSPEC_FOUND" with
         | null
         | "" ->
-            match Environment.GetEnvironmentVariable "LAWSPEC_FAILURES" with
-            | null
-            | "" -> None
-            // The failure database is .lawspec/failures/<target>/<project>.
-            | failures -> Some(Path.GetFullPath(Path.Combine(failures, "..", "..", "..", "found")))
+            // Without the variable: .lawspec/found beside the nearest
+            // lawspec.edn above the working directory, or no store.
+            let rec search (here: DirectoryInfo) =
+                if isNull here then
+                    None
+                elif File.Exists(Path.Combine(here.FullName, "lawspec.edn")) then
+                    Some(Path.Combine(here.FullName, ".lawspec", "found"))
+                else
+                    search here.Parent
+
+            search (DirectoryInfo(Directory.GetCurrentDirectory()))
         | found -> Some found
 
     directory

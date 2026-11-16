@@ -7880,9 +7880,20 @@ function keptFile(key)
   const env = globalThis.process?.env;
   const path = nodeModule('node:path');
   let directory = env?.LAWSPEC_FOUND;
-  // The failure database is .lawspec/failures/<target>/<project>.
-  if (!directory && env?.LAWSPEC_FAILURES)
-    directory = path.join(env.LAWSPEC_FAILURES, '..', '..', '..', 'found');
+  if (!directory)
+  {
+    // Without the variable: .lawspec/found beside the nearest lawspec.edn
+    // above the working directory, or no store.
+    const fs = nodeModule('node:fs');
+    let here = path.resolve(globalThis.process?.cwd?.() ?? '.');
+    while (!fs.existsSync(path.join(here, 'lawspec.edn')))
+    {
+      const parent = path.dirname(here);
+      if (parent === here) return null;
+      here = parent;
+    }
+    directory = path.join(here, '.lawspec', 'found');
+  }
   return directory ? path.join(directory, `${key}.json`) : null;
 }
 

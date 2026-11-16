@@ -1255,6 +1255,7 @@ async function runTests(compiler, input, selected, roots, config)
             HSPEC_SEED: batch.seed,
             LAWSPEC_STATS: stats,
             LAWSPEC_FAILURES: failures,
+            LAWSPEC_FOUND: path.join(configRoot, '.lawspec', 'found'),
             LAWSPEC_RECORDED: recordedFolder,
             ...(options['update-recorded']
               ? {LAWSPEC_UPDATE_RECORDED: '1'}
@@ -1391,6 +1392,7 @@ async function runTests(compiler, input, selected, roots, config)
             LAWSPEC_SEED: seed,
             HSPEC_SEED: seed,
             LAWSPEC_STATS: stats,
+            LAWSPEC_FOUND: path.join(configRoot, '.lawspec', 'found'),
             LAWSPEC_RECORDED: recordedFolder,
           },
           false,

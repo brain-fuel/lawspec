@@ -273,17 +273,27 @@ kept_file(Name) ->
             Found when Found =/= false, Found =/= "" ->
                 Found;
             _ ->
-                case os:getenv("LAWSPEC_FAILURES") of
-                    Failures when Failures =/= false, Failures =/= "" ->
-                        %% The failure database is .lawspec/failures/<target>/<project>.
-                        filename:join([Failures, "..", "..", "..", "found"]);
-                    _ ->
-                        none
+                %% Without the variable: .lawspec/found beside the nearest
+                %% lawspec.edn above the working directory, or no store.
+                case file:get_cwd() of
+                    {ok, Cwd} -> kept_root(Cwd);
+                    _ -> none
                 end
         end,
     case Directory of
         none -> none;
         _ -> filename:join(Directory, Name ++ ".json")
+    end.
+
+kept_root(Directory) ->
+    case filelib:is_regular(filename:join(Directory, "lawspec.edn")) of
+        true ->
+            filename:join([Directory, ".lawspec", "found"]);
+        false ->
+            case filename:dirname(Directory) of
+                Directory -> none;
+                Parent -> kept_root(Parent)
+            end
     end.
 
 kept_read(File) ->

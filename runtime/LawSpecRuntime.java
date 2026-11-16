@@ -10546,13 +10546,18 @@ public final class LawSpecRuntime
     var directory = System.getenv("LAWSPEC_FOUND");
     if (directory == null || directory.isEmpty())
     {
-      var failures = System.getenv("LAWSPEC_FAILURES");
-      if (failures == null || failures.isEmpty())
+      // Without the variable: .lawspec/found beside the nearest lawspec.edn
+      // above the working directory, or no store.
+      var here = java.nio.file.Path.of("").toAbsolutePath();
+      while (here != null && !java.nio.file.Files.isRegularFile(here.resolve("lawspec.edn")))
+      {
+        here = here.getParent();
+      }
+      if (here == null)
       {
         return null;
       }
-      // The failure database is .lawspec/failures/<target>/<project>.
-      directory = java.nio.file.Path.of(failures, "..", "..", "..", "found").normalize().toString();
+      directory = here.resolve(".lawspec").resolve("found").toString();
     }
     return java.nio.file.Path.of(directory, spec.split(" ")[0] + ".json");
   }

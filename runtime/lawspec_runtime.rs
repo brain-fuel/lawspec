@@ -6572,16 +6572,14 @@ fn kept_file(spec: &str) -> Option<std::path::PathBuf>
         .filter(|d| !d.is_empty())
     {
         Some(directory) => std::path::PathBuf::from(directory),
-        // The failure database is .lawspec/failures/<target>/<project>.
-        None => std::path::Path::new(
-            &std::env::var("LAWSPEC_FAILURES")
-                .ok()
-                .filter(|d| !d.is_empty())?,
-        )
-        .join("..")
-        .join("..")
-        .join("..")
-        .join("found"),
+        // Without the variable: .lawspec/found beside the nearest lawspec.edn
+        // above the working directory, or no store.
+        None => std::env::current_dir()
+            .ok()?
+            .ancestors()
+            .find(|d| d.join("lawspec.edn").is_file())?
+            .join(".lawspec")
+            .join("found"),
     };
     Some(directory.join(format!("{}.json", spec.split(' ').next()?)))
 }

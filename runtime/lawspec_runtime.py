@@ -6032,13 +6032,15 @@ def _kept_file(spec):
 
     directory = os.environ.get("LAWSPEC_FOUND")
     if not directory:
-        failures = os.environ.get("LAWSPEC_FAILURES")
-        if not failures:
-            return None
-        # The failure database is .lawspec/failures/<target>/<project>.
-        directory = os.path.normpath(
-            os.path.join(failures, "..", "..", "..", "found")
-        )
+        # Without the variable: .lawspec/found beside the nearest lawspec.edn
+        # above the working directory, or no store.
+        here = os.path.abspath(os.getcwd())
+        while not os.path.isfile(os.path.join(here, "lawspec.edn")):
+            parent = os.path.dirname(here)
+            if parent == here:
+                return None
+            here = parent
+        directory = os.path.join(here, ".lawspec", "found")
     return os.path.join(directory, spec.split(" ")[0] + ".json")
 
 
