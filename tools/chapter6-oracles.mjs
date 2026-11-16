@@ -184,7 +184,9 @@ const tests = await executedTests(
 const exampleTest = name =>
 {
   const kind = name.slice(name.indexOf('__') + 2);
-  return name.includes('__') && !/^(boundary_\d+|property|replay)$/.test(kind);
+  return (
+    name.includes('__') && !/^(boundary_\d+|property|replay|kept)$/.test(kind)
+  );
 };
 assert.equal(
   tests.filter(test => exampleTest(test.name)).length,
@@ -222,7 +224,7 @@ for (const entry of chapter)
       generated.properties++;
       exercised = true;
     }
-    else if (kind === 'replay') generated.replayHooks++;
+    else if (kind === 'replay' || kind === 'kept') generated.replayHooks++;
     else
     {
       generated.examples++;
