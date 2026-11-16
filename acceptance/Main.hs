@@ -408,6 +408,8 @@ writeProject suite target project defaultProfile minify generated = do
   runtime <- actorRuntime
   remote <- actorRemote
   createDirectoryIfMissing True project
+  -- Kept values from an earlier run of this project are not this run's.
+  removePathForcibly (project </> "found")
   forM_ ["src", "lib", "java", "test", "test-support", "tests", "example", "dist", "lawspec", "priv", "lawspec_crypto_build.escript"] $ \folder -> removePathForcibly (project </> folder)
   -- Clojure's Java model and reports must describe this generated project.
   -- Removed or renamed units must not survive as classes or old test suites.
@@ -518,7 +520,11 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
   keptLines <- if (field "kept" <$> decode manifest) == Just (Bool True)
     then pure <$> checkKept suite target tool project sources (regenerate [("generation", object ["keptValues" .= (0 :: Int)])]) generated
     else pure []
-  let scheduled = scheduled' ++ reached ++ swept ++ keptLines
+  -- A suite with "keptFailing" checks a kept case that fails its law.
+  keptFailingLines <- if (field "keptFailing" <$> decode manifest) == Just (Bool True)
+    then pure <$> checkKeptFailing suite target tool project
+    else pure []
+  let scheduled = scheduled' ++ reached ++ swept ++ keptLines ++ keptFailingLines
   mutants <- if mutate then suiteMutants suite target else pure []
   stubs <- if mutate then suiteStubs suite target else pure []
   -- Mutants edit adapters, or the native code a bound unit calls.
@@ -644,6 +650,52 @@ checkSeeds suite target tool project seeds = do
   putStrLn line
   pure line
 
+-- | A kept case that fails its law (docs/reference/cli.md, "Kept values"). The
+-- suite's law fails on exactly one value of its restricted type, 123456786,
+-- which is 00 (the constructor) then the zigzag LEB128 integer a4b4de75. A
+-- run records a value; the store then holds the failing value as an earlier
+-- run might have kept it; the next run must fail, and the store must show the
+-- case counted as used (not dropped, since it meets the restriction).
+checkKeptFailing :: String -> String -> Toolchain -> FilePath -> IO String
+checkKeptFailing suite target tool project = do
+  root <- getCurrentDirectory
+  let found = root </> project </> "found"
+      rerun = ["--rerun" | target `elem` ["kotlin", "groovy"]]
+      fail' what = die (target ++ ": " ++ suite ++ ": kept failing case: " ++ what ++ " (see " ++ project </> "kept.log)")
+      failing = "00a4b4de75"
+      run = do
+        (code, output) <- runToolWith [("LAWSPEC_FOUND", found)] tool (arguments tool ++ rerun) project
+        appendFile (project </> "kept.log") output
+        pure code
+      stored = do
+        exists <- doesDirectoryExist found
+        names <- if exists then sort . filter (".json" `isSuffixOf`) <$> listDirectory found else pure []
+        forM names $ \name -> do
+          content <- decode <$> BL.readFile (found </> name)
+          pure (name, [ (map text (fromMaybe [] (list (field "inputs" entry))), case field "used" entry of Number n -> round n :: Int; _ -> 0)
+                      | Just row <- [content], entry <- fromMaybe [] (list (field "values" row)) ])
+  removePathForcibly found
+  writeFile (project </> "kept.log") ""
+  flip finally (removePathForcibly found) $ do
+    first <- run
+    unless (first == ExitSuccess) (fail' "the first run failed")
+    recorded <- stored
+    name <- case recorded of
+      [(one, _ : _)] -> pure one
+      _ -> fail' ("the first run recorded " ++ show recorded)
+    writeFile (found </> name) $ BLC.unpack $ encode $ object
+      ["key" .= takeWhile (/= '.') name, "values" .= [object ["inputs" .= [failing], "used" .= (0 :: Int)]]]
+    second <- run
+    when (second == ExitSuccess) (fail' "the run passed although a kept case fails the law")
+    after <- stored
+    let counted = [used | (_, entries) <- after, (inputs, used) <- entries, inputs == [failing]]
+    case counted of
+      [] -> fail' ("the failing case left the store instead of being counted: " ++ show after)
+      used : _ -> unless (used >= 1) (fail' "the failing case was not counted as used")
+    let line = target ++ ": " ++ suite ++ ": a kept case that fails its law fails the run and counts as used"
+    putStrLn line
+    pure line
+
 -- | The kept-values store (docs/reference/cli.md, "Kept values"), checked
 -- through LAWSPEC_FOUND. The suite's one restricted input is an `Even`
 -- wrapper over Integer, so a value's wire encoding is known: the constructor
@@ -708,7 +760,7 @@ checkKept suite target tool project sources regenerateZero generated = do
   removePathForcibly (project </> ".lawspec")
   writeFile (project </> "lawspec.edn") "{}\n"
   flip finally (removeFile (project </> "lawspec.edn") >> removePathForcibly (project </> ".lawspec")) $ do
-    (code, output) <- runToolWith [] tool (arguments tool ++ rerun) project
+    (code, output) <- runToolWith [("LAWSPEC_FOUND", "")] tool (arguments tool ++ rerun) project
     appendFile (project </> "kept.log") output
     unless (code == ExitSuccess) (fail' "the run without LAWSPEC_FOUND failed")
     beside <- doesDirectoryExist (project </> ".lawspec" </> "found")
@@ -828,7 +880,10 @@ runToolWith extra tool args project = do
   -- knows the project root, so a package named recorded must not shadow the
   -- suite's recordings when the runtime searches parent directories.
   recordings <- makeAbsolute (project </> "recorded")
-  let overrides = extra ++ [("LAWSPEC_CASE", "") | "LAWSPEC_CASE" `notElem` map fst extra] ++ [("LAWSPEC_RECORDED", recordings) | "LAWSPEC_RECORDED" `notElem` map fst extra]
+  -- Every run keeps its kept values in the project, not in the repository
+  -- above it; an empty value leaves the variable unset for the runtime.
+  found <- makeAbsolute (project </> "found")
+  let overrides = extra ++ [("LAWSPEC_FOUND", found) | "LAWSPEC_FOUND" `notElem` map fst extra] ++ [("LAWSPEC_CASE", "") | "LAWSPEC_CASE" `notElem` map fst extra] ++ [("LAWSPEC_RECORDED", recordings) | "LAWSPEC_RECORDED" `notElem` map fst extra]
         ++ [setting | setting <- buildSettings tool, fst setting `notElem` map fst extra]
       settings = Just (overrides ++ [kv | kv@(k, _) <- environment, k `notElem` map fst overrides])
   (code, out, err) <- readCreateProcessWithExitCode (proc (command tool) args) { cwd = Just project, env = settings } ""

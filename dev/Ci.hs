@@ -1118,8 +1118,9 @@ targetSteps target =
   [ step (target ++ "-nested-refinements") (acceptance ["nested-refinements", target]) ] ++
   -- The kept-values store: a run records a value of a restricted type, the
   -- next reads and uses it, a stored value that no longer meets the
-  -- restriction is dropped, the cap holds, and kept-values 0 keeps nothing.
-  [ step (target ++ "-kept-values") (acceptance ["kept-values", target]) ] ++
+  -- restriction is dropped, the cap holds, and kept-values 0 keeps nothing;
+  -- a kept case that fails its law fails the run and counts as used.
+  [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | suite <- ["kept-values", "kept-values-failing"] ] ++
   -- A signature longer than Swift's line, and a Rust type numbered apart
   -- from another unit's of the same name.
   [ step (target ++ "-long-names") (acceptance ["long-names", target]) | target `elem` ["swift", "rust"] ] ++

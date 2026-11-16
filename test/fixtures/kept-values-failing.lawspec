@@ -1,0 +1,16 @@
+unit example.kept_failing
+
+-- A restricted number, and a law that fails on exactly one value of it,
+-- 123456786, which no boundary value or generated case reaches. The
+-- acceptance suite stores that value as if an earlier run had kept it, and
+-- checks that the run fails and that the store counts the case as used.
+wrapper Even is Integer where prelude.rem value 2 = 0 end wrapper
+
+law "|an even number is not the one value this law dislikes| is
+  definition:
+    for all (n :: Even) =>
+      not (valueOfEven n * 3 = 370370358)
+    end for all
+  end definition
+end law
+end unit
