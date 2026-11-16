@@ -97,6 +97,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   under three fixed seeds besides the run's own (`"seeds"` in a suite's
   `suite.json`), with laws and mutants for each shape of a restricted type
   that no law writes a value of.
+- A field restriction that calls a recursive function is refused with a message
+  naming the function and saying why, not "unknown value".
 
 ## [0.34.0] - 2026-11-14
 
