@@ -496,6 +496,57 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
       planned (replaced example "    envelope = Plain\n" (replaced "    expect seal envelope = 1\n"
         "    expect seal envelope = 0\n" source)) `shouldSatisfy`
         either (isInfixOf "no value of Keyed found") (const False)
+    it "falls back from a failed boundary search of a restricted input to its example, then to sampling, then refuses" $ do
+      -- The law's input is the restricted type itself, and the boundary
+      -- search of a type that no literal or edge of the specification meets
+      -- fails outright (a field of another type never reaches this branch).
+      let header = "unit example.direct\n\n"
+            ++ "wrapper Residue is Integer where prelude.rem (value + 4) 53 = 0 end wrapper\n\n"
+            ++ "wrapper Keyed is Integer where value > 0 && prelude.rem (value + 4) 1000003 = 0 end wrapper\n\n"
+            ++ "function leftover (residue :: Residue) -> Integer is prelude.rem (valueOfResidue residue + 4) 53 end function\n\n"
+            ++ "function leftoverKey (keyed :: Keyed) -> Integer is prelude.rem (valueOfKeyed keyed + 4) 1000003 end function\n\n"
+          residueLaw example = "law \"|a residue leaves nothing| is\n  definition:\n    for all (residue :: Residue) =>\n"
+            ++ "      leftover residue = 0\n    end for all\n  end definition\n" ++ example ++ "end law\n\n"
+          keyedLaw example = "law \"|a key leaves nothing| is\n  definition:\n    for all (keyed :: Keyed) =>\n"
+            ++ "      leftoverKey keyed = 0\n    end for all\n  end definition\n" ++ example ++ "end law\n\n"
+          example' name binding = "  example \"|" ++ name ++ "| :\n    " ++ binding ++ "\n    expect leftoverKey keyed = 0\n  end example\n"
+          residueExample = "  example \"|a written residue| :\n    residue = Residue 49\n    expect leftover residue = 0\n  end example\n"
+          planned laws = either (Left . show) (either (Left . show) Right . T.planTesting)
+            (compileCore 64 defaultGeneration [Source "direct" (header ++ laws ++ "end unit\n")])
+          boundary plan = concat [map show (T.boundaryCases property)
+            | property <- concatMap T.plannedProperties (T.plannedUnits plan)]
+      -- The type's boundary search fails, and sampling finds it a value.
+      case compileCore 64 defaultGeneration [Source "direct" (header ++ residueLaw "" ++ "end unit\n")] of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right program -> do
+          r <- registry (programDataDeclarations program)
+          forM_ [Constructor (idText (dataId declaration)) [] | declaration <- programDataDeclarations program
+                , any (`isSuffixOf` idText (dataId declaration)) ["::Residue", "::Keyed"]] $ \ty ->
+            T.boundariesWithRegistry r 64 ty `shouldSatisfy` isLeft
+      -- No example: the sampled values hold one, and the case meets the restriction.
+      case compileCore 64 defaultGeneration [Source "direct" (header ++ residueLaw "" ++ "end unit\n")] of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right program -> do
+          r <- registry (programDataDeclarations program)
+          case T.planTesting program of
+            Left diagnostics -> expectationFailure (show diagnostics)
+            Right plan -> forM_ (concatMap T.plannedProperties (T.plannedUnits plan)) $ \property -> do
+              T.boundaryCases property `shouldSatisfy` (not . null)
+              mapM_ (\values -> T.validTuple r 64 (propertyInputs (T.plannedProperty property)) values `shouldBe` Right True)
+                (T.boundaryCases property)
+      -- An example holding a value comes first: it is the only case.
+      case planned (residueLaw residueExample) of
+        Left message -> expectationFailure message
+        Right plan -> do
+          length (boundary plan) `shouldBe` 1
+          concat (boundary plan) `shouldSatisfy` isInfixOf "49"
+      -- Sampling finds no value of Keyed: the example's value is the case.
+      case planned (keyedLaw (example' "a written key" "keyed = Keyed 999999")) of
+        Left message -> expectationFailure message
+        Right plan -> boundary plan `shouldSatisfy` (\cases' -> length cases' == 1 && any ("999999" `isInfixOf`) cases')
+      -- Neither an example nor sampling does: refused, and the message says what to do.
+      planned (keyedLaw "") `shouldSatisfy`
+        either (\message -> "no value of Keyed found" `isInfixOf` message && "bind a generator" `isInfixOf` message) (const False)
     it "reports exhausted witness search without claiming an infinite domain empty" $ do
       let ty = app "Impossible" []
           never = (ctor "Impossible" [scalarType "BigInt"]){constructorPredicates=
