@@ -73,6 +73,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A kept case that fails its law now counts as used in the store on every
+  target, as the failure passes through, instead of leaving the store
+  unchanged. The failure is still reported.
 - The reference no longer says the Prolog target keeps no values. Its tests are
   the Python target's tests, run through Janus, so it records and replays kept
   values; the kept-values acceptance suite runs on Prolog.

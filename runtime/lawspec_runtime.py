@@ -6155,10 +6155,12 @@ def kept_replay(law, spec, descriptors, schema, references, bits, case):
             except Exception:  # noqa: BLE001 - a stale value is dropped
                 dropped.append(entry["inputs"])
                 continue
+            # A case that fails the law counts as used: the update below
+            # runs as the failure passes through.
+            used.append(entry["inputs"])
             if case(values) is None:
+                used.pop()
                 dropped.append(entry["inputs"])
-            else:
-                used.append(entry["inputs"])
     finally:
         if dropped or used:
             _kept_update(

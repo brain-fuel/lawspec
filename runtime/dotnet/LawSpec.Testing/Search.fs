@@ -311,9 +311,15 @@ let keptReplay
                 match values with
                 | None -> dropped <- entry.Inputs :: dropped
                 | Some values ->
+                    // A case that fails the law counts as used: the update
+                    // below runs as the failure passes through.
+                    used <- entry.Inputs :: used
+
                     match check values with
-                    | None -> dropped <- entry.Inputs :: dropped
-                    | Some _ -> used <- entry.Inputs :: used
+                    | None ->
+                        used <- List.tail used
+                        dropped <- entry.Inputs :: dropped
+                    | Some _ -> ()
         finally
             if not dropped.IsEmpty || not used.IsEmpty then
                 keptUpdate file spec (fun entries ->

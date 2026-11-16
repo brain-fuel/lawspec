@@ -196,37 +196,7 @@ kept_replay(Law, Spec, Descriptors, Admit, Check, _Bits) ->
         {File, Limit} ->
             Entries = kept_read(File),
             Considered = lists:nthtail(max(0, length(Entries) - Limit), Entries),
-            Outcomes = [
-                begin
-                    Inputs = maps:get(<<"inputs">>, Entry),
-                    Decoded =
-                        try
-                            {ok, [
-                                lawspec_beam_values:decode(D, binary:decode_hex(Hex), Table)
-                             || {Descriptor, Hex} <- lists:zip(Descriptors, Inputs),
-                                {Table, D} <- [lawspec_beam_values:from_text(Descriptor)]
-                            ]}
-                        catch
-                            _:_ -> error
-                        end,
-                    case Decoded of
-                        {ok, Values} ->
-                            case Admit(Values) of
-                                true ->
-                                    case Check(Values) of
-                                        false -> erlang:error({lawspec, {kept_value_failed, Law}});
-                                        none -> {dropped, Inputs};
-                                        _ -> {used, Inputs}
-                                    end;
-                                false ->
-                                    {dropped, Inputs}
-                            end;
-                        error ->
-                            {dropped, Inputs}
-                    end
-                end
-             || Entry <- Considered
-            ],
+            {Outcomes, Failure} = kept_run(Law, Considered, Descriptors, Admit, Check, []),
             Dropped = [I || {dropped, I} <- Outcomes],
             Used = [I || {used, I} <- Outcomes],
             case Dropped ++ Used of
@@ -252,7 +222,55 @@ kept_replay(Law, Spec, Descriptors, Admit, Check, _Bits) ->
                         "~ts: ran ~b kept value(s) found by earlier runs in .lawspec/found~n",
                         [Law, length(Used)]
                     )
+            end,
+            %% A case that fails the law counts as used; the store is updated
+            %% above, then the failure is raised.
+            case Failure of
+                none -> ok;
+                {Class, Reason, Stack} -> erlang:raise(Class, Reason, Stack)
             end
+    end.
+
+%% The outcome of each kept entry in order, and the failure that stopped the
+%% run, if any (that entry counts as used).
+kept_run(_Law, [], _Descriptors, _Admit, _Check, Acc) ->
+    {lists:reverse(Acc), none};
+kept_run(Law, [Entry | Rest], Descriptors, Admit, Check, Acc) ->
+    Inputs = maps:get(<<"inputs">>, Entry),
+    Decoded =
+        try
+            {ok, [
+                lawspec_beam_values:decode(D, binary:decode_hex(Hex), Table)
+             || {Descriptor, Hex} <- lists:zip(Descriptors, Inputs),
+                {Table, D} <- [lawspec_beam_values:from_text(Descriptor)]
+            ]}
+        catch
+            _:_ -> error
+        end,
+    Continue = fun(Outcome) -> kept_run(Law, Rest, Descriptors, Admit, Check, [Outcome | Acc]) end,
+    case Decoded of
+        {ok, Values} ->
+            case Admit(Values) of
+                true ->
+                    try Check(Values) of
+                        false ->
+                            {
+                                lists:reverse([{used, Inputs} | Acc]),
+                                {error, {lawspec, {kept_value_failed, Law}}, []}
+                            };
+                        none ->
+                            Continue({dropped, Inputs});
+                        _ ->
+                            Continue({used, Inputs})
+                    catch
+                        Class:Reason:Stack ->
+                            {lists:reverse([{used, Inputs} | Acc]), {Class, Reason, Stack}}
+                    end;
+                false ->
+                    Continue({dropped, Inputs})
+            end;
+        error ->
+            Continue({dropped, Inputs})
     end.
 
 %% Whether each value meets the current definitions of its type.

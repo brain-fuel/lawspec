@@ -6023,20 +6023,26 @@ keptReplay law spec descriptors references validate bits check = do
   case file of
     Just path | keptCap spec > 0 -> do
       entries <- keptRead path
-      outcomes <- mapM run (drop (length entries - keptCap spec) entries)
-      let dropped = [inputs | (inputs, False) <- outcomes]
-          used = [inputs | (inputs, True) <- outcomes]
-      if null dropped && null used
-        then pure ()
-        else keptUpdate path spec (\current -> [(i, if i `elem` used then n + 1 else n) | (i, n) <- current, i `notElem` dropped])
-      if null used then pure () else putStrLn (law ++ ": ran " ++ show (length used) ++ " kept value(s) found by earlier runs in .lawspec/found")
+      outcomes <- newIORef []
+      let finish = do
+            done <- reverse <$> readIORef outcomes
+            let dropped = [inputs | (inputs, False) <- done]
+                used = [inputs | (inputs, True) <- done]
+            if null dropped && null used
+              then pure ()
+              else keptUpdate path spec (\current -> [(i, if i `elem` used then n + 1 else n) | (i, n) <- current, i `notElem` dropped])
+            if null used then pure () else putStrLn (law ++ ": ran " ++ show (length used) ++ " kept value(s) found by earlier runs in .lawspec/found")
+      -- A case that fails the law counts as used: the update runs as the
+      -- failure passes through.
+      mapM_ (run outcomes) (drop (length entries - keptCap spec) entries) `finally` finish
     _ -> pure ()
   where
-    run (inputs, _) = case decoded inputs of
-      Nothing -> pure (inputs, False)
+    run outcomes (inputs, _) = case decoded inputs of
+      Nothing -> modifyIORef' outcomes ((inputs, False) :)
       Just values -> do
+        modifyIORef' outcomes ((inputs, True) :)
         answer <- check values
-        pure (inputs, answer /= Nothing)
+        if answer == Nothing then modifyIORef' outcomes (\rest -> (inputs, False) : drop 1 rest) else pure ()
     decoded inputs
       | length inputs /= length descriptors = Nothing
       | otherwise = mapM decode (zip3 descriptors references inputs)

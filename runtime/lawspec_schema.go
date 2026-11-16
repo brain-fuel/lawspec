@@ -1157,10 +1157,12 @@ func LawSpecKeptReplay(law, spec string, descriptors []string, schema *lawSpecSc
 			dropped[id] = true
 			continue
 		}
+		// A case that fails the law does not return (it ends the test), so
+		// it counts as used before it runs; the deferred update still runs.
+		used[id] = true
 		if _, admitted := check(values); !admitted {
+			delete(used, id)
 			dropped[id] = true
-		} else {
-			used[id] = true
 		}
 	}
 }

@@ -10734,13 +10734,13 @@ public final class LawSpecRuntime
           dropped.add(entry.inputs());
           continue;
         }
+        // A case that fails the law counts as used: the update below runs
+        // as the failure passes through.
+        used.add(entry.inputs());
         if (check.check(values) == null)
         {
+          used.remove(entry.inputs());
           dropped.add(entry.inputs());
-        }
-        else
-        {
-          used.add(entry.inputs());
         }
       }
     }

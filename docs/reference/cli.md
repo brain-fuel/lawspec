@@ -727,7 +727,8 @@ refused whatever the store holds.
 has: kept values are a cache of luck, not part of the project. A project that
 wants its found values in the repository removes that `.gitignore` and commits
 the files; they are plain JSON, `{"key": ..., "values": [{"inputs": [hex, ...],
-"used": N}]}`, where `used` counts the runs that ran the case.
+"used": N}]}`, where `used` counts the runs that ran the case, a case that
+fails its law included.
 
 Every native test command `lawspec test` starts gets `LAWSPEC_FOUND`, the
 absolute path of `<project>/.lawspec/found`, where the project is the folder

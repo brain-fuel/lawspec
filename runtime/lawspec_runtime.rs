@@ -6819,6 +6819,8 @@ pub fn kept_replay(
             Ok(Some(_)) => used.push(entry.inputs.clone()),
             Err(error) =>
             {
+                // A case that fails the law counts as used.
+                used.push(entry.inputs.clone());
                 outcome = Err(error);
                 break;
             }

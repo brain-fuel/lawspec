@@ -8015,8 +8015,14 @@ export async function keptReplay(
         dropped.add(entry.inputs.join());
         continue;
       }
-      if ((await check(values)) === null) dropped.add(entry.inputs.join());
-      else used.add(entry.inputs.join());
+      // A case that fails the law counts as used: the update below runs as
+      // the failure passes through.
+      used.add(entry.inputs.join());
+      if ((await check(values)) === null)
+      {
+        used.delete(entry.inputs.join());
+        dropped.add(entry.inputs.join());
+      }
     }
   }
   finally

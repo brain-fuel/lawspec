@@ -241,6 +241,8 @@ public enum Search {
           used.append(entry.inputs)
         }
       } catch {
+        // A case that fails the law counts as used.
+        used.append(entry.inputs)
         failure = error
         break
       }
