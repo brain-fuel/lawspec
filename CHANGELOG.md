@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-11-16
+
 ### Added
 
 - Kept values. A run that draws a case holding a value of a restricted type
@@ -3359,7 +3361,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.34.1...HEAD
+[0.34.1]: https://github.com/brain-fuel/lawspec/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/brain-fuel/lawspec/compare/v0.33.1...v0.34.0
 [0.33.1]: https://github.com/brain-fuel/lawspec/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/brain-fuel/lawspec/compare/v0.32.0...v0.33.0
