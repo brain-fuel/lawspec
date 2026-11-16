@@ -71,6 +71,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   directory, and `.lawspec/found` beside it. With neither the variable nor a
   `lawspec.edn`, it neither records nor reads kept values.
 
+### Fixed
+
+- The reference no longer says the Prolog target keeps no values. Its tests are
+  the Python target's tests, run through Janus, so it records and replays kept
+  values; the kept-values acceptance suite runs on Prolog.
+
 ## [0.34.1] - 2026-11-16
 
 ### Added
