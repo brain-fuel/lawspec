@@ -23,7 +23,7 @@ test('API retains parameter kinds, contracts, domains and generation settings',a
  assert.equal(overflow.inputs[1].bounds.length,1);
  assert.equal(overflow.examples[0].expectations[0].right.node.value.type,'Integer');
  const result=await checkInput(compiler, {sources:sources(content),generation:{cases:7,maxAttempts:80,maxShrinks:9,exhaustiveLimit:32}});
- assert.deepEqual(result.diagnostics,[]);assert.deepEqual(result.generation,{cases:7,maxAttempts:80,maxShrinks:9,exhaustiveLimit:32});
+ assert.deepEqual(result.diagnostics,[]);assert.deepEqual(result.generation,{cases:7,maxAttempts:80,maxShrinks:9,exhaustiveLimit:32,keptValues:16});
  assert.equal(result.laws[0].generation.cases,7);
  assert.ok((await checkInput(compiler, {sources:[],generation:{cases:0}})).diagnostics.length);
 });

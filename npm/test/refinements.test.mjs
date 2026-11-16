@@ -52,6 +52,7 @@ test('API retains parameter kinds, contracts, domains and generation settings', 
     maxAttempts: 80,
     maxShrinks: 9,
     exhaustiveLimit: 32,
+    keptValues: 16,
   });
   assert.equal(result.laws[0].generation.cases, 7);
   assert.ok(
