@@ -58,6 +58,10 @@ backend and Cabal. Install `wasm32-wasi-ghc` and `wasm32-wasi-cabal` through
 tools/wasm.sh
 ```
 
+The build writes `npm/core.wasm` and its JavaScript glue `npm/core_jsffi.js`.
+Neither is kept in Git: a checkout has no core until this step runs, and
+`npm/build.json` records the digests the build must match.
+
 The script reads `~/.ghc-wasm/env` when present. Every worktree builds into
 the same wasm32-wasi Cabal store, so the script holds a machine-wide lock
 (`locks/wasm.lock` in the [shared development cache](#the-shared-development-cache))
@@ -84,7 +88,7 @@ To build and install a local archive:
 
 ```sh
 npm pack ./npm
-npm install --save-dev ./lawspec-0.35.0.tgz
+npm install --save-dev ./lawspec-0.35.1.tgz
 ```
 
 ## Generated files

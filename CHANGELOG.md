@@ -6,12 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-11-17
+
 ### Changed
 
 - A list `map` or `filter` in a checked definition runs as typed native code
   on every target, instead of sending the whole definition, and every
   definition that calls it, to the dynamic path. Each walks the list once,
   with no stack per element.
+- The repository no longer keeps the built compiler core, `npm/core.wasm`,
+  or its JavaScript glue, `npm/core_jsffi.js`, in Git. `make wasm` builds
+  both from the Haskell sources. The npm package still ships them.
 
 ### Fixed
 
@@ -3463,7 +3468,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.35.1...HEAD
+[0.35.1]: https://github.com/brain-fuel/lawspec/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/brain-fuel/lawspec/compare/v0.34.1...v0.35.0
 [0.34.1]: https://github.com/brain-fuel/lawspec/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/brain-fuel/lawspec/compare/v0.33.1...v0.34.0

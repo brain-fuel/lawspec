@@ -65,8 +65,13 @@ htmlcov/
 *.swo
 *~
 
-# Keep release inputs: npm/core.wasm, npm/build.json, runtime sources,
-# dependency lockfiles, examples, tests, and RELEASE-*.md belong in Git.
+# Keep release inputs: npm/build.json, runtime sources, dependency lockfiles,
+# examples, tests, and RELEASE-*.md belong in Git. Build outputs do not.
+
+# The compiler core and GHC's post-linker glue, built by `make wasm`
+# (tools/wasm.sh) from the Haskell sources; npm/build.json records their digests.
+/npm/core.wasm
+/npm/core_jsffi.js
 
 # Root documents npm prepack copies into the package (dev/Generate.hs)
 /npm/README.md
