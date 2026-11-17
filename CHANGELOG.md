@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-11-16
+
 ### Added
 
 - A definition may take a function as a parameter, `(f :: a -> b)`. A call
@@ -79,6 +81,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The reference no longer says the Prolog target keeps no values. Its tests are
   the Python target's tests, run through Janus, so it records and replays kept
   values; the kept-values acceptance suite runs on Prolog.
+- Checked definitions that call each other as the last thing they do no
+  longer run out of stack on long chains: the typed fast path joins such a
+  group into one loop on every target. F# keeps every tail call a tail call.
+  The `deep-recursion` suite checks a 200,000-deep chain on all 18 targets.
 
 ## [0.34.1] - 2026-11-16
 
@@ -175,10 +181,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that no law writes a value of.
 - A field restriction that calls a recursive function is refused with a message
   naming the function and saying why, not "unknown value".
-- Checked definitions that call each other as the last thing they do no
-  longer run out of stack on long chains: the typed fast path joins such a
-  group into one loop on every target. F# keeps every tail call a tail call.
-  The `deep-recursion` suite checks a 200,000-deep chain on all 18 targets.
 - A definition over `Whole` runs as typed code in Python, JavaScript and
   TypeScript, so its tail calls loop there too.
 
@@ -3441,7 +3443,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.34.1...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/brain-fuel/lawspec/compare/v0.34.1...v0.35.0
 [0.34.1]: https://github.com/brain-fuel/lawspec/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/brain-fuel/lawspec/compare/v0.33.1...v0.34.0
 [0.33.1]: https://github.com/brain-fuel/lawspec/compare/v0.33.0...v0.33.1

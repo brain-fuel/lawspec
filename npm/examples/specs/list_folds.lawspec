@@ -1,0 +1,202 @@
+unit example.listFolds
+
+-- Folds over a list. A left fold takes the elements first to last, a right
+-- fold last to first, and each target runs them with its own loop or fold.
+
+function add (a :: Integer) (b :: Integer) -> Integer is a + b end function
+
+function minus (a :: Integer) (b :: Integer) -> Integer is a - b end function
+
+function double (n :: Integer) -> Integer is n * 2 end function
+
+function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function
+
+function before (x :: Integer) (xs :: List Integer) -> List Integer is Cons x xs end function
+
+function after (xs :: List Integer) (x :: Integer) -> List Integer is Cons x xs end function
+
+function weighted (factor :: Integer) (total :: Integer) (x :: Integer) -> Integer is
+  total + factor * x
+end function
+
+function tally (count :: Integer) (flag :: Bool) -> Integer is
+  if flag then count + 1 else count end if
+end function
+
+-- Folds inside definitions that take the list.
+function total (xs :: List Integer) -> Integer is prelude.foldLeft add 0 xs end function
+
+function difference (start :: Integer) (xs :: List Integer) -> Integer is
+  prelude.foldRight minus start xs
+end function
+
+function weightedTotal (factor :: Integer) (xs :: List Integer) -> Integer is
+  prelude.foldLeft (weighted factor) 0 xs
+end function
+
+function reversed (xs :: List Integer) -> List Integer is prelude.foldLeft after [] xs end function
+
+function copied (xs :: List Integer) -> List Integer is prelude.foldRight before [] xs end function
+
+function evenDoublesTotal (xs :: List Integer) -> Integer is
+  prelude.foldRight add 0 (prelude.map double (prelude.filter isEven xs))
+end function
+
+-- The same results written by hand, by structural recursion.
+function totalByHand (xs :: List Integer) -> Integer is
+  first matching case of xs:
+    when Nil then 0
+    when Cons x rest then x + totalByHand rest
+  end case
+end function
+
+function differenceByHand (start :: Integer) (xs :: List Integer) -> Integer is
+  first matching case of xs:
+    when Nil then start
+    when Cons x rest then x - differenceByHand start rest
+  end case
+end function
+
+function reversedOnto (done :: List Integer) (xs :: List Integer) -> List Integer is
+  first matching case of xs:
+    when Nil then done
+    when Cons x rest then reversedOnto (Cons x done) rest
+  end case
+end function
+
+function weightedOnto (factor :: Integer) (sofar :: Integer) (xs :: List Integer) -> Integer is
+  first matching case of xs:
+    when Nil then sofar
+    when Cons x rest then weightedOnto factor (sofar + factor * x) rest
+  end case
+end function
+
+law "|a left fold groups from the first element and a right fold from the last| is
+  definition :
+    prelude.foldLeft minus 10 [1, 2, 3] = 4
+    and prelude.foldRight minus 10 [1, 2, 3] = -8
+    and prelude.foldLeft add 0 [1, 2, 3] = 6
+    and prelude.foldRight add 0 [1, 2, 3] = 6
+  end definition
+end law
+
+law "|a right fold rebuilds the list and a left fold reverses it| is
+  definition :
+    prelude.foldRight before [] [1, 2, 3] = [1, 2, 3]
+    and prelude.foldLeft after [] [1, 2, 3] = [3, 2, 1]
+    and reversed [1, 2, 3] = [3, 2, 1]
+    and copied [1, 2, 3] = [1, 2, 3]
+  end definition
+end law
+
+law "|an empty list gives the initial value| is
+  definition :
+    prelude.foldLeft add 7 [] = 7
+    and prelude.foldRight minus 7 [] = 7
+    and prelude.foldRight before [4] [] = [4]
+    and total [] = 0
+    and difference 5 [] = 5
+  end definition
+end law
+
+law "|the accumulator may have a type other than the element's| is
+  definition :
+    prelude.foldLeft tally 0 [true, false, true] = 2
+    and prelude.foldLeft tally 3 [false] = 3
+  end definition
+end law
+
+law "|a step may be a partial application or a composition| is
+  definition :
+    prelude.foldLeft (weighted (1 + 1)) 0 [1, 2, 3] = 12
+    and weightedTotal 3 [1, 2] = 9
+    and prelude.foldLeft (add . double) 1 [1, 1] = 7
+  end definition
+end law
+
+law "|a mapped and filtered list is folded| is
+  definition :
+    prelude.foldLeft minus 0 (prelude.map double [1, 2, 3]) = -12
+    and prelude.foldRight before [] (prelude.filter isEven [1, 2, 3, 4]) = [2, 4]
+    and evenDoublesTotal [1, 2, 3, 4] = 12
+  end definition
+end law
+
+law "|a left fold agrees with the sum written by hand| is
+  definition :
+    for all (xs :: List Integer) =>
+      total xs = totalByHand xs
+    end for all
+  end definition
+end law
+
+law "|a right fold agrees with the difference written by hand| is
+  definition :
+    for all (start :: Integer) (xs :: List Integer) =>
+      difference start xs = differenceByHand start xs
+    end for all
+  end definition
+end law
+
+law "|a left fold agrees with the reversal written by hand| is
+  definition :
+    for all (xs :: List Integer) =>
+      reversed xs = reversedOnto [] xs and copied xs = xs
+    end for all
+  end definition
+end law
+
+law "|a weighted fold agrees with the loop written by hand| is
+  definition :
+    for all (factor :: Integer) (xs :: List Integer) =>
+      weightedTotal factor xs = weightedOnto factor 0 xs
+    end for all
+  end definition
+end law
+
+-- concat joins the lists of a list in order.
+function flattened (xss :: List (List Integer)) -> List Integer is prelude.concat xss end function
+
+function flattenedByHand (xss :: List (List Integer)) -> List Integer is
+  first matching case of xss:
+    when Nil then []
+    when Cons xs rest then xs ++ flattenedByHand rest
+  end case
+end function
+
+law "|concat joins the lists in order| is
+  definition :
+    prelude.concat [[1, 2], [], [3]] = [1, 2, 3]
+    and flattened [] = []
+    and flattened [[4], [5, 6]] = [4, 5, 6]
+  end definition
+end law
+
+law "|concat agrees with the joining written by hand| is
+  definition :
+    for all (xss :: List (List Integer)) =>
+      flattened xss = flattenedByHand xss
+    end for all
+  end definition
+end law
+
+-- One definition for every type with the capability.
+function evensOf (values :: m Integer) -> m Integer requires Filterable m is
+  prelude.filter isEven values
+end function
+
+function summed (values :: m Integer) -> Integer requires Foldable m is
+  prelude.foldLeft add 0 values
+end function
+
+function repeated (x :: a) -> a requires Appendable a is x ++ x end function
+
+law "|a definition may require a collection capability| is
+  definition :
+    evensOf [1, 2, 3, 4] = [2, 4]
+    and summed [1, 2, 3] = 6
+    and repeated [1, 2] = [1, 2, 1, 2]
+    and repeated "ab" = "abab"
+  end definition
+end law
+end unit
