@@ -7878,13 +7878,16 @@ function keptSpec(text)
 function keptFile(key)
 {
   const env = globalThis.process?.env;
-  const path = nodeModule('node:path');
+  // Outside Node (a browser, Learn's in-memory harness) there is no store.
+  const builtin = globalThis.process?.getBuiltinModule;
+  const path = builtin ? nodeModule('node:path') : undefined;
+  const fs = builtin ? nodeModule('node:fs') : undefined;
+  if (!path || !fs || !globalThis.process?.cwd) return null;
   let directory = env?.LAWSPEC_FOUND;
   if (!directory)
   {
     // Without the variable: .lawspec/found beside the nearest lawspec.edn
     // above the working directory, or no store.
-    const fs = nodeModule('node:fs');
     let here = path.resolve(globalThis.process?.cwd?.() ?? '.');
     while (!fs.existsSync(path.join(here, 'lawspec.edn')))
     {

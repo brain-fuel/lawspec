@@ -43,3 +43,15 @@ test_keptValuesSpecs = describe "the kept-values spec of a law" $ do
       u : _ -> [keptFor 64 (C.programDataDeclarations (program (wrapper "prelude.rem value 2 = 0")))
                   p { C.propertyGeneration = (C.propertyGeneration p) { keptValues = 0 } } | p <- C.unitProperties u] `shouldBe` [Nothing]
       [] -> expectationFailure "no unit"
+  it "keeps nothing for a law whose strategy may draw from part of the type" $
+    case C.programUnits compiled of
+      u : _ ->
+        [ ( keptFor 64 (C.programDataDeclarations compiled) (drawn p (C.DrawOneOf evenType [])) == Nothing
+          , keptFor 64 (C.programDataDeclarations compiled) (drawn p whole) /= Nothing )
+        | p <- C.unitProperties u ] `shouldBe` [(True, True)]
+      [] -> expectationFailure "no unit"
+  where
+    compiled = program (wrapper "prelude.rem value 2 = 0")
+    evenType = C.Constructor "Even" []
+    whole = C.DrawAny evenType Nothing
+    drawn p d = p { C.propertyHarness = (C.propertyHarness p) { C.harnessDraws = [(C.Id "n", "s", d)] } }

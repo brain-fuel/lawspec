@@ -705,7 +705,11 @@ restrictions included, so a changed restriction makes the old values
 unreachable rather than wrong. Laws with the same input types share a file,
 and so do the targets: the encoding is the same on every target, and a target
 merges what it writes into what another wrote (a temporary file renamed over
-the old one) instead of replacing it.
+the old one) instead of replacing it. A law whose input a harness strategy
+draws from part of its type (`such that`, `one of`, a refined `any`) neither
+records nor replays kept values: what is read back is checked against the
+type, not the strategy, and another law may have recorded it. A plain
+`any T` draws from the whole type, so it keeps values as the default does.
 
 A later run, on any target, runs each kept case as one more case of its law
 before the generated ones ("`<law>`: ran N kept value(s) found by earlier runs

@@ -81,6 +81,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The reference no longer says the Prolog target keeps no values. Its tests are
   the Python target's tests, run through Janus, so it records and replays kept
   values; the kept-values acceptance suite runs on Prolog.
+- A law whose input a harness strategy draws from part of its type no longer
+  replays a kept value another law recorded, which could fail the law with a
+  value its strategy never draws. Such a law neither records nor replays kept
+  values; a plain `any T` strategy still does.
+- In a browser and in Learn's lessons, the JavaScript runtime has no
+  kept-values store instead of failing every kept-values test with
+  "Cannot read properties of undefined".
 - Checked definitions that call each other as the last thing they do no
   longer run out of stack on long chains: the typed fast path joins such a
   group into one loop on every target. F# keeps every tail call a tail call.

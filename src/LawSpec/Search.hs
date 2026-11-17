@@ -55,6 +55,12 @@ keptFor bits datas p = do
   let cap = keptValues (C.propertyGeneration p)
       inputs = C.propertyInputs p
   guard (cap > 0 && not (null inputs))
+  -- A harness strategy other than a plain `any T` may draw from part of the
+  -- type only (`such that`, `one of`, a refined `any`). The store is shared
+  -- by every law with the same input types, and a replayed value is checked
+  -- against the type, not the strategy, so such a law neither records nor
+  -- replays kept values.
+  guard (all (\(_, _, draw) -> wholeType draw) (C.harnessDraws (C.propertyHarness p)))
   descriptors <- mapM describeInput inputs
   let reached = M.elems (foldl reach M.empty [C.binderType (C.quantifiedBinder q) | q <- inputs])
       restricted = [d | d <- reached, any (not . null . C.constructorPredicates) (C.dataConstructors d)]
@@ -64,6 +70,9 @@ keptFor bits datas p = do
   guard (not (null tags))
   pure (Kept descriptors (unwords (key descriptors definitions : show cap : tags)))
   where
+    wholeType draw = case draw of
+      C.DrawAny _ Nothing -> True
+      _ -> False
     describeInput q = let b = C.quantifiedBinder q in case describeRefined bits datas [] (C.binderType b) of
       Right (d, table) -> Just (unwords (map snd (reverse table) ++ [narrow (bounds (C.binderId b) (C.quantifiedPredicates q)) d]))
       Left _ -> Nothing
