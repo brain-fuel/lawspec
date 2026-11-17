@@ -6,6 +6,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- A list `map` or `filter` in a checked definition runs as typed native code
+  on every target, instead of sending the whole definition, and every
+  definition that calls it, to the dynamic path. Each walks the list once,
+  with no stack per element.
+
+### Fixed
+
+- Swift: a definition that calls itself inside a `map`, `filter` or `all`
+  closure no longer becomes a loop that `continue`s from inside the closure,
+  which did not compile.
+
 ## [0.35.0] - 2026-11-16
 
 ### Added

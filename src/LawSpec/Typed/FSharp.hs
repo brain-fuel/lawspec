@@ -399,6 +399,9 @@ cexpr env scope e = case expressionNode e of
     (statements, holds) <- cstmt env ((binderId binder, item) : scope) predicate
     t <- fresh "all"
     pure (sx ++ [LetS ("let " ++ t) (App "List.forall" [Fun item (Block statements holds), xs])], A t)
+  -- F#'s own List.map and List.filter, which take no stack per element.
+  MapElements value binder body -> elements "List.map" value binder body
+  FilterElements value binder predicate -> elements "List.filter" value binder predicate
   Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
     c <- lift' (codecOf env (expressionType x))
@@ -466,6 +469,12 @@ cexpr env scope e = case expressionNode e of
   Helper Lines [text] -> one "Typed.lines" text
   _ -> lift' (Left ("typed F#: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    elements f value binder body = do
+      (sx, xs) <- cexpr env scope value
+      item <- fresh (binderName binder)
+      (statements, result) <- cstmt env ((binderId binder, item) : scope) body
+      t <- fresh (if f == "List.map" then "mapped" else "kept")
+      pure (sx ++ [LetS ("let " ++ t) (App f [Fun item (Block statements result), xs])], A t)
     one f a = do
       (s, x) <- cexpr env scope a
       pure (s, App f [x])

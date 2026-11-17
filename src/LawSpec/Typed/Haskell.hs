@@ -562,6 +562,10 @@ cexpr env scope e = case expressionNode e of
   Helper EndsWith [a, b] -> flipped "T.isSuffixOf" a b
   Helper TextContains [a, b] -> flipped "T.isInfixOf" a b
   Helper RegexMatches [a, b] -> call2 "LSF.regexMatches" a b
+  -- A map or filter rebuilds the list in order; GHC's stack grows as the
+  -- list does.
+  MapElements value binder body -> elements value binder body False
+  FilterElements value binder predicate -> elements value binder predicate True
   AllElements value binder predicate -> do
     (sx, xs) <- cexpr env scope value
     t <- fresh "all"
@@ -638,6 +642,22 @@ cexpr env scope e = case expressionNode e of
   Helper Lines [text] -> one "LSF.lines" text
   _ -> lift' (Left ("typed Haskell: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    elements value binder body keeping = do
+      (sx, xs) <- cexpr env scope value
+      t <- fresh "mapped"
+      each <- fresh "each"
+      items <- fresh "items"
+      item <- fresh (binderName binder)
+      rest <- fresh "rest"
+      tailResult <- fresh "kept"
+      (sb, b) <- cexpr env ((binderId binder, item) : scope) body
+      let rebuilt = if keeping
+            then H.If b (call "LSF.cons" [var item, var tailResult]) (var tailResult)
+            else call "LSF.cons" [b, var tailResult]
+          go = H.Let (each ++ " " ++ items) (H.Case (var items)
+            [ ("LSF.Nil", call "P.pure" [var "LSF.Nil"])
+            , ("LSF.Cons " ++ item ++ " " ++ rest ++ " _", H.Do (sb ++ [strictBind tailResult (call each [var rest]), Run (call "P.pure" [rebuilt])])) ])
+      pure (sx ++ [go, strictBind t (call each [xs])], var t)
     one f a = do
       (s, x) <- cexpr env scope a
       pure (s, call f [x])

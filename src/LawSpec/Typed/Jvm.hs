@@ -711,6 +711,10 @@ cexpr env scope e
         pure (sx ++ [ D.text ("boolean " ++ t ++ " = true;")
                     , D.text ("for (final " ++ jt ++ " " ++ item ++ " : ") <> xs <> D.text ")" <> D.hardline <> D.block 2 (D.joinWith D.hardline
                         (sp ++ [D.text "if (!" <> paren p <> D.text ")" <> D.hardline <> D.block 2 (D.text (t ++ " = false;") <> D.hardline <> D.text "break;")])) ], D.text t)
+      -- A map or filter walks the list once, in order, and builds the
+      -- result from an ArrayList, so a long list takes no stack.
+      MapElements value binder body -> elements value binder body False
+      FilterElements value binder predicate -> elements value binder predicate True
       Helper StartsWith [a, b] -> method "startsWith" a b
       Helper EndsWith [a, b] -> method "endsWith" a b
       Helper TextContains [a, b] -> method "contains" a b
@@ -821,6 +825,22 @@ cexpr env scope e
       (sa, xa) <- cexpr env scope a
       (sb, xb) <- cexpr env scope b
       pure (sa ++ sb, J.method xa name [xb])
+    elements value binder body keeping = do
+      (sx, xs) <- cexpr env scope value
+      kept <- fresh "items"
+      item <- fresh (binderName binder)
+      jt <- lift' (javaType env False (binderType binder))
+      resultElement <- case expressionType e of
+        Constructor "List" [TypeArgument t] -> lift' (javaType env True t)
+        other -> lift' (Left ("typed Java: map or filter result " ++ show other))
+      (sb, b) <- cexpr env ((binderId binder, item) : scope) body
+      let collect = if keeping
+            then D.text "if " <> paren b <> D.hardline <> D.block 2 (D.text (kept ++ ".add(" ++ item ++ ");"))
+            else D.text (kept ++ ".add(") <> b <> D.text ");"
+      pure (sx ++ [ D.text ("final java.util.ArrayList<" ++ resultElement ++ "> " ++ kept ++ " = new java.util.ArrayList<>();")
+                  , D.text ("for (final " ++ jt ++ " " ++ item ++ " : ") <> xs <> D.text ")" <> D.hardline
+                      <> D.block 2 (D.joinWith D.hardline (sb ++ [collect])) ]
+           , jcall (envFast env ++ ".List.of") [D.text kept])
 
 paren :: D.Doc -> D.Doc
 paren x = D.text "(" <> x <> D.text ")"

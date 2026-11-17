@@ -483,6 +483,10 @@ cexpr env scope e = case expressionNode e of
                     ([D.text (item ++ " = " ++ cell ++ "[0]")] ++ sp ++
                      [blockD (D.text "if not " <> paren p) [D.text (t ++ " = False"), D.text "break"],
                       D.text (cell ++ " = " ++ cell ++ "[1]")]) ], D.text t)
+  -- A map or filter walks the list once, in order, and rebuilds its cells
+  -- from the end, so a long list takes no stack.
+  MapElements value binder body -> elements value binder body False
+  FilterElements value binder predicate -> elements value binder predicate True
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
   Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
@@ -549,6 +553,21 @@ cexpr env scope e = case expressionNode e of
   Helper Lines [text] -> one "lsf_lines" text
   _ -> lift' (Left ("typed Python: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    elements value binder body keeping = do
+      (sx, xs) <- cexpr env scope value
+      kept <- fresh "items"
+      cell <- fresh "cell"
+      item <- fresh (binderName binder)
+      result <- fresh "rebuilt"
+      (sb, b) <- cexpr env ((binderId binder, item) : scope) body
+      let collect = if keeping
+            then [blockD (D.text "if " <> D.unparen b) [D.text (kept ++ ".append(" ++ item ++ ")")]]
+            else [D.text (kept ++ ".append(") <> b <> D.text ")"]
+      pure (sx ++ [ D.text (kept ++ " = []"), D.text (cell ++ " = ") <> xs
+                  , block ("while " ++ cell ++ " is not None")
+                      ([D.text (item ++ " = " ++ cell ++ "[0]")] ++ sb ++ collect ++ [D.text (cell ++ " = " ++ cell ++ "[1]")])
+                  , D.text (result ++ " = None")
+                  , block ("for " ++ item ++ " in reversed(" ++ kept ++ ")") [D.text (result ++ " = lsf_cons(" ++ item ++ ", " ++ result ++ ")")] ], D.text result)
     one f a = do
       (s, x) <- cexpr env scope a
       pure (s, callD f [x])

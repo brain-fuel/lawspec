@@ -437,10 +437,14 @@ cexprWith position env scope e = case expressionNode e of
     (sx, xs) <- cexpr env scope value
     item <- fresh (binderName binder)
     itemType <- lift' (nativeType env (binderType binder))
-    lines' <- statements env ((binderId binder, item) : scope) (Just "Bool") Return predicate
+    lines' <- statements env { envSelf = Nothing } ((binderId binder, item) : scope) (Just "Bool") Return predicate
     t <- fresh "all"
     pure (sx ++ [D.text ("let " ++ t ++ " = try ") <> xs <> D.text (".allSatisfy { (" ++ item ++ ": " ++ itemType ++ ") throws -> Bool in") <>
       block lines' <> D.hardline <> D.text "}"], D.text t)
+  -- Swift's own map and filter over the list's sequence, gathered into a
+  -- new list: no stack per element.
+  MapElements value binder body -> elements "map" value binder body
+  FilterElements value binder predicate -> elements "filter" value binder predicate
   Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
     c <- lift' (codecOf env (expressionType x))
@@ -515,6 +519,20 @@ cexprWith position env scope e = case expressionNode e of
   Helper Lines [text] -> one "Typed.lines" text
   _ -> lift' (Left ("typed Swift: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    elements f value binder body = do
+      (sx, xs) <- cexpr env scope value
+      item <- fresh (binderName binder)
+      itemType <- lift' (nativeType env (binderType binder))
+      resultType <- lift' (nativeType env (expressionType e))
+      bodyType <- if f == "map" then lift' (nativeType env (expressionType body)) else pure "Bool"
+      -- The closure's last call returns from the closure, not the
+      -- definition, so it is never the definition's loop.
+      lines' <- statements env { envSelf = Nothing } ((binderId binder, item) : scope) (Just bodyType) Return body
+      gathered <- fresh "gathered"
+      t <- fresh (if f == "map" then "mapped" else "kept")
+      pure (sx ++ [ D.text ("let " ++ gathered ++ " = try ") <> xs <> D.text ("." ++ f ++ " { (" ++ item ++ ": " ++ itemType ++ ") throws -> " ++ bodyType ++ " in") <>
+                      block lines' <> D.hardline <> D.text "}"
+                  , D.text ("let " ++ t ++ " = " ++ resultType ++ "(" ++ gathered ++ ")") ], D.text t)
     wrap = if position == Inner then paren else id
     operation a op b
       | position == Condition = D.group (a <> D.nest 2 (D.softline <> D.text (op ++ " ") <> b))

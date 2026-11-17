@@ -234,10 +234,15 @@ names the spec declares, and `init` names the project.
 0.33.1 shipped one `map` for lists and `Either` through a capability over type
 constructors (`requires Mappable m`), stored parses so a repeated `check` reads
 each source's parse from the cache directory, and a faster compile for projects
-with structural records. Still open: persisted definition admission, list `map`
-and `filter` in the typed fast-path backends, mutual tail calls as loops,
-constructor predicates that call recursive definitions, and the rest of the
-`generate` slowdown. The canon and Rice's Tax pin bump waits on their releases.
+with structural records. 0.35.0 turned mutual tail calls into loops on every
+target, and a list `map` or `filter` now runs in the typed fast path of every
+target. Still open: a field restriction that calls a recursive definition (it
+is refused, naming the definition), a typed form for `Whole` on the JVM, Rust,
+Swift and .NET (a deep chain over `Whole` can exhaust their stack), the second
+compile a project with mappings makes on every `check`, and the rest of the
+`generate` slowdown. Persisting admission per definition was measured and
+dropped: admission is about a twentieth of a warm `check`. The canon and Rice's
+Tax pin bump waits on their releases.
 See [the S1.j follow-up](s1j-followup.md).
 
 ### Next: Haskell application port, with Maven, Gradle and Go hosts

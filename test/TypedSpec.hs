@@ -12,6 +12,7 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Typed.Plan (TypedPlan(..), typedPlan, typedPlanPerforming, callees, scalarTypes, isContextual, sharedDefinitions, isTypedHandler, typedFallbacks)
 import LawSpec.Typed.Python (PythonTyped(..), emitPythonTyped)
+import LawSpec.Typed.Swift (SwiftTyped(..), emitSwiftTyped)
 import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
 import LawSpec.Typed.Haskell (HaskellTyped(..), emitHaskellTyped)
 import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
@@ -129,6 +130,21 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
     concatMap (named p) names `shouldSatisfy` all (`M.member` typedDefinitions plan)
     forM_ (concatMap (named p) names) $ \i ->
       fmap C.definitionBody (M.lookup i (typedDefinitions plan)) `shouldBe` fmap C.definitionBody (M.lookup i original)
+  it "types a map or filter of a list" $ do
+    source <- readFile "examples/specs/list_mapping.lawspec"
+    p <- either (fail . show) pure (compileCore 64 defaultGeneration [Source "list_mapping.lawspec" source])
+    let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
+        selected = concatMap (named p) ["doubled", "evens", "tripled", "positives", "lengths"]
+    length selected `shouldBe` 5
+    [ (name, reason) | (name, reason) <- typedFallbacks plan
+      , name `elem` ["doubled", "evens", "tripled", "positives", "lengths"] ] `shouldBe` []
+    all (`M.member` typedDefinitions plan) selected `shouldBe` True
+    either expectationFailure (\typed -> pyTypedModule typed `shouldSatisfy` isInfixOf "lsf_cons(")
+      (emitPythonTyped 64 (C.programDataDeclarations p) (C.programUnits p))
+    -- size calls itself inside a map: that call returns from the closure,
+    -- so it never becomes the definition's loop.
+    either expectationFailure (\typed -> swiftTypedSource typed `shouldSatisfy` maybe False (not . isInfixOf "continue"))
+      (emitSwiftTyped 64 [] (C.programDataDeclarations p) (C.programUnits p))
   it "keeps a definition over Float64 dynamic" $ withProgram $ \p -> do
     let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
     any (`M.member` typedDefinitions plan) (named p "half") `shouldBe` False

@@ -478,6 +478,10 @@ cexpr env scope e = case expressionNode e of
     lines' <- cstmt env ((binderId binder, item) : scope) predicate
     let shown = if binderId binder `elem` freeBinders predicate then item else "_" ++ item
     pure (sx, E.remote "lists" "all" [D.multiline (D.text ("fun(" ++ shown ++ ") ->") <> sequenceBlock lines' <> D.hardline <> D.text "end"), xs])
+  -- Erlang's lists:map and lists:filter, which keep a long list off the
+  -- stack.
+  MapElements value binder body -> elements "map" value binder body
+  FilterElements value binder predicate -> elements "filter" value binder predicate
   Perform (Operation ref "raise") [x] | isFail ref, Just failure <- failedWith ref -> do
     (s, v) <- cexpr env scope x
     out <- convert env ToDynamic failure v
@@ -550,6 +554,12 @@ cexpr env scope e = case expressionNode e of
   Helper Lines [text] -> fast1 "lines" text
   _ -> failWith ("unsupported expression " ++ take 80 (show (expressionNode e)))
   where
+    elements f value binder body = do
+      (sx, xs) <- cexpr env scope value
+      item <- fresh (binderName binder)
+      lines' <- cstmt env ((binderId binder, item) : scope) body
+      let shown = if binderId binder `elem` freeBinders body then item else "_" ++ item
+      pure (sx, E.remote "lists" f [D.multiline (D.text ("fun(" ++ shown ++ ") ->") <> sequenceBlock lines' <> D.hardline <> D.text "end"), xs])
     one f a = do
       (s, x) <- cexpr env scope a
       pure (s, E.call f [x])

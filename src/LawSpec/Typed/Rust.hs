@@ -473,6 +473,10 @@ expression env selfCall scope e = case expressionNode e of
           Just t -> D.bestFit [D.narrow 2 (D.text ("for " ++ item ++ " in " ++ t)) <> D.hardline <> body, D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> body]
           Nothing -> D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> body
     pure (L.Block [L.Let ("mut " ++ ok) (L.atom "true"), L.Item loopDoc] (Just (L.atom ok)))
+  -- A map or filter walks the list once, in order, into a vector that
+  -- becomes the result's cells, so a long list takes no stack.
+  MapElements value binder body -> elements value binder body False
+  FilterElements value binder predicate -> elements value binder predicate True
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
   Perform (Operation ref "raise") [x] | isFail ref -> do
     v <- expression env Nothing scope x
@@ -548,6 +552,24 @@ expression env selfCall scope e = case expressionNode e of
   Helper Lines [text] -> (\v -> L.call "ls::fast::lines" [borrow v]) <$> expression env Nothing scope text
   _ -> lift (Left ("typed Rust: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    elements value binder body keeping = do
+      xs <- expression env Nothing scope value
+      item <- fresh (binderName binder)
+      kept <- fresh "items"
+      mapped <- fresh "mapped"
+      b <- expression env Nothing ((binderId binder, item) : scope) body
+      let iterated = L.method xs "iter" []
+          push x = L.Semi (L.method (L.atom kept) "push" [x])
+          -- The value is bound first, so a long one wraps as rustfmt wraps
+          -- a let.
+          collect = if keeping
+            then [L.Do (L.If b (L.Block [push (L.method (L.atom item) "clone" [])] Nothing) Nothing)]
+            else [L.Let mapped b, push (L.atom mapped)]
+          loopBody = L.block (L.Let item (L.method (L.atom item) "clone" []) : collect) Nothing
+          loopDoc = case L.oneLine iterated of
+            Just t -> D.bestFit [D.narrow 2 (D.text ("for " ++ item ++ " in " ++ t)) <> D.hardline <> loopBody, D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> loopBody]
+            Nothing -> D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> loopBody
+      pure (L.Block [L.Let ("mut " ++ kept) (L.call "Vec::new" []), L.Item loopDoc] (Just (L.call "ls::fast::List::from_vec" [L.atom kept])))
     textTest name a b = do
       x <- expression env Nothing scope a
       y <- expression env Nothing scope b

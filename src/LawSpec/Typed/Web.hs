@@ -555,6 +555,10 @@ cexpr env scope e = case expressionNode e of
                     (Just (E.Binary "!==" (E.Ident cell) E.Null)) (Just (E.Assign "=" (E.Ident cell) (E.member (E.Ident cell) "t")))
                     ([E.constDecl item (E.member (E.Ident cell) "h")] ++ sp ++
                      [E.If (E.notE p) [E.ExprStmt (E.Assign "=" (E.Ident t) (E.BoolLit False)), E.Break] Nothing]) ], E.Ident t)
+  -- A map or filter walks the list once, in order, and rebuilds its cells
+  -- from the end, so a long list takes no stack.
+  MapElements value binder body -> elements value binder body False
+  FilterElements value binder predicate -> elements value binder predicate True
   Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
     to <- helper "to" (expressionType x)
@@ -623,6 +627,23 @@ cexpr env scope e = case expressionNode e of
   Helper Lines [text] -> one "lsf.lines" text
   _ -> lift' (Left ("typed JavaScript: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    elements value binder body keeping = do
+      (sx, xs) <- cexpr env scope value
+      kept <- fresh "items"
+      cell <- fresh "cell"
+      item <- fresh (binderName binder)
+      result <- fresh "rebuilt"
+      (sb, b) <- cexpr env ((binderId binder, item) : scope) body
+      let typed t = if envTs env then Just t else Nothing
+          push x = E.ExprStmt (E.method (E.Ident kept) "push" [x])
+          collect = if keeping then [E.If b [push (E.Ident item)] Nothing] else [push b]
+      pure (sx ++ [ E.VarDecl "const" (E.PIdent kept) (typed (E.TArray (E.TKeyword "unknown"))) (Just (E.Array []))
+                  , E.For (Just ("let", E.PIdent cell, typed (nullable "lsf.Cons"), Just xs))
+                      (Just (E.Binary "!==" (E.Ident cell) E.Null)) (Just (E.Assign "=" (E.Ident cell) (E.member (E.Ident cell) "t")))
+                      ([E.constDecl item (E.member (E.Ident cell) "h")] ++ sb ++ collect)
+                  , E.VarDecl "let" (E.PIdent result) (typed (nullable "lsf.Cons")) (Just E.Null)
+                  , E.ForOf "const" (E.PIdent item) (E.method (E.Ident kept) "reverse" [])
+                      [E.ExprStmt (E.Assign "=" (E.Ident result) (E.new' "lsf.Cons" [E.Ident item, E.Ident result]))] ], E.Ident result)
     one f a = do
       (s, x) <- cexpr env scope a
       pure (s, E.call f [x])

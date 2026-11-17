@@ -576,6 +576,10 @@ cexpr env scope e = case expressionNode e of
                 , D.text ("for " ++ cell ++ " := ") <> xs <> D.text ("; " ++ cell ++ " != nil; " ++ cell ++ " = " ++ cell ++ ".tail ") <> block
                     ([D.text (item ++ " := " ++ cell ++ ".head")] ++ sp ++
                      [D.text "if !" <> paren p <> D.text " " <> block [D.text (t ++ " = false"), D.text "break"]]) ], D.text t)
+  -- A map or filter walks the list once, in order, and rebuilds its cells
+  -- from the end, so a long list takes no stack.
+  MapElements value binder body -> elements value binder body False
+  FilterElements value binder predicate -> elements value binder predicate True
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
   Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
@@ -652,6 +656,30 @@ cexpr env scope e = case expressionNode e of
   Helper Lines [text] -> one "lsfLines" text
   _ -> lift' (Left ("typed Go: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    elements value binder body keeping = do
+      (sx, xs) <- cexpr env scope value
+      kept <- fresh "items"
+      cell <- fresh "cell"
+      item <- fresh (binderName binder)
+      result <- fresh "rebuilt"
+      index <- fresh "i"
+      element <- case expressionType e of
+        Constructor "List" [TypeArgument t] -> lift' (goType env t)
+        other -> lift' (Left ("typed Go: map or filter result " ++ show other))
+      (sb, b) <- cexpr env ((binderId binder, item) : scope) body
+      let unused = [D.text ("_ = " ++ item) | not (mentions (binderId binder) body)]
+          collect = if keeping
+            then [D.text "if " <> D.unparen b <> D.text " " <> block [D.text (kept ++ " = append(" ++ kept ++ ", " ++ item ++ ")")]]
+            else [D.text (kept ++ " = append(" ++ kept ++ ", ") <> b <> D.text ")"]
+      pure (sx ++ [ D.text (kept ++ " := make([]" ++ element ++ ", 0)")
+                  , D.text ("for " ++ cell ++ " := ") <> xs <> D.text ("; " ++ cell ++ " != nil; " ++ cell ++ " = " ++ cell ++ ".tail ") <> block
+                      ([D.text (item ++ " := " ++ cell ++ ".head")] ++ unused ++ sb ++ collect)
+                  , D.text ("var " ++ result ++ " *lsfList[" ++ element ++ "]")
+                  , D.text ("for " ++ index ++ " := len(" ++ kept ++ ") - 1; " ++ index ++ " >= 0; " ++ index ++ "-- ") <> block
+                      [D.text (result ++ " = lsfCons(" ++ kept ++ "[" ++ index ++ "], " ++ result ++ ")")] ], D.text result)
+    mentions i x = case expressionNode x of
+      Local j -> i == j
+      _ -> any (mentions i) (children x)
     one f a = do
       (s, x) <- cexpr env scope a
       pure (s, D.text (f ++ "(") <> x <> D.text ")")
