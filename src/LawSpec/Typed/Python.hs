@@ -117,7 +117,7 @@ runtimeNames =
 
 emitPythonTyped :: Int -> [DataDeclaration] -> [Unit] -> Either String PythonTyped
 emitPythonTyped bits declarations units = do
-  let plan = typedPlanPerforming scalarTypes declarations units
+  let plan = typedPlanPerforming pythonScalars declarations units
       datas = typedData plan
       -- Each typed function is named after its definition.
       (functionNames, moduleScope) = claimAll (scopeWith (reservedFor "python" ++ moduleReserved))
@@ -234,7 +234,7 @@ plainEq :: Env -> Type -> Bool
 plainEq env = go S.empty
   where
     go seen ty = case ty of
-      Constructor n [] | n `elem` scalarTypes -> True
+      Constructor n [] | n `elem` pythonScalars -> True
       Constructor "List" _ -> False
       _ | isJust (collectionArguments ty) -> False
       Constructor n [TypeArgument a] | n == "Maybe" -> go seen a
@@ -609,8 +609,22 @@ convert env scope target value = do
                    , blockD (D.text "if " <> D.unparen (D.operation
                        [D.text (v ++ " < " ++ showInt lo), D.text (v ++ " > " ++ showInt hi)] ["or"]))
                        [D.text ("lsf_outside(" ++ quote t ++ ")")] ], D.text v)
+    -- A Whole is an int that is never negative.
+    Constructor "BigUInt" [] ->
+      let inside = case expressionType value of
+            Constructor n [] -> n == "BigUInt" || maybe False ((>= 0) . fst) (boundsOf n)
+            _ -> False
+      in if inside then pure (s, x) else do
+        v <- fresh "narrowed"
+        pure (s ++ [ D.text (v ++ " = ") <> D.statementValue x
+                   , blockD (D.text ("if " ++ v ++ " < 0")) [D.text "lsf_outside(\"BigUInt\")"] ], D.text v)
     _ -> pure (s, x)
   where showInt n = if n < 0 then "(" ++ show n ++ ")" else show n
+
+-- | The scalars with a typed form in Python: a Whole is an int, as an
+-- Integer is.
+pythonScalars :: [String]
+pythonScalars = scalarTypes ++ ["BigUInt"]
 
 construct :: Env -> Type -> Id -> [D.Doc] -> M D.Doc
 construct env ty tag values = case (idText tag, values) of
@@ -912,7 +926,7 @@ ordering env ty = case ty of
 -- | Whether converting a type is the identity, both ways.
 sameDynamic :: Type -> Bool
 sameDynamic ty = case ty of
-  Constructor n [] -> n `elem` (scalarTypes \\\ ["Unit"])
+  Constructor n [] -> n `elem` (pythonScalars \\\ ["Unit"])
   _ -> False
   where xs \\\ ys = filter (`notElem` ys) xs
 
@@ -1017,7 +1031,7 @@ shownName env d = M.findWithDefault (dataName d) (dataId d) (envNative env)
 -- directly: no Unit, Duration or other collection, whose natives differ.
 nativeDirect :: Env -> S.Set String -> Type -> Bool
 nativeDirect env seen ty = case ty of
-  Constructor n [] | n `elem` scalarTypes -> n /= "Unit"
+  Constructor n [] | n `elem` pythonScalars -> n /= "Unit"
   Constructor n [TypeArgument a] | n `elem` ["List", "Maybe"] -> nativeDirect env seen a
   Constructor "Either" [TypeArgument a, TypeArgument b] -> nativeDirect env seen a && nativeDirect env seen b
   _ | Just (_, args) <- collectionArguments ty -> all (nativeDirect env seen) args

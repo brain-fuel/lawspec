@@ -273,6 +273,14 @@ and validates its arguments and result.
 | Haskell | `increment :: LS.SymbolContext -> I.Int8 -> Either String Integer` in `LawSpecDefinitions.Example.Total` |
 | Rust | `lawspec_definitions::example_total::increment(&mut context, 127)` |
 
+A call that is the last thing a definition does takes no stack, so a chain
+of calls can be as long as the work it does. A definition's calls of itself
+become a loop, and definitions that call each other only in that position,
+like `isEven` and `isOdd`, are joined into one loop. This holds on every
+target for definitions that run as typed code. A definition over `Whole`
+runs as typed code only in Python, JavaScript and TypeScript; on the other
+targets a very long chain over `Whole` can still run out of stack.
+
 The [target guides](../../how-to/targets/index.md) give the details. See
 [the total-function example](../../../examples/specs/total_functions.lawspec)
 for recursive list counting and structural equality.

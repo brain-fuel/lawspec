@@ -166,7 +166,7 @@ function env name params result = E.FunctionDecl True False name [] params (if e
 
 emitWebTyped :: Bool -> Int -> [DataDeclaration] -> [Unit] -> Either String WebTyped
 emitWebTyped ts bits declarations units = do
-  let plan = typedPlanPerforming scalarTypes declarations units
+  let plan = typedPlanPerforming webScalars declarations units
       datas = typedData plan
   names <- namesFor [d | d <- declarations, collectionContainer (idText (dataId d)) == Nothing, not (isDurationType (idText (dataId d))), not (dataHandle d)]
   let shownName d = maybe (dataName d) id (lookup (dataId d) names)
@@ -280,7 +280,7 @@ small = ["Int8", "Int16", "Int32", "UInt8", "UInt16", "UInt32"]
 -- | Types whose === is LawSpec's equality.
 plainEq :: Env -> Type -> Bool
 plainEq env ty = case ty of
-  Constructor n [] | n `elem` scalarTypes -> n /= "Bytes"
+  Constructor n [] | n `elem` webScalars -> n /= "Bytes"
   Constructor n _ | Just d <- M.lookup n (envData env) -> fieldless d
   _ -> False
 
@@ -295,7 +295,7 @@ tsType env = go []
       Constructor "Bool" [] -> pure (E.TKeyword "boolean")
       Constructor "Unit" [] -> pure (E.TKeyword "null")
       Constructor n [] | n `elem` small -> pure (E.TKeyword "number")
-      Constructor n [] | n `elem` ["Int64", "UInt64", "Integer"] -> pure (E.TUnion [E.TKeyword "number", E.TKeyword "bigint"])
+      Constructor n [] | n `elem` ["Int64", "UInt64", "Integer", "BigUInt"] -> pure (E.TUnion [E.TKeyword "number", E.TKeyword "bigint"])
       Constructor "Text" [] -> pure (E.TKeyword "string")
       Constructor "Bytes" [] -> pure (E.TRef "Uint8Array" [])
       Constructor "List" _ -> pure (nullable "lsf.Cons")
@@ -650,7 +650,7 @@ comparer env ty = case ty of
   Constructor "Unit" [] -> pure "lsf.cmpUnit"
   Constructor "Text" [] -> pure "lsf.cmpText"
   Constructor "Bytes" [] -> pure "lsf.cmpBytes"
-  Constructor n [] | n `elem` scalarTypes -> pure "lsf.cmpNumber"
+  Constructor n [] | n `elem` webScalars -> pure "lsf.cmpNumber"
   Constructor n _ | Just d <- M.lookup n (envData env), fieldless d -> pure "lsf.cmpNumber"
   _ -> helper "cmp" ty
 
@@ -692,7 +692,19 @@ convert env scope target value = do
             _ -> False
       in if inside then pure (s, x)
          else pure (s, E.call "lsf.narrow" [x, integerLiteral lo, integerLiteral hi, E.Str t])
+    -- A Whole is an integer that is never negative; it has no upper bound.
+    Constructor "BigUInt" [] ->
+      let inside = case expressionType value of
+            Constructor n [] -> n == "BigUInt" || maybe False ((>= 0) . fst) (boundsOf n)
+            _ -> False
+      in if inside then pure (s, x)
+         else pure (s, E.call "lsf.narrow" [x, integerLiteral 0, ident "Infinity", E.Str "BigUInt"])
     _ -> pure (s, x)
+
+-- | The scalars with a typed form in JavaScript: a Whole is a number or a
+-- bigint, as an Integer is.
+webScalars :: [String]
+webScalars = scalarTypes ++ ["BigUInt"]
 
 construct :: Env -> Type -> Id -> [E.Expr] -> M E.Expr
 construct env ty tag values = case (idText tag, values) of
@@ -984,7 +996,7 @@ toValue :: Env -> Type -> M [E.Stmt]
 toValue env ty = case ty of
   Constructor "Unit" [] -> pure [E.ret (ident "ls.UNIT")]
   Constructor n [] | n `elem` ["Bool", "Text", "Bytes"] -> pure [E.ret (ident "x")]
-  Constructor n [] | n `elem` scalarTypes -> pure [E.ret (E.call "BigInt" [ident "x"])]
+  Constructor n [] | n `elem` webScalars -> pure [E.ret (E.call "BigInt" [ident "x"])]
   Constructor "List" [TypeArgument a] -> (\f -> [E.ret (E.call "lsf.toListValue" [ident "x", ident f])]) <$> helper "to" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "to" a
@@ -1028,7 +1040,7 @@ fromValue env ty = case ty of
   Constructor "Unit" [] -> pure [E.ret E.Null]
   Constructor n [] | n `elem` ["Bool", "Text", "Bytes"] -> pure [E.ret (ident "v")]
   Constructor n [] | n `elem` small -> pure [E.ret (E.call "Number" [ident "v"])]
-  Constructor n [] | n `elem` scalarTypes -> pure [E.ret (E.call "lsf.norm" [E.call "BigInt" [ident "v"]])]
+  Constructor n [] | n `elem` webScalars -> pure [E.ret (E.call "lsf.norm" [E.call "BigInt" [ident "v"]])]
   Constructor "List" [TypeArgument a] -> (\f -> [E.ret (E.call "lsf.fromListValue" [ident "v", ident f])]) <$> helper "from" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "from" a
@@ -1069,7 +1081,7 @@ fromValue env ty = case ty of
 -- | Whether a type converts to and from its generated native type directly.
 nativeDirect :: Env -> S.Set String -> Type -> Bool
 nativeDirect env seen ty = case ty of
-  Constructor n [] | n `elem` scalarTypes -> n /= "Unit"
+  Constructor n [] | n `elem` webScalars -> n /= "Unit"
   Constructor n [TypeArgument a] | n `elem` ["List", "Maybe"] -> nativeDirect env seen a
   Constructor "Either" [TypeArgument a, TypeArgument b] -> nativeDirect env seen a && nativeDirect env seen b
   _ | Just (_, args) <- collectionArguments ty -> all (nativeDirect env seen) args
@@ -1087,7 +1099,7 @@ frozen x = E.call "Object.freeze" [x]
 toNative :: Env -> Type -> M [E.Stmt]
 toNative env ty = case ty of
   Constructor n [] | n `elem` ["Bool", "Text", "Bytes"] || n `elem` small -> pure [E.ret (ident "x")]
-  Constructor n [] | n `elem` scalarTypes -> pure [E.ret (E.call "BigInt" [ident "x"])]
+  Constructor n [] | n `elem` webScalars -> pure [E.ret (E.call "BigInt" [ident "x"])]
   Constructor "List" [TypeArgument a] -> (\f -> [E.ret (frozen (E.call "lsf.toListValue" [ident "x", ident f]))]) <$> helper "tonative" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "tonative" a
@@ -1123,7 +1135,7 @@ toNative env ty = case ty of
 fromNative :: Env -> Type -> M [E.Stmt]
 fromNative env ty = case ty of
   Constructor n [] | n `elem` ["Bool", "Text", "Bytes"] || n `elem` small -> pure [E.ret (ident "n")]
-  Constructor n [] | n `elem` scalarTypes -> pure [E.ret (E.call "lsf.norm" [E.call "BigInt" [ident "n"]])]
+  Constructor n [] | n `elem` webScalars -> pure [E.ret (E.call "lsf.norm" [E.call "BigInt" [ident "n"]])]
   Constructor "List" [TypeArgument a] -> (\f -> [E.ret (E.call "lsf.fromListValue" [ident "n", ident f])]) <$> helper "fromnative" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "fromnative" a

@@ -16,13 +16,14 @@ module LawSpec.Typed.Plan
   , isContextual, performedFailure
   , typedFallbacks, failedWith, sequenceBuiltins
   , collectionArguments, scalarTypes, constructorRanks, definitionClass, sharedDefinitions, firstOf
-  , stableSuffix
+  , stableSuffix, callees
   ) where
 
 import Data.Char (isHexDigit)
 import Data.List (isPrefixOf, sortOn, stripPrefix, nub)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import Data.Graph (SCC(..), stronglyConnComp)
 import LawSpec.Collections (collectionsUnit, collectionContainer)
 import LawSpec.Core
 import qualified LawSpec.Core.EqSet as EqSet
@@ -178,7 +179,7 @@ isContextual plan identity = identity `S.member` typedContextual plan
 
 typedPlanOf :: Bool -> [String] -> [DataDeclaration] -> [Unit] -> TypedPlan
 typedPlanOf performing scalars declarations units = TypedPlan
-  { typedDefinitions = M.fromList [(idOf d, d) | d <- eligible]
+  { typedDefinitions = M.fromList [(idOf d, d) | d <- looped]
   , typedClass = classes
   , typedRepresentatives = representatives
   , typedIntrinsics = M.fromList [(idOf d, i) | d <- eligible, Just i <- [intrinsicOf d]]
@@ -290,21 +291,94 @@ typedPlanOf performing scalars declarations units = TypedPlan
           && integral (expressionType a) && integral (expressionType b)
       Numeric _ -> False
       Structural t -> op `elem` [Equal, NotEqual] && supported t
+    -- BigUInt (Whole) is typed only on a target that lists it in its scalars.
     integral (Constructor n []) = n `elem` ["Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Integer"]
+      || n == "BigUInt" && n `elem` scalars
     integral _ = False
     -- Classes: shapes with callees abstracted, refined until stable.
-    shapes = M.fromList [(idOf d, shapeOf d) | d <- eligible]
+    -- Classes are of the bodies as emitted, after mutual tail calls are joined.
+    looped = joinTailGroups (\d -> intrinsicOf d /= Nothing) eligible
+    shapes = M.fromList [(idOf d, shapeOf d) | d <- looped]
     shapeOf d = case intrinsicOf d of
       Just i -> ("intrinsic " ++ show i ++ " " ++ show (declarationType (definitionDeclaration d)), [])
       Nothing -> let (body, calls) = normalize d in (show (declarationType (definitionDeclaration d)) ++ " " ++ body, calls)
-    initial = number [(i, fst (shapes M.! i)) | i <- map idOf eligible]
+    initial = number [(i, fst (shapes M.! i)) | i <- map idOf looped]
     refine current =
-      let next = number [(i, (fst s, map (current M.!) (snd s))) | i <- map idOf eligible, let s = shapes M.! i]
+      let next = number [(i, (fst s, map (current M.!) (snd s))) | i <- map idOf looped, let s = shapes M.! i]
       in if M.size (M.fromList [(c, ()) | c <- M.elems next]) == M.size (M.fromList [(c, ()) | c <- M.elems current])
            then next else refine next
     classes = refine initial
     representatives = reverse (snd (foldl (\(seen, acc) d -> let c = classes M.! idOf d in
-      if S.member c seen then (seen, acc) else (S.insert c seen, (c, d) : acc)) (S.empty, []) eligible))
+      if S.member c seen then (seen, acc) else (S.insert c seen, (c, d) : acc)) (S.empty, []) looped))
+
+-- | A group of definitions that call each other only as the last thing they
+-- do would otherwise use a stack frame per call on targets without tail
+-- calls. The backends already turn a definition's tail calls of itself into
+-- a loop, so the group is reduced to that case: when removing one member
+-- leaves the rest unable to call in a circle, the others' bodies are put in
+-- place of that member's calls of them (their arguments bound first, in
+-- order), and every call around the circle becomes its call of itself. The
+-- other members keep their bodies; a call from one reaches the looping member
+-- within as many frames as the group has members. A group with no such
+-- member, or one whose joined body would be large, is left as it is.
+-- GHC's simplifier does the same to a recursive binding group: it picks
+-- loop breakers, and inlines the rest (Peyton Jones and Marlow, "Secrets of
+-- the Glasgow Haskell Compiler inliner", section 4).
+-- ref:DEC-typed-native-definitions
+joinTailGroups :: (Definition -> Bool) -> [Definition] -> [Definition]
+joinTailGroups opaque definitions = [M.findWithDefault d (identity d) joined | d <- definitions]
+  where
+    identity = declarationId . definitionDeclaration
+    table = M.fromList [(identity d, d) | d <- definitions, not (opaque d)]
+    edges ids d = [c | c <- nub (callees (definitionBody d)), c `S.member` ids]
+    groups = [members | CyclicSCC members <- stronglyConnComp
+      [(d, identity d, edges (M.keysSet table) d) | d <- M.elems table], length members > 1]
+    joined = M.fromList [(identity d, d) | Just d <- map joinGroup groups]
+    joinGroup members
+      | not (all (onlyTail ids . definitionBody) members) = Nothing
+      | otherwise = case [d | d <- ordered, acyclicWithout (identity d)] of
+          breaker : _ ->
+            let body = inline (definitionBody breaker)
+            in if size body <= joinedBodyLimit then Just breaker { definitionBody = body } else Nothing
+          [] -> Nothing
+      where
+        ids = S.fromList (map identity members)
+        ordered = [d | d <- definitions, identity d `S.member` ids]
+        acyclicWithout breaker =
+          let rest = S.delete breaker ids
+          in null [() | CyclicSCC _ <- stronglyConnComp
+               [(d, identity d, edges rest d) | d <- members, identity d /= breaker]]
+             && all (\d -> identity d == breaker || identity d `notElem` callees (definitionBody d)) members
+        breakerOf = identity (head [d | d <- ordered, acyclicWithout (identity d)])
+        inline e = case expressionNode e of
+          If c a b -> e { expressionNode = If c (inline a) (inline b) }
+          Match value cases -> e { expressionNode = Match value [c { caseBody = inline (caseBody c) } | c <- cases] }
+          Let binder value body -> e { expressionNode = Let binder value (inline body) }
+          Helper Select [c, a, b] -> e { expressionNode = Helper Select [c, inline a, inline b] }
+          ExternalCall callee arguments
+            | callee `S.member` ids, callee /= breakerOf, Just d <- M.lookup callee table
+            , length arguments == length (definitionArguments d) ->
+                foldr (\(binder, argument) rest -> e { expressionNode = Let binder argument rest })
+                  (inline (definitionBody d)) (zip (definitionArguments d) arguments)
+          _ -> e
+    size e = 1 + sum (map size (children e)) :: Int
+
+-- | The most nodes a joined body may have before the group is left alone.
+joinedBodyLimit :: Int
+joinedBodyLimit = 4000
+
+-- | Whether every call of a group member is the last thing the body does.
+onlyTail :: S.Set Id -> Expr -> Bool
+onlyTail ids = tailPosition
+  where
+    tailPosition e = case expressionNode e of
+      If c a b -> absent c && tailPosition a && tailPosition b
+      Match value cases -> absent value && all (tailPosition . caseBody) cases
+      Let _ value body -> absent value && tailPosition body
+      Helper Select [c, a, b] -> absent c && tailPosition a && tailPosition b
+      ExternalCall _ arguments -> all absent arguments
+      _ -> absent e
+    absent e = not (any (`S.member` ids) (callees e))
 
 -- | Number keys by first appearance (program order), so classes are stable.
 number :: Ord k => [(Id, k)] -> M.Map Id Int

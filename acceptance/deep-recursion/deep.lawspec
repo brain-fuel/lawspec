@@ -1,0 +1,31 @@
+unit acceptance.deepRecursion
+
+-- A long chain of calls must not exhaust the stack on any target. Every
+-- call below is the last thing its function does, so each chain runs in
+-- constant stack: a function's calls of itself become a loop, and a group
+-- of functions that call each other is joined into one such loop.
+
+function settles (n :: Int64) (seen :: Bool) -> Bool is
+  if n <= 0 then seen else settles (n - 1) true end if
+end function
+
+function isEven (n :: Int64) -> Bool is
+  if n <= 0 then true else isOdd (n - 1) end if
+end function
+
+function isOdd (n :: Int64) -> Bool is
+  if n <= 0 then false else isEven (n - 1) end if
+end function
+
+law "|a long count ends| is
+  definition: for all (n :: Int32 where n <= 300000) => settles n true end for all end definition
+  example "|two hundred thousand| : n = 200000 expect settles n true = true end example
+end law
+
+law "|a long alternation ends| is
+  definition: for all (n :: Int32 where n <= 300000) => isEven n != isOdd n end for all end definition
+  example "|two hundred thousand| : n = 200000 expect isEven n = true end example
+  example "|one more| : n = 200001 expect isOdd n = true end example
+end law
+
+end unit

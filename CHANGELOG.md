@@ -175,6 +175,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that no law writes a value of.
 - A field restriction that calls a recursive function is refused with a message
   naming the function and saying why, not "unknown value".
+- Checked definitions that call each other as the last thing they do no
+  longer run out of stack on long chains: the typed fast path joins such a
+  group into one loop on every target. F# keeps every tail call a tail call.
+  The `deep-recursion` suite checks a 200,000-deep chain on all 18 targets.
+- A definition over `Whole` runs as typed code in Python, JavaScript and
+  TypeScript, so its tail calls loop there too.
 
 ## [0.34.0] - 2026-11-14
 

@@ -281,6 +281,14 @@ cstmt env scope e = case expressionNode e of
     pure (s, Cond x (uncurry Block yes) (uncurry Block no))
   Helper Select [c, a, b] -> cstmt env scope (e { expressionNode = If c a b })
   Match value cases -> matchStatements env scope value cases
+  -- A call that is the last thing a body does is left a tail call, not
+  -- bound to a local, so F# compiles it as a jump (a loop when it calls the
+  -- function itself). Its arguments are still computed first.
+  ExternalCall i args | M.notMember i (typedIntrinsics (envPlan env)) -> do
+    c <- lift' (maybe (Left ("typed F#: untyped callee " ++ idText i)) Right (definitionClass (envPlan env) i))
+    parts <- mapM (cexpr env scope) args
+    let context = [[A "schema", A "symbols"] | isContextual (envPlan env) i]
+    pure (concatMap fst parts, App (envFunctions env M.! c) (concat context ++ map snd parts ++ [A "()" | null parts && null context]))
   _ -> cexpr env scope e
 
 -- | An expression's value: the statements that compute it, and an atom.

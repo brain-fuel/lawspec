@@ -10,7 +10,7 @@ import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
-import LawSpec.Typed.Plan (TypedPlan(..), typedPlan, typedPlanPerforming, scalarTypes, isContextual, sharedDefinitions, isTypedHandler, typedFallbacks)
+import LawSpec.Typed.Plan (TypedPlan(..), typedPlan, typedPlanPerforming, callees, scalarTypes, isContextual, sharedDefinitions, isTypedHandler, typedFallbacks)
 import LawSpec.Typed.Python (PythonTyped(..), emitPythonTyped)
 import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
 import LawSpec.Typed.Haskell (HaskellTyped(..), emitHaskellTyped)
@@ -100,6 +100,35 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
   it "types definitions over text, bounded integers, Integer, lists, KeyVal and data" $ withProgram $ \p -> do
     let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
     all (`M.member` typedDefinitions plan) (named p "credit" ++ named p "total") `shouldBe` True
+  it "joins a group of mutual tail calls into one definition's calls of itself" $ do
+    let source = unlines
+          [ "unit example.parity"
+          , "function isEven (n :: Int64) -> Bool is if n <= 0 then true else isOdd (n - 1) end if end function"
+          , "function isOdd (n :: Int64) -> Bool is if n <= 0 then false else isEven (n - 1) end if end function"
+          , "end unit" ]
+    p <- either (fail . show) pure (compileCore 64 defaultGeneration [Source "parity.lawspec" source])
+    let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
+        body name = [C.definitionBody d | i <- named p name, Just d <- [M.lookup i (typedDefinitions plan)]]
+    concatMap callees (body "isEven") `shouldBe` named p "isEven"
+    concatMap callees (body "isOdd") `shouldBe` named p "isEven"
+    either expectationFailure (\typed -> pyTypedModule typed `shouldSatisfy` isInfixOf "while True")
+      (emitPythonTyped 64 (C.programDataDeclarations p) (C.programUnits p))
+  it "leaves a group alone when a call is not last or no one member breaks every circle" $ do
+    let source = unlines
+          [ "unit example.groups"
+          , "function countEven (n :: Int64) -> Integer is if n <= 0 then 0 else 1 + countOdd (n - 1) end if end function"
+          , "function countOdd (n :: Int64) -> Integer is if n <= 0 then 0 else countEven (n - 1) end if end function"
+          , "function first (n :: Int64) -> Bool is if n <= 0 then true else if n = 1 then second (n - 1) else third (n - 1) end if end if end function"
+          , "function second (n :: Int64) -> Bool is if n <= 0 then true else if n = 1 then first (n - 1) else third (n - 1) end if end if end function"
+          , "function third (n :: Int64) -> Bool is if n <= 0 then true else if n = 1 then first (n - 1) else second (n - 1) end if end if end function"
+          , "end unit" ]
+    p <- either (fail . show) pure (compileCore 64 defaultGeneration [Source "groups.lawspec" source])
+    let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
+        original = M.fromList [(C.declarationId (C.definitionDeclaration d), d) | u <- C.programUnits p, d <- C.unitDefinitions u]
+        names = ["countEven", "countOdd", "first", "second", "third"]
+    concatMap (named p) names `shouldSatisfy` all (`M.member` typedDefinitions plan)
+    forM_ (concatMap (named p) names) $ \i ->
+      fmap C.definitionBody (M.lookup i (typedDefinitions plan)) `shouldBe` fmap C.definitionBody (M.lookup i original)
   it "keeps a definition over Float64 dynamic" $ withProgram $ \p -> do
     let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
     any (`M.member` typedDefinitions plan) (named p "half") `shouldBe` False
