@@ -26,7 +26,9 @@ const project=path.join(directory,'project');
 await mkdir(project);
 const seed=process.env.LAWSPEC_SEED??'6061';
 assert.match(seed,/^\d+$/,'LAWSPEC_SEED must be a nonnegative integer');
-const environment={...process.env,PYTHONDONTWRITEBYTECODE:'1',LAWSPEC_SEED:seed};
+// The kept-values store is this run's own, not one beside the nearest
+// lawspec.edn above the project, which is the repository's.
+const environment={...process.env,PYTHONDONTWRITEBYTECODE:'1',LAWSPEC_SEED:seed,LAWSPEC_FOUND:path.join(directory,'found')};
 let step=0;
 async function run(label,arguments_,{pass=true}={}) {
   console.log('python '+label);
