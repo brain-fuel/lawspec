@@ -248,12 +248,12 @@ typedPlanOf performing scalars declarations units = TypedPlan
       Construct _ _ -> True
       Match value cases -> supported (expressionType value) && all (all (supported . binderType) . caseBinders) cases
       AllElements _ binder _ -> supported (binderType binder)
-      -- A map or filter of a list is a loop over its typed elements.
+      -- A map, filter or fold of a list is a loop over its typed elements.
       MapElements _ binder _ -> supported (binderType binder)
       FilterElements _ binder _ -> supported (binderType binder)
+      FoldElements _ _ _ accumulator binder _ -> supported (binderType accumulator) && supported (binderType binder)
       -- Finite searches belong to the law execution plan, not checked
       -- definition bodies selected for the typed implementation fast path.
-      FoldElements {} -> False
       SearchElements {} -> False
       AllPayloads _ _ -> False
       Local _ -> True

@@ -107,6 +107,15 @@
         "path": "how-to/install-and-init.md"
       },
       {
+        "path": "how-to/install-go.md"
+      },
+      {
+        "path": "how-to/install-maven.md"
+      },
+      {
+        "path": "how-to/install-gradle.md"
+      },
+      {
         "path": "how-to/configure-an-existing-project.md"
       },
       {
@@ -156,6 +165,9 @@
       },
       {
         "path": "how-to/release.md"
+      },
+      {
+        "path": "how-to/build-native.md"
       },
       {
         "path": "how-to/vet.md"
@@ -387,6 +399,9 @@
       },
       {
         "path": "reference/host-sdk.md"
+      },
+      {
+        "path": "reference/host-effects.md"
       }
     ]
   },

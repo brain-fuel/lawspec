@@ -713,6 +713,26 @@ cexpr env scope e
                         (sp ++ [D.text "if (!" <> paren p <> D.text ")" <> D.hardline <> D.block 2 (D.text (t ++ " = false;") <> D.hardline <> D.text "break;")])) ], D.text t)
       -- A map or filter walks the list once, in order, and builds the
       -- result from an ArrayList, so a long list takes no stack.
+      -- A fold keeps its accumulator in a local, over the list in order
+      -- or, from the right, over its elements by descending index.
+      FoldElements fromLeft value initial accumulator binder body -> do
+        (sx, xs) <- cexpr env scope value
+        (si, i) <- cexpr env scope initial
+        total <- fresh (binderName accumulator)
+        item <- fresh (binderName binder)
+        kept <- fresh "items"
+        index <- fresh "i"
+        totalType <- lift' (javaType env False (binderType accumulator))
+        jt <- lift' (javaType env False (binderType binder))
+        boxed <- lift' (javaType env True (binderType binder))
+        (sb, b) <- cexpr env ((binderId binder, item) : (binderId accumulator, total) : scope) body
+        let step = D.joinWith D.hardline (sb ++ [D.text (total ++ " = ") <> b <> D.text ";"])
+            walk = if fromLeft
+              then [D.text ("for (final " ++ jt ++ " " ++ item ++ " : ") <> xs <> D.text ")" <> D.hardline <> D.block 2 step]
+              else [ D.text ("final java.util.List<" ++ boxed ++ "> " ++ kept ++ " = ") <> J.method xs "toJava" [] <> D.text ";"
+                   , D.text ("for (int " ++ index ++ " = " ++ kept ++ ".size() - 1; " ++ index ++ " >= 0; " ++ index ++ "--)") <> D.hardline
+                       <> D.block 2 (D.text ("final " ++ jt ++ " " ++ item ++ " = " ++ kept ++ ".get(" ++ index ++ ");") <> D.hardline <> step) ]
+        pure (sx ++ si ++ [D.text (totalType ++ " " ++ total ++ " = ") <> i <> D.text ";"] ++ walk, D.text total)
       MapElements value binder body -> elements value binder body False
       FilterElements value binder predicate -> elements value binder predicate True
       Helper StartsWith [a, b] -> method "startsWith" a b

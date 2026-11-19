@@ -9,7 +9,7 @@ import {
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {PassThrough} from 'node:stream';
-import {serveLanguage, utf16Position} from '../lsp.mjs';
+import {serveLanguage} from './lsp-cli.mjs';
 
 test('documentary prelude function aliases retain declaration identities and ordinary scope priority', async () =>
 {
@@ -497,18 +497,7 @@ end unit
 // references, configured strategies and composed propositions) are compiler
 // tests: test/ExplainSpec.hs.
 
-test('LSP positions count UTF-16 units and expand parser tab columns', () =>
-{
-  const text = 'a😀b\n\t😀x\n';
-  assert.deepEqual(utf16Position(text, {line: 1, column: 3}), {
-    line: 0,
-    character: 3,
-  });
-  assert.deepEqual(utf16Position(text, {line: 2, column: 10}), {
-    line: 1,
-    character: 3,
-  });
-});
+// UTF-16 positions after tabs and astral characters: ServerSpec ("converts positions").
 
 test('contextual articles retain typed predicates, source positions and explanation meaning', async () =>
 {
@@ -610,162 +599,12 @@ function messages(data)
   return result;
 }
 
-test('LSP transport accepts split UTF-8 messages and formats unsaved source without writing it', async () =>
-{
-  const input = new PassThrough(),
-    output = new PassThrough();
-  const chunks = [];
-  output.on('data', data => chunks.push(data));
-  const compiler = {
-    check: async request =>
-    {
-      assert.equal(request.languageProfile, '1.0-rc.2');
-      assert.deepEqual(request.verification.layers, []);
-      return {
-        diagnostics: [
-          {
-            code: 'total',
-            message: 'Invalid 😀 result',
-            at: {file: request.sources[0].path, line: 1, column: 3},
-          },
-        ],
-      };
-    },
-    format: async request => ({
-      diagnostics: [],
-      formattedSources: request.sources.map(s => ({
-        ...s,
-        content: s.content + '\n',
-      })),
-    }),
-  };
-  const running = serveLanguage(input, output, compiler);
-  const protocol = Buffer.concat([
-    frame({
-      id: 1,
-      method: 'initialize',
-      params: {rootUri: 'file:///unlikely-lawspec-test-project'},
-    }),
-    frame({
-      method: 'textDocument/didOpen',
-      params: {
-        textDocument: {
-          uri: 'file:///unlikely-lawspec-test-project/test.lawspec',
-          version: 1,
-          text: 'a😀b',
-        },
-      },
-    }),
-    frame({
-      id: 2,
-      method: 'textDocument/formatting',
-      params: {
-        textDocument: {
-          uri: 'file:///unlikely-lawspec-test-project/test.lawspec',
-        },
-      },
-    }),
-    frame({id: 3, method: 'shutdown'}),
-  ]);
-  for (let i = 0; i < protocol.length; i += 7)
-    input.write(protocol.subarray(i, i + 7));
-  input.end();
-  await running;
-  const responses = messages(Buffer.concat(chunks));
-  assert.equal(
-    responses.find(r => r.id === 1).result.capabilities.positionEncoding,
-    'utf-16',
-  );
-  const diagnostic = responses.find(
-    r => r.method === 'textDocument/publishDiagnostics',
-  ).params.diagnostics[0];
-  assert.equal(diagnostic.range.start.character, 3);
-  assert.equal(diagnostic.code, 'total');
-  assert.equal(responses.find(r => r.id === 2).result[0].newText, 'a😀b\n');
-  assert.deepEqual(responses.find(r => r.id === 2).result[0].range.end, {
-    line: 0,
-    character: 4,
-  });
-});
+// Split messages and UTF-16 diagnostics over a stub compiler: ServerSpec ("reassembles messages",
+// "publishes a changed document's errors at their UTF-16 positions"); the LSP now
+// runs the core's compiler, which the WASM-backed tests below drive through the CLI.
 
-test('LSP follows documentary links to original source with UTF-16 ranges and no expansion', async () =>
-{
-  const uri = 'file:///unlikely-lawspec-test-project/references.lawspec';
-  const file = '/unlikely-lawspec-test-project/references.lawspec';
-  const text = 'law \"|😀 source| is\n\tref law \"|😀 source|\nend\n';
-  const location = (line, column) => ({file, line, column});
-  const target = {
-    id: 'shop::law::|😀 source|',
-    unit: 'shop',
-    name: '|😀 source|',
-    span: {spanStart: location(1, 1), spanEnd: location(1, 1)},
-    referenceSpan: {spanStart: location(2, 17), spanEnd: location(2, 28)},
-  };
-  const input = new PassThrough(),
-    output = new PassThrough(),
-    chunks = [];
-  output.on('data', data => chunks.push(data));
-  const running = serveLanguage(input, output, {
-    check: async () => ({
-      laws: [
-        {
-          id: 'shop::law::linked',
-          name: 'linked',
-          location: location(3, 1),
-          references: [{kind: 'law', target}],
-        },
-      ],
-    }),
-  });
-  input.end(
-    Buffer.concat([
-      frame({
-        id: 1,
-        method: 'initialize',
-        params: {rootUri: 'file:///unlikely-lawspec-test-project'},
-      }),
-      frame({
-        method: 'textDocument/didOpen',
-        params: {textDocument: {uri, version: 1, text}},
-      }),
-      frame({
-        id: 2,
-        method: 'textDocument/definition',
-        params: {textDocument: {uri}, position: {line: 1, character: 12}},
-      }),
-      frame({
-        id: 3,
-        method: 'textDocument/hover',
-        params: {textDocument: {uri}, position: {line: 1, character: 12}},
-      }),
-      frame({
-        id: 4,
-        method: 'textDocument/references',
-        params: {
-          textDocument: {uri},
-          position: {line: 1, character: 12},
-          context: {includeDeclaration: true},
-        },
-      }),
-      frame({id: 5, method: 'shutdown'}),
-    ]),
-  );
-  await running;
-  const responses = messages(Buffer.concat(chunks));
-  assert.deepEqual(responses.find(r => r.id === 2).result, {
-    uri,
-    range: {start: {line: 0, character: 0}, end: {line: 0, character: 0}},
-  });
-  assert.deepEqual(responses.find(r => r.id === 3).result.range, {
-    start: {line: 1, character: 9},
-    end: {line: 1, character: 21},
-  });
-  assert.match(
-    responses.find(r => r.id === 3).result.contents.value,
-    /😀 source/,
-  );
-  assert.equal(responses.find(r => r.id === 4).result.length, 2);
-});
+// Documentary links over a stub compiler: the WASM-backed link test below follows
+// them with the real compiler through the CLI.
 
 test('WASM-backed LSP publishes all independent parse errors and offers no edits for invalid source', async () =>
 {

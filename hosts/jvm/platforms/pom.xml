@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The platform jars: each holds one natively compiled lawspec (the Haskell
+  application over its native-IO host interpreter, built by stack as
+  lawspec-native) at dev/goforge/lawspec/native/<platform>/lawspec, and the
+  Canon bundle lawspec project runs (tools/build-canon.sh: the canon
+  executable, canon.json and Rice's Tax's presets) under canon/ beside it.
+  Both come from the staging directory hosts/jvm/stage-native.sh fills;
+  the launcher's manifest records the SHA-256 of each executable. A jar has no Java code, so a
+  release attaches sources and javadoc jars holding a README that says so,
+  as Central's requirements allow. ref:DEC-jvm-native-host
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>dev.goforge</groupId>
+    <artifactId>lawspec-parent</artifactId>
+    <version>${revision}</version>
+  </parent>
+
+  <artifactId>lawspec-platform-parent</artifactId>
+  <packaging>pom</packaging>
+  <name>LawSpec platform parent</name>
+  <description>Shared build of the LawSpec platform jars.</description>
+
+  <properties>
+    <!-- Set by each platform module. -->
+    <lawspec.platform>unset</lawspec.platform>
+  </properties>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-antrun-plugin</artifactId>
+          <executions>
+            <execution>
+              <id>staged-binary</id>
+              <phase>validate</phase>
+              <goals>
+                <goal>run</goal>
+              </goals>
+              <configuration>
+                <target>
+                  <fail message="No ${lawspec.platform} binary is staged. Build lawspec-native and Canon (tools/build-canon.sh) on ${lawspec.platform} and stage them with hosts/jvm/stage-native.sh (see docs/how-to/install-maven.md, &quot;Build the platform jars&quot;).">
+                    <condition>
+                      <not>
+                        <and>
+                          <available file="${lawspec.natives}/${lawspec.platform}/lawspec"/>
+                          <available file="${lawspec.natives}/${lawspec.platform}/canon/canon"/>
+                          <available file="${lawspec.natives}/natives.properties"/>
+                        </and>
+                      </not>
+                    </condition>
+                  </fail>
+                </target>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-jar-plugin</artifactId>
+              <executions>
+                <execution>
+                  <id>readme-sources</id>
+                  <phase>package</phase>
+                  <goals>
+                    <goal>jar</goal>
+                  </goals>
+                  <configuration>
+                    <classifier>sources</classifier>
+                    <classesDirectory>${maven.multiModuleProjectDirectory}/platforms/readme</classesDirectory>
+                  </configuration>
+                </execution>
+                <execution>
+                  <id>readme-javadoc</id>
+                  <phase>package</phase>
+                  <goals>
+                    <goal>jar</goal>
+                  </goals>
+                  <configuration>
+                    <classifier>javadoc</classifier>
+                    <classesDirectory>${maven.multiModuleProjectDirectory}/platforms/readme</classesDirectory>
+                  </configuration>
+                </execution>
+              </executions>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
+    </profile>
+  </profiles>
+</project>

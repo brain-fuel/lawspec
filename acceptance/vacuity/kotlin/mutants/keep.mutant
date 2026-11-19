@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Vacuity.kt
+<<<<<<<
+fun keep(key: kotlin.String): kotlin.String = key
+=======
+fun keep(key: kotlin.String): kotlin.String = if (key == "south") "" else key
+>>>>>>>

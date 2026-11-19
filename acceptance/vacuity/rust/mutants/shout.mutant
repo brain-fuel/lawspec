@@ -1,0 +1,8 @@
+@@ src/example/vacuity.rs
+<<<<<<<
+    name.to_uppercase()
+
+=======
+    name.to_uppercase() + "!"
+
+>>>>>>>

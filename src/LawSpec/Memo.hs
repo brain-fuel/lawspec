@@ -58,7 +58,11 @@ cacheTrace :: IORef Bool
 cacheTrace = unsafePerformIO (lookupEnv "LAWSPEC_CACHE_TRACE" >>= newIORef . maybe False (not . null))
 {-# NOINLINE cacheTrace #-}
 
-data Entry a = Entry {entryValue :: a, entryWeight :: !Int, entryStamp :: !Int}
+-- | An entry, with the cache directories it is known to be stored in: one
+-- recorded in memory under a request without a directory, or with another,
+-- is stored when a later request names a directory, as a separate run of
+-- the CLI would store it.
+data Entry a = Entry {entryValue :: a, entryWeight :: !Int, entryStamp :: !Int, entryStored :: [FilePath]}
 
 data State a = State
   { entries :: !(M.Map T.Text (Entry a)),
@@ -386,16 +390,23 @@ memoizedIO (Table budget weigh persistence ref) key value = do
                 order = M.insert (clock s) k (M.delete (entryStamp e) (order s)),
                 clock = clock s + 1
               },
-            Just (entryValue e)
+            Just (entryValue e, entryStored e)
           )
     Nothing -> (s, Nothing)
+  directory <- readIORef cacheDirectory
+  let file = case (directory, persistence) of
+        (Just d, Just (Persistence name _ _)) -> Just (entryLocation d name key)
+        _ -> Nothing
   case recorded of
-    Just v -> pure v
+    Just (v, stored) -> do
+      case (directory, file, persistence) of
+        (Just d, Just location, Just (Persistence _ encodeValue _))
+          | d `notElem` stored -> do
+              writeStored location (encodeValue v)
+              atomicModifyIORef' ref $ \s -> (s {entries = M.adjust (\e -> e {entryStored = d : entryStored e}) k (entries s)}, ())
+        _ -> pure ()
+      pure v
     Nothing -> do
-      directory <- readIORef cacheDirectory
-      let file = case (directory, persistence) of
-            (Just d, Just (Persistence name _ _)) -> Just (entryLocation d name key)
-            _ -> Nothing
       stored <- maybe (pure Nothing) readStored file
       started <- getCPUTime
       computed <- maybe (evaluate value) pure stored
@@ -424,7 +435,7 @@ memoizedIO (Table budget weigh persistence ref) key value = do
               else
                 ( evict
                     ( s
-                        { entries = M.insert k (Entry computed weight (clock s)) (entries s),
+                        { entries = M.insert k (Entry computed weight (clock s) (maybe [] (\d -> [d | file /= Nothing]) directory)) (entries s),
                           order = M.insert (clock s) k (order s),
                           total = total s + weight,
                           clock = clock s + 1

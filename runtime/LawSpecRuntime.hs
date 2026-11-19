@@ -7501,3 +7501,61 @@ linesOfText [] = []
 linesOfText text = case break (== 0x0A) text of
   (line, []) -> [line]
   (line, _ : rest) -> line : linesOfText rest
+
+-- | Reach: how many generated cases satisfied each guard of a law's claim
+-- (docs/reference/refinements.md, "Guards and reach"). A generated test
+-- passes each guard's value through 'reach', which counts it and returns it
+-- unchanged, so a guard, and any adapter it calls, is evaluated exactly once.
+-- hspec-discover owns the test program's main, so the counts of a law are
+-- rewritten as one JSON file under LAWSPEC_STATS each time they change, which
+-- lawspec test reads. Example tests are not generated cases and are not
+-- counted.
+reachCounts :: IORef [(String, [(Int, Int)])]
+reachCounts = unsafePerformIO (newIORef [])
+{-# NOINLINE reachCounts #-}
+
+-- | Distinguishes this run's files from another process's.
+reachRun :: Word64
+reachRun = unsafePerformIO getMonotonicTimeNSec
+{-# NOINLINE reachRun #-}
+
+reach :: String -> Int -> Bool -> Bool -> IO Bool
+reach law site held generated = do
+  directory <- lookupEnv "LAWSPEC_STATS"
+  case directory of
+    Just d
+      | generated,
+        not (null d) -> do
+          let bump sites =
+                [ if i == site then (evaluated + 1, if held then kept + 1 else kept) else (evaluated, kept)
+                | (i, (evaluated, kept)) <- zip [0 ..] (sites ++ replicate (site + 1 - length sites) (0, 0))
+                ]
+          sites <- atomicModifyIORef' reachCounts $ \counts ->
+            let updated = bump (maybe [] id (lookup law counts))
+             in ((law, updated) : filter ((/= law) . fst) counts, updated)
+          let safe = map (\c -> if c `elem` (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ "-_") then c else '_') law
+              counts = intercalate "," ["{\"evaluated\":" ++ show e ++ ",\"held\":" ++ show h ++ "}" | (e, h) <- sites]
+              file = d ++ "/reach_" ++ safe ++ "_" ++ show reachRun ++ ".json"
+          -- Statistics are a convenience; a run never fails for want of them.
+          _ <-
+            try
+              ( do
+                  Directory.createDirectoryIfMissing True d
+                  writeFile file ("{\"law\":" ++ reachJsonString law ++ ",\"reach\":[" ++ counts ++ "]}")
+              ) ::
+              IO (Either SomeException ())
+          pure held
+    _ -> pure held
+
+-- | A JSON string, with every character outside printable ASCII escaped as
+-- UTF-16 code units.
+reachJsonString :: String -> String
+reachJsonString text = "\"" ++ concatMap escape text ++ "\""
+  where
+    escape c
+      | c == '"' = "\\\""
+      | c == '\\' = "\\\\"
+      | ord c >= 0x20 && ord c < 0x7f = [c]
+      | ord c < 0x10000 = unit (ord c)
+      | otherwise = let v = ord c - 0x10000 in unit (0xD800 + v `div` 0x400) ++ unit (0xDC00 + v `mod` 0x400)
+    unit n = "\\u" ++ replicate (4 - length (showHex n "")) '0' ++ showHex n ""

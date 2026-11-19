@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import {createCompiler} from '../api.mjs';
-import {proveWithZ3} from '../proof.mjs';
+import {proveWithZ3} from './prove-cli.mjs';
 
 const compiler = await createCompiler();
 const sources = await Promise.all(

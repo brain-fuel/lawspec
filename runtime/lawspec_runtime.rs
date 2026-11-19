@@ -19007,3 +19007,87 @@ pub mod fast
         }
     }
 }
+
+// Reach: how many generated cases satisfied each guard of a law's claim
+// (docs/reference/refinements.md, "Guards and reach"). A generated test
+// passes each guard's value through reach, which counts it and returns it
+// unchanged, so a guard, and any adapter it calls, is evaluated exactly once.
+// The standard library has no exit hook, so the counts of a law are
+// rewritten as one JSON file under LAWSPEC_STATS each time they change, which
+// lawspec test reads. Example tests are not generated cases and are not
+// counted.
+static REACH: std::sync::Mutex<Vec<(String, Vec<(u64, u64)>)>> = std::sync::Mutex::new(Vec::new());
+
+pub fn reach(law: &str, site: usize, held: bool, generated: bool) -> bool
+{
+    if !generated
+    {
+        return held;
+    }
+    let directory = match std::env::var("LAWSPEC_STATS")
+    {
+        Ok(directory) if !directory.is_empty() => directory,
+        _ => return held,
+    };
+    let Ok(mut counts) = REACH.lock()
+    else
+    {
+        return held;
+    };
+    let index = match counts.iter().position(|(name, _)| name == law)
+    {
+        Some(index) => index,
+        None =>
+        {
+            counts.push((law.to_string(), Vec::new()));
+            counts.len() - 1
+        }
+    };
+    let sites = &mut counts[index].1;
+    while sites.len() <= site
+    {
+        sites.push((0, 0));
+    }
+    sites[site].0 += 1;
+    if held
+    {
+        sites[site].1 += 1;
+    }
+    let mut quoted = String::from("\"");
+    for c in law.chars()
+    {
+        match c
+        {
+            '"' => quoted.push_str("\\\""),
+            '\\' => quoted.push_str("\\\\"),
+            c if (c as u32) < 0x20 => quoted.push_str(&format!("\\u{:04x}", c as u32)),
+            c => quoted.push(c),
+        }
+    }
+    quoted.push('"');
+    let listed: Vec<String> = sites
+        .iter()
+        .map(|(evaluated, kept)| format!("{{\"evaluated\":{evaluated},\"held\":{kept}}}"))
+        .collect();
+    let safe: String = law
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_'
+            {
+                c
+            }
+            else
+            {
+                '_'
+            }
+        })
+        .collect();
+    let file = format!("{directory}/reach_{safe}_{}.json", std::process::id());
+    // Statistics are a convenience; a run never fails for want of them.
+    let _ = std::fs::create_dir_all(&directory);
+    let _ = std::fs::write(
+        file,
+        format!("{{\"law\":{quoted},\"reach\":[{}]}}", listed.join(",")),
+    );
+    held
+}

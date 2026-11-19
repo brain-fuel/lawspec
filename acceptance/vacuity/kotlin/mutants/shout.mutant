@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Vacuity.kt
+<<<<<<<
+name.uppercase(java.util.Locale.ROOT)
+=======
+name.uppercase(java.util.Locale.ROOT) + "!"
+>>>>>>>

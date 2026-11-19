@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {PassThrough} from 'node:stream';
 import {createCompiler} from '../api.mjs';
-import {serveLanguage} from '../lsp.mjs';
+import {serveLanguage} from './lsp-cli.mjs';
 const compiler = await createCompiler();
 const options = {
   schemaVersion: 5,

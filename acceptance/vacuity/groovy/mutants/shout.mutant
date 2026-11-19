@@ -1,0 +1,8 @@
+@@ src/main/groovy/example/Vacuity.groovy
+<<<<<<<
+    name.toUpperCase(Locale.ROOT)
+
+=======
+    name.toUpperCase(Locale.ROOT) + "!"
+
+>>>>>>>

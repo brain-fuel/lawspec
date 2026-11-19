@@ -578,6 +578,30 @@ cexpr env scope e = case expressionNode e of
                      [D.text "if !" <> paren p <> D.text " " <> block [D.text (t ++ " = false"), D.text "break"]]) ], D.text t)
   -- A map or filter walks the list once, in order, and rebuilds its cells
   -- from the end, so a long list takes no stack.
+  -- A fold keeps its accumulator in a local, over the cells in order or,
+  -- from the right, over them gathered and reversed.
+  FoldElements fromLeft value initial accumulator binder body -> do
+    (sx, xs) <- cexpr env scope value
+    (si, i) <- cexpr env scope initial
+    total <- fresh (binderName accumulator)
+    cell <- fresh "cell"
+    kept <- fresh "items"
+    index <- fresh "i"
+    item <- fresh (binderName binder)
+    totalType <- lift' (goType env (binderType accumulator))
+    element <- lift' (goType env (binderType binder))
+    (sb, b) <- cexpr env ((binderId binder, item) : (binderId accumulator, total) : scope) body
+    let unused = [D.text ("_ = " ++ item) | not (mentionsLocal (binderId binder) body)]
+        step = unused ++ sb ++ [D.text (total ++ " = ") <> b]
+        walk = if fromLeft
+          then [D.text ("for " ++ cell ++ " := ") <> xs <> D.text ("; " ++ cell ++ " != nil; " ++ cell ++ " = " ++ cell ++ ".tail ") <> block
+                  ([D.text (item ++ " := " ++ cell ++ ".head")] ++ step)]
+          else [ D.text (kept ++ " := make([]" ++ element ++ ", 0)")
+               , D.text ("for " ++ cell ++ " := ") <> xs <> D.text ("; " ++ cell ++ " != nil; " ++ cell ++ " = " ++ cell ++ ".tail ") <> block
+                  [D.text (kept ++ " = append(" ++ kept ++ ", " ++ cell ++ ".head)")]
+               , D.text ("for " ++ index ++ " := len(" ++ kept ++ ") - 1; " ++ index ++ " >= 0; " ++ index ++ "-- ") <> block
+                  ([D.text (item ++ " := " ++ kept ++ "[" ++ index ++ "]")] ++ step) ]
+    pure (sx ++ si ++ [D.text ("var " ++ total ++ " " ++ totalType ++ " = ") <> i] ++ walk, D.text total)
   MapElements value binder body -> elements value binder body False
   FilterElements value binder predicate -> elements value binder predicate True
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
@@ -677,9 +701,7 @@ cexpr env scope e = case expressionNode e of
                   , D.text ("var " ++ result ++ " *lsfList[" ++ element ++ "]")
                   , D.text ("for " ++ index ++ " := len(" ++ kept ++ ") - 1; " ++ index ++ " >= 0; " ++ index ++ "-- ") <> block
                       [D.text (result ++ " = lsfCons(" ++ kept ++ "[" ++ index ++ "], " ++ result ++ ")")] ], D.text result)
-    mentions i x = case expressionNode x of
-      Local j -> i == j
-      _ -> any (mentions i) (children x)
+    mentions = mentionsLocal
     one f a = do
       (s, x) <- cexpr env scope a
       pure (s, D.text (f ++ "(") <> x <> D.text ")")
@@ -1420,3 +1442,9 @@ substituteIn table t = case t of
   TypeVariable v -> fromMaybe t (lookup v table)
   Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substituteIn table x); o -> o | a <- as]
   other -> other
+
+-- | Whether an expression reads a local; Go refuses one declared and unused.
+mentionsLocal :: Id -> Expr -> Bool
+mentionsLocal i x = case expressionNode x of
+  Local j -> i == j
+  _ -> any (mentionsLocal i) (children x)

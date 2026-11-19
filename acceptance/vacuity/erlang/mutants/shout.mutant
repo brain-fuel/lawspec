@@ -1,0 +1,6 @@
+@@ src/example_vacuity.erl
+<<<<<<<
+shout(Name) -> string:uppercase(Name).
+=======
+shout(Name) -> <<(string:uppercase(Name))/binary, "!">>.
+>>>>>>>

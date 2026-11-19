@@ -15,7 +15,8 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.GoExpr as E
-import Data.List (intercalate, stripPrefix)
+import Data.List (intercalate, mapAccumL, stripPrefix)
+import LawSpec.Core.Vacuity (propositionGuards)
 
 -- | What the Go test emitter needs besides the plan: names, layout and
 -- bindings, gathered so the emitter takes one argument.
@@ -122,7 +123,7 @@ emitTests Config{..} unit laws = do
   pure $ separate ([E.generatedHeader (unitSourceFile unit) <> D.hardline <> D.hardline <> text ("package " ++ packageName)] ++
     [importDoc | schemaNeeded || not (null laws)] ++
     [text "// The machine profile's integer width." <> D.hardline <> text ("const lawspecMachineBits = " ++ show machineBits)] ++
-    [seedDoc | needsRapid] ++ [clockDoc] ++ [testMainDoc | sharing || orderRandom || parallel] ++
+    [seedDoc | needsRapid] ++ [clockDoc] ++ [testMainDoc | sharing || orderRandom || parallel || reaching] ++
     definitionsDocs) <> D.hardline
   where
     inputId = local . C.binderId . C.quantifiedBinder
@@ -267,11 +268,13 @@ emitTests Config{..} unit laws = do
           , Plain (text "defer func() " <> block (text "_ = " <> expr (C.resourceRelease r)) <> text "()") ]
     sharing = any (\e -> any ((/= Nothing) . C.resourceShared) (C.propertyResources (original e))) laws
     orderRandom = maybe False C.harnessOrderRandom settings
+    -- A guarded law's generated cases count what they reach.
+    reaching = any (not . null . propositionGuards . assertion) laws
     -- order random: go test shuffles the package's tests with the run's
     -- seed (lsHarnessShuffle). Shared resources are released when the test
     -- binary ends.
     testMainDoc = text "func TestMain(m *testing.M) " <> block (statements
-      ([text "lsHarnessShuffle()" | orderRandom] ++ [call "lsHarnessParallelism" [quoted (C.idText (C.unitId unit))] | parallel] ++ [text "code := m.Run()"] ++ [text "lsReleaseShared()" | sharing] ++ [text "os.Exit(code)"]))
+      ([text "lsHarnessShuffle()" | orderRandom] ++ [call "lsHarnessParallelism" [quoted (C.idText (C.unitId unit))] | parallel] ++ [text "code := m.Run()"] ++ [text "lsWriteReach()" | reaching] ++ [text "lsReleaseShared()" | sharing] ++ [text "os.Exit(code)"]))
     -- A failing assertion names its law and case and points at the
     -- expectation's source line, or the law's.
     assertionDoc fallback context = assertionDocWith fallback (quoted context)
@@ -285,6 +288,17 @@ emitTests Config{..} unit laws = do
         in if structural (expressionType a)
           then call "_lawspecDataAssert" [message,reference (expressionType a),text "symbols",thunk a,thunk b]
           else call "lsAssert" [message,thunk a,thunk b]
+    -- A law's claim with each guard counted: generated cases pass a guard's
+    -- value through lsReach, which returns it, so lawspec test can say how
+    -- many reached the consequence. ref:DEC-vacuous-outcome
+    reachingAssertion label fallback context = snd . site (0 :: Int)
+      where
+        site next proposition = case proposition of
+          AssertAll ps -> let (after, docs) = mapAccumL site next ps in (after, statements docs)
+          AssertImplies guard rest ->
+            let (after, inner) = site (next + 1) rest
+            in (after, text "if " <> call "lsReach" [quoted label, number next, truth (expr guard), text "lawspecGenerated"] <> text " " <> block inner)
+          _ -> (next, assertionDocWith fallback context proposition)
     expectationLink proposition = case proposition of
       AssertEqual a _ | Just l <- originLocation (C.expressionOrigin a), take 1 (file l) /= "<" -> Just (locationLink l)
       _ -> Nothing
@@ -331,10 +345,15 @@ emitTests Config{..} unit laws = do
           (generated,_) = claimAll (scopeWith ("symbols":parameters)) ["caseIndex","caseValues","caseContext"]
           [indexName,valuesName,contextName] = generated
           checkName = "lawspecCheck" ++ base
-          check context = call checkName (text "symbols" : context : map text parameters)
+          -- A guarded law's check is told whether the case was generated.
+          guarded = not (null (propositionGuards (assertion e)))
+          check = claimCheck True
+          claimCheck generated' context = call checkName (text "symbols" : context : map text parameters ++
+            [text (if generated' then "true" else "false") | guarded])
           checkDoc = text ("func " ++ checkName ++ "(" ++ intercalate ", "
-            (["symbols map[string]*lawSpecSymbol",contextName ++ " string"] ++ [name ++ " LawSpecValue" | name <- parameters]) ++ ") ") <>
-            block (assertionDocWith lawLink (text contextName) (assertion e))
+            (["symbols map[string]*lawSpecSymbol",contextName ++ " string"] ++ [name ++ " LawSpecValue" | name <- parameters] ++
+             ["lawspecGenerated bool" | guarded]) ++ ") ") <>
+            block ((if guarded then reachingAssertion label else assertionDocWith) lawLink (text contextName) (assertion e))
           -- Finite rows are separate native subtests; an example keeps its
           -- own top-level name and cannot collide with a numbered child.
           exampleSuffixes = map pascal (exampleTestSuffix "go"
@@ -345,7 +364,7 @@ emitTests Config{..} unit laws = do
             testFunction (fn ++ "_" ++ suffix) $ body
               ([symbols] ++ plainAll (handlerInstalls e) ++ bindingsOf ex ++ resourceDocs e ++
                [Plain (assertionDoc lawLink (shown ++ " example " ++ displayLabel (exampleName ex)) p) | p <- expectations ex] ++
-               [Plain (check (quoted shown))])
+               [Plain (claimCheck False (quoted shown))])
             | (suffix, ex) <- zip exampleSuffixes (examples (original e))]
       cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
       coverExpression <- coverDoc cover

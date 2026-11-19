@@ -811,7 +811,13 @@ whatever type and function a spec writes in their place.
 | together | map keeps the length; map, filter and all distribute over `++`; each fold of an append folds one list then the other; filter after map is map after filter |
 
 LawSpec's own checks prove every one of these with Z3, by induction over the
-list. The solver treats the types and functions as unknown only in this unit.
+list. They also test each law on sample functions over integers and text,
+among them a map that sends every element to one value, steps whose result
+depends on order, and a function that fails on some elements. The tests run
+the list operations both as LawSpec's evaluator runs them and through the
+definitions above, which are what the proofs are about. The tests add
+confidence and nothing more: a law holds because it is proved.
+The solver treats the types and functions as unknown only in this unit.
 A handle or an adapter of your own is native, and a law over it stays
 unsupported by the solver.
 

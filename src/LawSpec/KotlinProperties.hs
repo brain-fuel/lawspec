@@ -28,7 +28,8 @@ import LawSpec.KotlinTestHelpers (scalarGenerators)
 import LawSpec.JvmNames (exampleTestNames, boundaryTestName, contractMethod)
 import LawSpec.Naming (displayLabel)
 import LawSpec.SourceLink (generatedHeader, labelled, locationLink, originLocation, exampleLocation)
-import Data.List (intercalate, sort, stripPrefix, nub)
+import Data.List (intercalate, mapAccumL, sort, stripPrefix, nub)
+import LawSpec.Core.Vacuity (propositionGuards)
 
 -- | What the Kotlin test emitter needs besides the plan: names, layout and
 -- bindings, gathered so the emitter takes one argument.
@@ -370,6 +371,19 @@ emitTests Config{..} unit laws = do
     contextualAssertion context proposition = case proposition of
       AssertAll ps -> statements (map (contextualAssertion context) ps)
       AssertImplies guard body -> braced (L.condition "if" (truth (expr guard))) [contextualAssertion context body]
+      _ -> assertionLeaf context proposition
+    -- A law's claim with each guard counted: generated cases pass a guard's
+    -- value through LawSpecRuntime.reach, which returns it, so lawspec test
+    -- can say how many reached the consequence. ref:DEC-vacuous-outcome
+    reachingAssertion label context = snd . site (0 :: Int)
+      where
+        site next proposition = case proposition of
+          AssertAll ps -> let (after, docs) = mapAccumL site next ps in (after, statements docs)
+          AssertImplies guard body ->
+            let (after, inner) = site (next + 1) body
+            in (after, braced (L.condition "if" (runtime "reach" [quoted label, number next, truth (expr guard), text "lawspecGenerated"])) [inner])
+          _ -> (next, contextualAssertion context proposition)
+    assertionLeaf context proposition = case proposition of
       AssertEqual a b ->
         let message = context (expressionLink a)
             sides = [L.lambda [] [expr a], L.lambda [] [expr b]]
@@ -420,14 +434,18 @@ emitTests Config{..} unit laws = do
           exampleContext ex = shown ++ " example " ++ displayLabel (exampleName ex)
           checkNames = map inputId (inputs e) ++
             [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
-          lawAssertion context = call (base' ++ "Check")
-            [context, text "symbols", call "arrayOf<LawSpecRuntime.Value>" (map text checkNames)]
+          -- A guarded law's check is told whether the case was generated.
+          guarded = not (null (propositionGuards (assertion e)))
+          lawAssertion = claimAssertion True
+          claimAssertion generated context = call (base' ++ "Check")
+            ([context, text "symbols", call "arrayOf<LawSpecRuntime.Value>" (map text checkNames)] ++
+             [text (if generated then "true" else "false") | guarded])
       exampleDocs <- mapM (\(suffix,ex) -> pure $ D.lineComment 96 "// " (labelled ("example " ++ displayLabel (exampleName ex))
           (fmap locationLink (exampleLocation ex))) <>
         testFunction (fn ++ "_" ++ suffix) (withSymbols
         (handlerInstalls e ++ [E.bindValue n v (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (contextualAssertion (\l -> quoted (labelled (exampleContext ex) l))) (expectations ex) ++
-          [lawAssertion (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
+          [claimAssertion False (quoted (linked e shown))])]))) (zip exampleSuffixes (examples (original e)))
       cover <- either (Left . pure . (\message -> Diagnostic "testing" message Nothing)) pure (caseCover e)
       (coverDeclarations, coverData) <- Finite.coverBindings finiteCall (L.lambda ["symbols"] . pure) literal
         (\n value -> text "private " <> L.bind n value) (base' ++ "Cases") cover
@@ -445,9 +463,10 @@ emitTests Config{..} unit laws = do
               [bracketed e [lawAssertion context]]))
             | C.harnessSkip h == Nothing] ++
             [braced (call ("private fun " ++ base' ++ "Check")
-              [text "context: String", text "symbols: MutableMap<String, Any>", text "values: Array<LawSpecRuntime.Value>"])
+              ([text "context: String", text "symbols: MutableMap<String, Any>", text "values: Array<LawSpecRuntime.Value>"] ++
+               [text "lawspecGenerated: Boolean" | guarded]))
               ([bind n (text ("values[" ++ show i ++ "]")) | (i,n) <- zip [0::Int ..] checkNames] ++
-               [contextualAssertion (const (text "context")) (assertion e)])
+               [(if guarded then reachingAssertion label else contextualAssertion) (const (text "context")) (assertion e)])
             | C.harnessSkip h == Nothing]
           caseBody = text "lawspec.testing.LawSpecHarness.Body " <>
             L.lambda [] [L.trailing (text "kotlinx.coroutines.runBlocking") [] [caseCall]]

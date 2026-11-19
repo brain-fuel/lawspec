@@ -1,0 +1,8 @@
+@@ src/Example/Vacuity.swift
+<<<<<<<
+    name.uppercased()
+
+=======
+    name.uppercased() + "!"
+
+>>>>>>>

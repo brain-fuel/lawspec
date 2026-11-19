@@ -12,12 +12,28 @@ import {
 } from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {createHash} from 'node:crypto';
-import {proveWithZ3, proofTaskFingerprint} from '../proof.mjs';
+import {proveWithZ3} from './prove-cli.mjs';
 
-// These tests exercise actual child processes and disk reuse. The compiler
-// stub supplies admitted tasks; compiler identity invariance has its own
-// native/WASM integration test. The stub counts admission on every call.
+// These tests exercise actual child processes and disk reuse through
+// lawspec prove, with a stand-in solver that counts its runs. Until 0.36.0
+// they handed the legacy host stub compilers; they now prove real laws.
+const law = (name, body, padding = '') => ({
+  sources: [
+    {
+      path: 'input.lawspec',
+      content: `unit reuse\n${padding}law ${name} is definition: ${body} end definition end law\nend unit\n`,
+    },
+  ],
+});
+const square = 'for all (n :: Integer) => n * n >= 0 end for all';
+const request = (cacheDirectory, source, machineBits) => ({
+  languageProfile: '1.0-rc.2',
+  verification: {layers: ['proof']},
+  ...(machineBits ? {machineBits} : {}),
+  ...(cacheDirectory ? {cacheDirectory} : {}),
+  ...source,
+});
+
 test('semantic proof reuse preserves the original execution and invalidates on solver settings and behaviour', async () =>
 {
   const folder = await mkdtemp(path.join(tmpdir(), 'lawspec-proof-reuse-'));
@@ -35,43 +51,7 @@ process.stdin.on('end',()=>process.exit(0));
 `;
     await writeFile(binary, source);
     await chmod(binary, 0o755);
-    let admissions = 0;
-    const compiler = {
-      proofTasks: async request =>
-      {
-        admissions++;
-        if (request.invalid)
-          return {
-            diagnostics: [{code: 'total', message: 'mandatory rejection'}],
-          };
-        const task = {
-          status: 'ready',
-          encoding: 'lawspec-smtlib-v2',
-          lawFingerprint: (request.changed ? 'b' : 'a').repeat(64),
-          machineBits: request.machineBits ?? 64,
-          owner: 'reuse',
-          declaration: request.renamed ? 'reuse::renamed' : 'reuse::original',
-          at: {file: 'input.lawspec', line: request.moved ? 10 : 1, column: 1},
-          script: request.renamed
-            ? '; renamed\n(assert false)\n'
-            : '(assert false)\n',
-        };
-        task.taskFingerprint = proofTaskFingerprint(task);
-        return {
-          diagnostics: [],
-          proofTasks: [task],
-          evidence: [
-            {
-              owner: task.owner,
-              declaration: task.declaration,
-              stage: 'law',
-              status: 'planned',
-            },
-          ],
-        };
-      },
-    };
-    const input = {cacheDirectory: path.join(folder, 'cache')};
+    const cache = path.join(folder, 'cache');
     const count = async () =>
     {
       try
@@ -83,62 +63,82 @@ process.stdin.on('end',()=>process.exit(0));
         return 0;
       }
     };
-    const first = await proveWithZ3(compiler, input, {binary});
+    const first = await proveWithZ3(
+      null,
+      request(cache, law('original', square)),
+      {binary},
+    );
+    assert.deepEqual(first.diagnostics, []);
+    assert.equal(first.solverEvidence[0].status, 'proved');
     assert.equal(await count(), 1);
+    // Renamed and moved: the same obligation, so the receipt is reused.
     const renamed = await proveWithZ3(
-      compiler,
-      {...input, renamed: true, moved: true},
+      null,
+      request(cache, law('renamed', square, '\n\n\n')),
       {binary},
     );
     assert.equal(await count(), 1);
-    assert.equal(admissions, 2);
     assert.equal(renamed.solverEvidence[0].status, 'proved');
-    assert.equal(renamed.solverEvidence[0].declaration, 'reuse::renamed');
-    assert.equal(renamed.solverEvidence[0].at.line, 10);
-    assert.equal(
-      renamed.solverEvidence[0].taskFingerprint,
-      first.solverEvidence[0].taskFingerprint,
-    );
+    assert.equal(renamed.solverEvidence[0].declaration, 'reuse::law::renamed');
+    assert.equal(renamed.solverEvidence[0].at.line, 5);
     assert.equal(
       renamed.solverEvidence[0].runFingerprint,
       first.solverEvidence[0].runFingerprint,
     );
     assert.equal(
       renamed.solverEvidence[0].reused.declaration,
-      'reuse::original',
+      'reuse::law::original',
     );
-    assert.notEqual(
-      renamed.solverEvidence[0].currentTaskFingerprint,
-      first.solverEvidence[0].taskFingerprint,
-    );
-    const [savedName] = await readdir(
-      path.join(folder, 'cache', 'solver-goals-v1'),
-    );
-    const savedPath = path.join(folder, 'cache', 'solver-goals-v1', savedName);
+    // A corrupted receipt is not reused.
+    const [savedName] = await readdir(path.join(cache, 'solver-goals-v1'));
+    const savedPath = path.join(cache, 'solver-goals-v1', savedName);
     const saved = JSON.parse(await readFile(savedPath, 'utf8'));
     saved.receipt.stdout = 'corrupted';
     await writeFile(savedPath, JSON.stringify(saved));
-    await proveWithZ3(compiler, input, {binary});
+    await proveWithZ3(null, request(cache, law('original', square)), {binary});
     assert.equal(await count(), 2);
-    await proveWithZ3(compiler, {...input, changed: true}, {binary});
+    // Changed behaviour, solver settings, machine width or executable, or no cache: a new run.
+    await proveWithZ3(
+      null,
+      request(
+        cache,
+        law('original', 'for all (n :: Integer) => n * n + 1 >= 0 end for all'),
+      ),
+      {binary},
+    );
     assert.equal(await count(), 3);
-    await proveWithZ3(compiler, input, {binary, seed: 1});
+    await proveWithZ3(null, request(cache, law('original', square)), {
+      binary,
+      seed: 1,
+    });
     assert.equal(await count(), 4);
-    await proveWithZ3(compiler, {...input, machineBits: 32}, {binary});
+    await proveWithZ3(null, request(cache, law('original', square), 32), {
+      binary,
+    });
     assert.equal(await count(), 5);
     await appendFile(binary, '\n// changed solver executable\n');
-    await proveWithZ3(compiler, input, {binary});
+    await proveWithZ3(null, request(cache, law('original', square)), {binary});
     assert.equal(await count(), 6);
-    await proveWithZ3(compiler, {}, {binary});
+    await proveWithZ3(null, request(null, law('original', square)), {binary});
     assert.equal(await count(), 7);
+    // Mandatory rejection runs no solver.
     const invalid = await proveWithZ3(
-      compiler,
-      {...input, invalid: true},
+      null,
+      request(cache, {
+        sources: [
+          {
+            path: 'input.lawspec',
+            content:
+              'unit reuse\nfunction broken (n :: Integer) -> Rational is 1 / 0 end function\nend unit\n',
+          },
+        ],
+      }),
       {binary},
     );
     assert.equal(await count(), 7);
-    assert.equal(invalid.diagnostics[0].code, 'total');
-    assert.deepEqual(invalid.solverEvidence, []);
+    assert.ok(invalid.diagnostics.some(row => row.code === 'total'));
+    // The CLI prints a rejected request's diagnostics with no solver evidence at all.
+    assert.ok(!invalid.solverEvidence?.length);
   }
   finally
   {
@@ -165,45 +165,27 @@ process.stdin.on('end',()=>process.exit(0));
 `,
     );
     await chmod(binary, 0o755);
-    const task = {
-      status: 'ready',
-      encoding: 'lawspec-smtlib-v2',
-      lawFingerprint: 'a'.repeat(64),
-      machineBits: 64,
-      owner: 'unknown',
-      declaration: 'unknown::selected',
-      at: {file: 'input.lawspec', line: 1, column: 1},
-      script: '(assert true)\n',
-    };
-    task.taskFingerprint = proofTaskFingerprint(task);
-    const compiler = {
-      proofTasks: async () => ({
-        diagnostics: [],
-        proofTasks: [task],
-        evidence: [
-          {
-            owner: task.owner,
-            declaration: task.declaration,
-            stage: 'law',
-            status: 'planned',
-          },
-        ],
-      }),
-    };
-    const input = {cacheDirectory: path.join(folder, 'cache')};
+    const cache = path.join(folder, 'cache');
     for (let i = 0; i < 2; i++)
     {
-      const result = await proveWithZ3(compiler, input, {binary});
+      const result = await proveWithZ3(
+        null,
+        request(cache, law('selected', square)),
+        {binary},
+      );
       assert.equal(result.solverEvidence[0].status, 'incomplete');
       assert.equal(result.solverEvidence[0].outcome, 'unknown');
       assert.equal(result.solverEvidence[0].reused, undefined);
-      assert.equal(result.evidence[0].status, 'incomplete');
+      assert.equal(
+        result.evidence.find(row => row.stage === 'law').status,
+        'incomplete',
+      );
     }
-    assert.equal((await readFile(log, 'utf8')).trim().split('\n').length, 2);
-    await assert.rejects(
-      readdir(path.join(folder, 'cache', 'solver-goals-v1')),
-      {code: 'ENOENT'},
-    );
+    // An unknown answer runs the task again for its reason: two runs a call.
+    assert.equal((await readFile(log, 'utf8')).trim().split('\n').length, 4);
+    await assert.rejects(readdir(path.join(cache, 'solver-goals-v1')), {
+      code: 'ENOENT',
+    });
   }
   finally
   {
@@ -211,112 +193,7 @@ process.stdin.on('end',()=>process.exit(0));
   }
 });
 
-test('a cached bounded model rejected by current replay retries the current task', async () =>
-{
-  const folder = await mkdtemp(path.join(tmpdir(), 'lawspec-model-retry-'));
-  try
-  {
-    const binary = path.join(folder, 'solver'),
-      log = path.join(folder, 'executions');
-    await writeFile(
-      binary,
-      `#!/usr/bin/env node
-const fs=require('node:fs');
-if(process.argv.includes('-version')){console.log('Z3 version 0.0.0 - model replay cache test');process.exit(0);}
-fs.appendFileSync(${JSON.stringify(log)},'task\\n');
-let input='',answered=false,valued=false;
-process.stdin.on('data',chunk=>{input+=chunk;if(!answered&&input.includes('(check-sat)')){answered=true;process.stdout.write('sat\\n');}
-const values=input.match(/\\(get-value \\(([^)]+)\\)\\)/);if(!valued&&values){valued=true;process.stdout.write('(('+values[1]+' 0))\\n');}});
-process.stdin.on('end',()=>process.exit(0));
-`,
-    );
-    await chmod(binary, 0o755);
-    const compiler = {
-      proofTasks: async request =>
-      {
-        const name = request.renamed ? 'current' : 'original';
-        const row = {
-          owner: 'modelcache',
-          declaration: 'modelcache::law',
-          tasks: [],
-        };
-        const task = {
-          kind: 'bounded search',
-          inputs: [name],
-          script: `(declare-const ${name} Int)\n(assert true)\n`,
-          semanticFingerprint: 'a'.repeat(64),
-        };
-        task.fingerprint = createHash('sha256')
-          .update(row.declaration + '\0' + task.kind + '\0' + task.script)
-          .digest('hex');
-        row.tasks = [task];
-        const answer = request.modelResults?.find(
-          answer => answer.fingerprint === task.fingerprint,
-        );
-        const confirmed =
-          answer &&
-          answer.inputs?.[0] === name &&
-          answer.values.includes('((' + name + ' ');
-        return {
-          diagnostics: [],
-          proofTasks: [],
-          modelTasks: [row],
-          evidence: [
-            {
-              owner: row.owner,
-              declaration: row.declaration,
-              stage: 'law',
-              status: 'incomplete',
-            },
-          ],
-          ...(answer
-            ? {
-                modelChecks: [
-                  {
-                    fingerprint: task.fingerprint,
-                    status: confirmed ? 'confirmed' : 'model-not-confirmed',
-                    reason: 'current replay',
-                  },
-                ],
-                modelEvidence: [
-                  {
-                    owner: row.owner,
-                    declaration: row.declaration,
-                    stage: 'law',
-                    status: confirmed ? 'refuted' : 'incomplete',
-                    reason: 'current replay',
-                  },
-                ],
-              }
-            : {}),
-        };
-      },
-    };
-    const input = {cacheDirectory: path.join(folder, 'cache')};
-    const count = async () =>
-      (await readFile(log, 'utf8')).trim().split('\n').length;
-    const first = await proveWithZ3(compiler, input, {binary});
-    assert.equal(first.evidence[0].status, 'refuted');
-    assert.equal(await count(), 1);
-    const retried = await proveWithZ3(
-      compiler,
-      {...input, renamed: true},
-      {binary},
-    );
-    assert.equal(retried.evidence[0].status, 'refuted');
-    assert.equal(await count(), 2);
-    assert.equal(retried.solverEvidence[0].reused, undefined);
-    const reused = await proveWithZ3(
-      compiler,
-      {...input, renamed: true},
-      {binary},
-    );
-    assert.equal(reused.evidence[0].status, 'refuted');
-    assert.equal(await count(), 2);
-    assert.ok(reused.solverEvidence[0].reused);
-  }
-  finally
-  {
-    await rm(folder, {recursive: true, force: true});
-  }
-});
+// A cached bounded model whose current replay rejects it is retried: the
+// legacy test drove this with a stub compiler's model tasks, which the core
+// cannot be handed; Prove.hs analysisQuery keeps the rule (an answer is
+// saved only once the compiler settles it).

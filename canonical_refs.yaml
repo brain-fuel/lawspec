@@ -1047,6 +1047,94 @@ lean4-std-time:
   kind: article
   title: "Lean 4: Std.Time.Date.PlainDate"
   locator: https://github.com/leanprover/lean4/blob/master/src/Std/Time/Date/PlainDate.lean
+ghc-wasm-users-guide:
+  kind: article
+  title: "GHC User's Guide: the WebAssembly backend, reactor modules and _initialize"
+  locator: https://ghc.gitlab.haskell.org/ghc/doc/users_guide/wasm.html
+wasi-preview1:
+  kind: article
+  title: "WASI preview1 (wasi_snapshot_preview1) API"
+  locator: https://github.com/WebAssembly/WASI/blob/main/legacy/preview1/docs.md
+synckit:
+  kind: package
+  title: "synckit: synchronous calls into a worker with Atomics.wait and receiveMessageOnPort"
+  locator: https://github.com/un-ts/synckit/blob/main/src/helpers.ts
+node-receive-message-on-port:
+  kind: article
+  title: "Node.js worker_threads: receiveMessageOnPort"
+  locator: https://nodejs.org/api/worker_threads.html#workerreceivemessageonportport
+wazero-host-modules:
+  kind: article
+  title: "wazero: HostModuleBuilder and guest memory access"
+  locator: https://pkg.go.dev/github.com/tetratelabs/wazero#HostModuleBuilder
+wazero-memory-allocator:
+  kind: article
+  title: "wazero experimental.MemoryAllocator: a hook to back linear memory"
+  locator: https://pkg.go.dev/github.com/tetratelabs/wazero/experimental#MemoryAllocator
+go-sqlite3-alloc:
+  kind: package
+  title: "go-sqlite3 internal/alloc: wazero linear memory in a reserved anonymous mapping"
+  locator: https://pkg.go.dev/github.com/ncruces/go-sqlite3/internal/alloc
+go-http-read-request:
+  kind: article
+  title: "Go net/http: ReadRequest and ReadResponse"
+  locator: https://pkg.go.dev/net/http#ReadRequest
+rfc4648-base64:
+  kind: article
+  title: "RFC 4648: The Base16, Base32, and Base64 Data Encodings, section 4"
+  locator: https://www.rfc-editor.org/rfc/rfc4648#section-4
+http-client:
+  kind: package
+  title: "http-client 0.7.19: an HTTP client engine (Network.HTTP.Client)"
+  locator: https://hackage.haskell.org/package/http-client-0.7.19/docs/Network-HTTP-Client.html
+http-client-tls:
+  kind: package
+  title: "http-client-tls 0.3.6.4: TLS for http-client with the system trust store"
+  locator: https://hackage.haskell.org/package/http-client-tls-0.3.6.4/docs/Network-HTTP-Client-TLS.html
+warp:
+  kind: package
+  title: "Warp 3.4.9: the WAI HTTP server (runSettingsSocket)"
+  locator: https://hackage.haskell.org/package/warp-3.4.9/docs/Network-Wai-Handler-Warp.html
+node-https-request:
+  kind: article
+  title: "Node.js https.request and http.ClientRequest"
+  locator: https://nodejs.org/api/https.html#httpsrequesturl-options-callback
+realpath:
+  kind: article
+  title: "POSIX realpath: resolve a pathname"
+  locator: https://pubs.opengroup.org/onlinepubs/9799919799/functions/realpath.html
+posix-rename:
+  kind: article
+  title: "POSIX rename: rename a file or directory atomically, replacing the new name"
+  locator: https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html
+posix-open:
+  kind: article
+  title: "POSIX open: create a file with the mode bits the file mode creation mask allows"
+  locator: https://pubs.opengroup.org/onlinepubs/9799919799/functions/open.html
+node-tar-mode-fix:
+  kind: article
+  title: "node-tar 7.5.22 mode-fix: the portable mode of an archived file"
+  locator: https://github.com/isaacs/node-tar/blob/v7.5.22/src/mode-fix.ts
+ghc-capi:
+  kind: article
+  title: "GHC User's Guide: the capi calling convention, for C functions such as variadic ones called through their prototype"
+  locator: https://downloads.haskell.org/ghc/latest/docs/users_guide/exts/ffi.html#the-capi-calling-convention
+macos-getattrlist:
+  kind: article
+  title: "getattrlist(2): get file system attributes, ATTR_CMN_NAME (macOS)"
+  locator: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/getattrlist.2.html
+isatty:
+  kind: article
+  title: "POSIX isatty: test for a terminal device"
+  locator: https://pubs.opengroup.org/onlinepubs/9799919799/functions/isatty.html
+go-gomaxprocs:
+  kind: article
+  title: "Go runtime.GOMAXPROCS: the default from logical CPUs, the affinity mask and, on Linux, the cgroup CPU limit"
+  locator: https://pkg.go.dev/runtime#GOMAXPROCS
+sysexits:
+  kind: article
+  title: "sysexits(3): preferable exit codes for programs, EX_UNAVAILABLE"
+  locator: https://man.freebsd.org/cgi/man.cgi?query=sysexits&sektion=3
 rfc822:
   kind: article
   title: "RFC 822: Standard for the Format of ARPA Internet Text Messages (section 6.1, address specification)"
@@ -1075,6 +1163,74 @@ json-schema-validation:
   kind: article
   title: "JSON Schema Validation 2020-12 (pattern, maxLength, enum; regular expressions)"
   locator: https://json-schema.org/draft/2020-12/json-schema-validation
+host-engine-spike:
+  kind: article
+  title: "LawSpec Stage 0: Chicory, wazero and GraalWasm measured against V8 (docs/explanation/host-engine-spike.md, branch host-spike)"
+  locator: https://github.com/brain-fuel/lawspec/blob/host-spike/docs/explanation/host-engine-spike.md
+esbuild-platform-packages:
+  kind: article
+  title: "esbuild: optional per-platform packages with a launcher that selects and runs the native binary"
+  locator: https://esbuild.github.io/getting-started/#install-esbuild
+protoc-maven-classifiers:
+  kind: package
+  title: "Maven Central: com.google.protobuf:protoc, one native executable per os-arch classifier"
+  locator: https://repo1.maven.org/maven2/com/google/protobuf/protoc/
+jar-class-path:
+  kind: documentation
+  title: "JAR File Specification: the Class-Path manifest attribute"
+  locator: https://docs.oracle.com/en/java/javase/25/docs/specs/jar/jar.html#class-path-attribute
+maven-plugin-development:
+  kind: documentation
+  title: "Maven: Guide to Developing Java Plugins (Mojo annotations, defaultPhase, parameters)"
+  locator: https://maven.apache.org/guides/plugin/guide-java-plugin-development.html
+maven-resolver:
+  kind: documentation
+  title: "Maven Resolver: RepositorySystem.resolveArtifact"
+  locator: https://maven.apache.org/resolver/
+maven-local-repository-tail:
+  kind: documentation
+  title: "Maven 3.9: chained local repository (maven.repo.local.tail)"
+  locator: https://maven.apache.org/resolver/local-repository.html
+maven-ci-friendly:
+  kind: documentation
+  title: "Maven CI Friendly Versions (${revision}) with flatten-maven-plugin"
+  locator: https://maven.apache.org/guides/mini/guide-maven-ci-friendly.html
+gradle-configuration-cache:
+  kind: documentation
+  title: "Gradle: configuration cache requirements"
+  locator: https://docs.gradle.org/current/userguide/configuration_cache_requirements.html
+maven-project-source-roots:
+  kind: documentation
+  title: "Maven: MavenProject.addCompileSourceRoot, addTestCompileSourceRoot and addTestResource"
+  locator: https://maven.apache.org/ref/3.9.9/maven-core/apidocs/org/apache/maven/project/MavenProject.html
+build-helper-add-source:
+  kind: documentation
+  title: "MojoHaus Build Helper: add-source, add-test-source and add-test-resource"
+  locator: https://www.mojohaus.org/build-helper-maven-plugin/usage.html
+gradle-value-source:
+  kind: documentation
+  title: "Gradle: running external processes at configuration time with a ValueSource"
+  locator: https://docs.gradle.org/current/userguide/configuration_cache_requirements.html#config_cache:requirements:external_processes
+gradle-testkit:
+  kind: documentation
+  title: "Gradle: testing build logic with TestKit"
+  locator: https://docs.gradle.org/current/userguide/test_kit.html
+central-portal-requirements:
+  kind: documentation
+  title: "Sonatype Central Portal: requirements (POM metadata, sources and javadoc jars, GPG signatures)"
+  locator: https://central.sonatype.org/publish/requirements/
+central-portal-maven:
+  kind: documentation
+  title: "Sonatype Central Portal: publishing with central-publishing-maven-plugin"
+  locator: https://central.sonatype.org/publish/publish-portal-maven/
+central-namespace-verification:
+  kind: documentation
+  title: "Sonatype Central Portal: registering and verifying a namespace (DNS TXT record)"
+  locator: https://central.sonatype.org/register/namespace/
+gradle-plugin-portal-publishing:
+  kind: documentation
+  title: "Gradle: publishing plugins to the Gradle Plugin Portal (com.gradle.plugin-publish)"
+  locator: https://docs.gradle.org/current/userguide/publishing_gradle_plugins.html
 lean-lawful-functor:
   kind: code
   title: "Lean 4 core, Init/Control/Lawful/Basic.lean: LawfulFunctor, LawfulApplicative, LawfulMonad"

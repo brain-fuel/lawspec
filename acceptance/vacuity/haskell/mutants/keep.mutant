@@ -1,0 +1,6 @@
+@@ src/Example/Vacuity.hs
+<<<<<<<
+keep key = key
+=======
+keep key = if key P.== T.pack "south" then T.empty else key
+>>>>>>>

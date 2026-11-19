@@ -55,6 +55,10 @@ htmlcov/
 /dist/
 /target/
 /runtime/rust/target/
+/hosts/jvm/**/target/
+/hosts/jvm/**/.flattened-pom.xml
+/hosts/jvm/gradle-plugin/build/
+/hosts/jvm/samples/*/build/
 
 # Local environment overrides and editor/OS temporary files
 .env
@@ -67,11 +71,6 @@ htmlcov/
 
 # Keep release inputs: npm/build.json, runtime sources, dependency lockfiles,
 # examples, tests, and RELEASE-*.md belong in Git. Build outputs do not.
-
-# The compiler core and GHC's post-linker glue, built by `make wasm`
-# (tools/wasm.sh) from the Haskell sources; npm/build.json records their digests.
-/npm/core.wasm
-/npm/core_jsffi.js
 
 # Root documents npm prepack copies into the package (dev/Generate.hs)
 /npm/README.md
@@ -86,6 +85,15 @@ runtime/dotnet/**/obj/
 
 # Reproducible Learn vendor assets (npm ci --prefix learn; npm run build --prefix learn)
 /npm/learn/vendor/
+# The compiler core and its JavaScript glue (tools/wasm.sh), checked
+# against npm/build.json
+/npm/core.wasm
+/npm/core_jsffi.js
+# lawspec learn's gzipped compiler (tools/learn-compiler.mjs)
+/npm/core.wasm.gz
+# The host-effect core the CLI runs (tools/wasm-host-core.sh); over GitHub's
+# 100 MiB file limit, so built, and checked against npm/build.json's hostCore.
+/npm/host-core.wasm
 /learn/formatter/bin/
 /learn/formatter/obj/
 

@@ -183,8 +183,9 @@ end unit
   },
 );
 
+// The lawspec/component types left the package with that export (0.36.0).
 test(
-  'published component and completed evidence types resolve through package exports',
+  'published completed evidence types resolve through package exports',
   {skip: tsc === null && 'tsc is not installed'},
   async t =>
   {
@@ -194,25 +195,13 @@ test(
     await writeFile(
       file,
       `
-import {parseManifest, writeManifest, resolveComponent, type ComponentManifest, type ComponentDescriptor} from 'lawspec/component';
 import type {AttestationView, NativeExecutionAttempt} from 'lawspec';
-const manifest: ComponentManifest = {
-  manifestVersion: 1, languageProfile: '1.0-rc.2', sources: ['src'],
-  component: {name: 'bank', version: '1.0.0'},
-  targets: [{language: 'rust', root: '.', cargo: 'cargo'}],
-  dependencies: {api: {version: '^1.0.0', git: 'https://example.com/api.git'}},
-};
-const serialized: string = writeManifest(manifest, {compact: true});
-const resolved: Promise<ComponentDescriptor> = resolveComponent('lawspec.edn', {locked: true});
-const raw = parseManifest('{}');
-// @ts-expect-error Parsing data alone does not establish a checked manifest.
-const unchecked: ComponentManifest = raw;
 declare const evidence: AttestationView;
 declare const attempt: NativeExecutionAttempt;
 const status: 'wired' | 'running' | 'completed' | undefined = evidence.run.execution?.status;
 const fingerprint: string | undefined = evidence.application?.component?.fingerprint;
 const executionRun: string | undefined = attempt.executionRun;
-export {manifest, resolved, status, fingerprint, executionRun};
+export {status, fingerprint, executionRun};
 `,
     );
     execFileSync(

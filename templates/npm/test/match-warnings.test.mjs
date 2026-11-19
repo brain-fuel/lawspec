@@ -9,7 +9,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {createCompiler} from '../api.mjs';
-import {serveLanguage, utf16Position} from '../lsp.mjs';
+import {serveLanguage} from './lsp-cli.mjs';
 
 const text = `unit matchWarnings
 
@@ -257,10 +257,7 @@ end unit
   assert.ok(
     published[1][0].range.end.character > published[1][0].range.start.character,
   );
-  assert.deepEqual(utf16Position('😀\twhen', {line: 1, column: 9}), {
-    line: 0,
-    character: 3,
-  });
+  // The position after an astral character and a tab: ServerSpec.
   const enabled = await protocol(compiler, {warnMatches: true}, content);
   assert.equal(
     enabled.find(r => r.method === 'textDocument/publishDiagnostics').params

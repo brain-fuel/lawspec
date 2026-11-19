@@ -1,0 +1,11 @@
+@@ example/vacuity/adapter.go
+<<<<<<<
+func Keep(key string) string {
+	return key
+=======
+func Keep(key string) string {
+	if key == "south" {
+		return ""
+	}
+	return key
+>>>>>>>

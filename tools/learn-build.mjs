@@ -368,6 +368,8 @@ try
     path.join(root, 'npm/learn/sandbox-frame.html'),
     `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; script-src 'sha256-${hash}' blob:; worker-src blob:"><title>Isolated execution</title><script>${bootstrap}</script>`,
   );
+  // The compiler lawspec learn serves, gzipped beside npm/core.wasm.
+  await import('./learn-compiler.mjs');
 }
 finally
 {

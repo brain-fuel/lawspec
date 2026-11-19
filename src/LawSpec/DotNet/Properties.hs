@@ -5,6 +5,7 @@
 -- ref:REQ-harness-units
 module LawSpec.DotNet.Properties (emitTests, testNames, emitNativeGenerators) where
 
+import LawSpec.Core.Vacuity (propositionGuards)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
@@ -126,7 +127,12 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
           caseName = name ++ "Scoped"
           inputs = ListOf tValue (map (Var . snd) aliases)
       unsupported law
-      body <- X.assertion (labelled shown lawLink) render (C.propertyBody law)
+      -- A guarded law's body is told whether the case was generated.
+      let guarded = not (null (propositionGuards (C.propertyBody law)))
+          generatedFlag g = [BoolLit g | guarded]
+      body <- if guarded
+        then X.assertionReaching (labelled shown lawLink) label (Var "lawspecGenerated") render (C.propertyBody law)
+        else X.assertion (labelled shown lawLink) render (C.propertyBody law)
       -- The law's body runs on a schema with its handlers in scope; a case
       -- makes that scope, and an example makes one for its own inputs and
       -- expectations too.
@@ -147,8 +153,9 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
             pure (Let "withResources" tSchema (call "Effects" "install" [sch, ListOf (Ty "string * Effects.Handler" "Tuple<string, Effects.Handler>") made]) (inner (Var "withResources")))
       let bodyName = name
           handlers = [(a, c) | (a, c) <- C.propertyHandlers law, a `notElem` [x | (x, _, _) <- late]]
-          inBody s values = Call (Fn bodyName bodyName) ([s, X.symbolsVar, values] ++ [ListOf tValue (map (Var . snd) resourceAliases) | not (null resources)])
-          bodyDoc = private' $ function lang True bodyName ([("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] ++ [("resources", tValues) | not (null resources)]) tValue
+          inBodyWith g s values = Call (Fn bodyName bodyName) ([s, X.symbolsVar, values] ++ [ListOf tValue (map (Var . snd) resourceAliases) | not (null resources)] ++ generatedFlag g)
+          inBody = inBodyWith True
+          bodyDoc = private' $ function lang True bodyName ([("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] ++ [("resources", tValues) | not (null resources)] ++ [("lawspecGenerated", tBool) | guarded]) tValue
             (foldr (\(i, (_, a)) rest -> Let a tValue (call "Runtime" "item" [IntLit i, Var "inputs"]) rest)
               (foldr (\(i, (_, a)) rest -> Let a tValue (call "Runtime" "item" [IntLit i, Var "resources"]) rest) body (zip [0 ..] resourceAliases))
               (zip [0 ..] aliases))
@@ -186,7 +193,7 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
             context = shown ++ " example " ++ displayLabel (C.exampleName example)
         expectations <- mapM (\p -> X.assertion (labelled context (propositionLink p <|> exampleLink)) renderIn p) (C.exampleExpectations example)
         lateChecks <- installLate exampleSchema (\sch -> foldr (\(a, v) rest -> Let a tValue v rest)
-              (Do (require (inBody sch inputs) : map require expectations) (X.bool True)) (zip (map snd aliases) arguments))
+              (Do (require (inBodyWith False sch inputs) : map require expectations) (X.bool True)) (zip (map snd aliases) arguments))
         bracketed <- bracket exampleSchema lateChecks
         inScope <- Policy.withTestRuntime units tValue <$> Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const bracketed)
         pure (test (name ++ exampleName) (label ++ " example " ++ show i ++ ": " ++ C.exampleName example) False
@@ -440,7 +447,7 @@ propositionLink p = locationLink <$> listToMaybe (mapMaybe (originLocation . C.e
 
 -- | Names generated tests give their own locals, which source names avoid.
 generatedLocals :: [String]
-generatedLocals = ["schema", "symbols", "inputs", "values", "resources", "generation", "generator", "scoped", "withResources", "result", "drawn", "drawnSoFar"]
+generatedLocals = ["schema", "symbols", "inputs", "values", "resources", "generation", "generator", "scoped", "withResources", "result", "drawn", "drawnSoFar", "lawspecGenerated"]
 
 observed :: C.LawHarness -> Bool
 observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify harness) && null (C.harnessLabels harness)) ||

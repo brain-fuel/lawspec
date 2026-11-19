@@ -308,3 +308,65 @@ let ignore (_: Value) = ()
 /// An integer value from its digits.
 [<CompiledName("Integer")>]
 let integer (digits: string) = Int(Numerics.BigInteger.Parse digits)
+
+// Reach: how many generated cases satisfied each guard of a law's claim
+// (docs/reference/refinements.md, "Guards and reach"). A generated test
+// passes each guard's value through reach, which counts it and returns it
+// unchanged, so a guard, and any adapter it calls, is evaluated exactly once.
+// The counts of a law are rewritten as one JSON file under LAWSPEC_STATS each
+// time they change, which lawspec test reads. Example tests are not generated
+// cases and are not counted.
+let private reachCounts =
+    Collections.Generic.Dictionary<string, Collections.Generic.List<int64 * int64>>()
+
+/// Count a guard of a generated case, and return whether it held.
+[<CompiledName("Reach")>]
+let reach (law: string) (site: int) (held: bool) (generated: bool) : bool =
+    match Environment.GetEnvironmentVariable "LAWSPEC_STATS" with
+    | null
+    | "" -> held
+    | _ when generated = false -> held
+    | directory ->
+        lock reachCounts (fun () ->
+            let sites =
+                match reachCounts.TryGetValue law with
+                | true, sites -> sites
+                | _ ->
+                    let sites = Collections.Generic.List<int64 * int64>()
+                    reachCounts[law] <- sites
+                    sites
+
+            while sites.Count <= site do
+                sites.Add((0L, 0L))
+
+            let evaluated, kept = sites[site]
+            sites[site] <- (evaluated + 1L, (if held then kept + 1L else kept))
+
+            let counts =
+                sites
+                |> Seq.map (fun (e, h) -> sprintf "{\"evaluated\":%d,\"held\":%d}" e h)
+                |> String.concat ","
+
+            let safe =
+                law
+                |> String.map (fun c ->
+                    if Char.IsAsciiLetterOrDigit c || c = '-' || c = '_' then
+                        c
+                    else
+                        '_')
+
+            let file =
+                Path.Combine(directory, sprintf "reach_%s_%d.json" safe Environment.ProcessId)
+
+            // Statistics are a convenience; a run never fails for want of them.
+            try
+                let _ = Directory.CreateDirectory directory
+
+                File.WriteAllText(
+                    file,
+                    sprintf "{\"law\":%s,\"reach\":[%s]}" (Text.Json.JsonSerializer.Serialize law) counts
+                )
+            with _ ->
+                ())
+
+        held

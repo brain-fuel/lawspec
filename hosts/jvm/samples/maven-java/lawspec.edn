@@ -1,0 +1,20 @@
+{
+  :manifest-version 1
+  :component {
+    :name "maven-java"
+    :version "0.1.0"
+  }
+  :language-profile "1.0-rc.2"
+  :verification {
+    :layers [:property]
+  }
+  :sources ["laws"]
+  :targets [
+    {
+      :language :java
+      :root "."
+      :generated-source-dir "target/generated-sources/lawspec"
+      :generated-test-dir "target/generated-test-sources/lawspec"
+    }
+  ]
+}

@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createCompiler} from '../api.mjs';
-import {proveWithZ3} from '../proof.mjs';
+import {proveWithZ3} from './prove-cli.mjs';
 import {templates} from '../templates.mjs';
 import {configEDN} from './manifest-fixtures.mjs';
 

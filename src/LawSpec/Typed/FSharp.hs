@@ -400,6 +400,18 @@ cexpr env scope e = case expressionNode e of
     t <- fresh "all"
     pure (sx ++ [LetS ("let " ++ t) (App "List.forall" [Fun item (Block statements holds), xs])], A t)
   -- F#'s own List.map and List.filter, which take no stack per element.
+  -- F#'s own List.fold and List.foldBack, which take no stack per element.
+  FoldElements fromLeft value initial accumulator binder body -> do
+    (sx, xs) <- cexpr env scope value
+    (si, i) <- cexpr env scope initial
+    total <- fresh (binderName accumulator)
+    item <- fresh (binderName binder)
+    (statements, result) <- cstmt env ((binderId binder, item) : (binderId accumulator, total) : scope) body
+    t <- fresh "folded"
+    let fold = if fromLeft
+          then App "List.fold" [Fun (total ++ " " ++ item) (Block statements result), i, xs]
+          else App "List.foldBack" [Fun (item ++ " " ++ total) (Block statements result), xs, i]
+    pure (sx ++ si ++ [LetS ("let " ++ t) fold], A t)
   MapElements value binder body -> elements "List.map" value binder body
   FilterElements value binder predicate -> elements "List.filter" value binder predicate
   Perform (Operation ref "raise") [x] | isFail ref -> do

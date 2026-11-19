@@ -1,0 +1,6 @@
+@@ src/Example/Vacuity.fs
+<<<<<<<
+let keep (key: string) : string = key
+=======
+let keep (key: string) : string = if key = "south" then "" else key
+>>>>>>>

@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Installed BEAM model evidence must participate in exact native selection,
 // cache invalidation, JUnit reporting and failed-seed replay.
@@ -87,8 +88,11 @@ await cp(path.join(canonicalModels, 'files'), project, {recursive: true});
 await call('generate', ['--check', ...layoutFlags]);
 
 const {createCompiler} = await import(pathToFileURL(path.join(packageRoot, 'api.mjs')));
-const {invocations, executedTests} = await import(pathToFileURL(path.join(packageRoot, 'test-command.mjs')));
-const {projectKey} = await import(pathToFileURL(path.join(packageRoot, 'failure-database.mjs')));
+// The package ships only the CLI; the legacy CLI's helpers stay in the
+// repository for these checks.
+const {invocations, executedTests} = await import(new URL('../npm/test-command.mjs', import.meta.url));
+// The core's project key: the resolved root's SHA-256, twelve characters.
+const projectKey = root => createHash('sha256').update(path.resolve(root)).digest('hex').slice(0, 12);
 const compiler = await createCompiler();
 const plan = await compiler.planGeneration({...canonical, target: language, machineBits: bits, minify, sources});
 assert.deepEqual(plan.diagnostics, []);

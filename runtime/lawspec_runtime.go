@@ -10159,3 +10159,65 @@ func lsTextLines(text string) []string {
 	}
 	return pieces
 }
+
+// Reach: how many generated cases satisfied each guard of a law's claim
+// (docs/reference/refinements.md, "Guards and reach"). A generated test
+// passes each guard's value through lsReach, which counts it and returns it
+// unchanged, so a guard, and any adapter it calls, is evaluated exactly once.
+// TestMain writes the counts of each law when the tests end, as one JSON file
+// under LAWSPEC_STATS, which lawspec test reads. Example tests are not
+// generated cases and are not counted.
+var (
+	lsReachCounts = map[string][][2]int64{}
+	lsReachLock   sync.Mutex
+)
+
+func lsReach(law string, site int, held bool, generated bool) bool {
+	if !generated || os.Getenv("LAWSPEC_STATS") == "" {
+		return held
+	}
+	lsReachLock.Lock()
+	defer lsReachLock.Unlock()
+	sites := lsReachCounts[law]
+	for len(sites) <= site {
+		sites = append(sites, [2]int64{})
+	}
+	sites[site][0]++
+	if held {
+		sites[site][1]++
+	}
+	lsReachCounts[law] = sites
+	return held
+}
+
+func lsWriteReach() {
+	directory := os.Getenv("LAWSPEC_STATS")
+	if directory == "" {
+		return
+	}
+	lsReachLock.Lock()
+	defer lsReachLock.Unlock()
+	if len(lsReachCounts) == 0 {
+		return
+	}
+	// Statistics are a convenience; a run never fails for want of them.
+	_ = os.MkdirAll(directory, 0o755)
+	for law, sites := range lsReachCounts {
+		counts := make([]map[string]int64, len(sites))
+		for i, site := range sites {
+			counts[i] = map[string]int64{"evaluated": site[0], "held": site[1]}
+		}
+		bytes, err := json.Marshal(map[string]any{"law": law, "reach": counts})
+		if err != nil {
+			continue
+		}
+		safe := strings.Map(func(r rune) rune {
+			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+				return r
+			}
+			return '_'
+		}, law)
+		name := "reach_" + safe + "_" + strconv.Itoa(os.Getpid()) + ".json"
+		_ = os.WriteFile(filepath.Join(directory, name), bytes, 0o644)
+	}
+}

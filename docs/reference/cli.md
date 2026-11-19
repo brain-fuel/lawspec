@@ -195,8 +195,10 @@ whether the entry was read from disk, computed, or too heavy to keep, its
 weight and its time.
 
 Options that take a value require one. Unknown options, and positional
-arguments where none are expected, are errors. The command exits with status 1
-on any error.
+arguments where none are expected, are errors. An unknown option or a missing
+value prints the problem and the command's usage lines on standard error (a
+`usage` diagnostic under `--json`). The command exits with status 1 on any
+error.
 
 ## `init`
 

@@ -1,6 +1,6 @@
 {
   "name": "lawspec",
-  "version": "0.35.1",
+  "version": "0.36.0",
   "description": "State the law once. Check it everywhere.",
   "license": "MIT",
   "repository": {
@@ -18,32 +18,36 @@
     ".": {
       "types": "./index.d.ts",
       "import": "./api.mjs"
-    },
-    "./proof": {
-      "types": "./proof.d.ts",
-      "import": "./proof.mjs"
-    },
-    "./component": {
-      "types": "./component.d.ts",
-      "import": "./component.mjs"
     }
   },
   "types": "index.d.ts",
-  "dependencies": {"web-tree-sitter": "0.25.10", "@modelcontextprotocol/server": "2.4.0", "edn-data": "1.2.2", "tar": "7.5.22", "zod": "4.6.7"},
+  "devDependencies": {"@modelcontextprotocol/server": "2.4.0", "edn-data": "1.2.2", "tar": "7.5.22", "zod": "4.6.7"},
   "optionalDependencies": {
-    "ricestax": "0.3.2",
+    "ricestax": "0.4.3",
     "wasm-platform-kit": "0.2.0",
-    "@goforgedev/compiler-darwin-arm64": "0.35.1",
-    "@goforgedev/compiler-darwin-x64": "0.35.1",
-    "@goforgedev/compiler-linux-arm64": "0.35.1",
-    "@goforgedev/compiler-linux-x64": "0.35.1"
+    "@goforgedev/compiler-darwin-arm64": "0.36.0",
+    "@goforgedev/compiler-darwin-x64": "0.36.0",
+    "@goforgedev/compiler-linux-arm64": "0.36.0",
+    "@goforgedev/compiler-linux-x64": "0.36.0",
+    "@goforgedev/canon-darwin-arm64": "0.36.0",
+    "@goforgedev/canon-darwin-x64": "0.36.0",
+    "@goforgedev/canon-linux-arm64": "0.36.0",
+    "@goforgedev/canon-linux-x64": "0.36.0"
   },
   "files": [
-             "*.mjs",
+             "api.mjs",
+             "launcher.mjs",
+             "host-launcher.mjs",
+             "host-codecs.mjs",
+             "host.mjs",
+             "worker.mjs",
+             "postinstall.mjs",
              "*.json",
-             "*.d.ts",
+             "index.d.ts",
              "bin",
+             "host-core.wasm",
              "core.wasm",
+             "core.wasm.gz",
              "core_jsffi.js",
              "host-component",
              "go.mod",
@@ -55,8 +59,7 @@
              "starter.lawspec",
              "starter-rc1.lawspec",
              "examples",
-             "learn",
-             "native-parsers"
+             "learn"
            ],
   "scripts": {
     "postinstall": "node postinstall.mjs",

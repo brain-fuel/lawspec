@@ -370,8 +370,9 @@ native observation; ordinary checked laws retain their independent keys.
 
 `lawspec describe --json` returns the checked `lawspec-component` version 1
 descriptor, including component identity, fingerprint, targets, resolved contract
-versions and contract-closure digests, requirements and declaration identities. Physical archive/cache integrity remains separate from the resolved transitive contract identity. Its SDK interface
-is exported from `lawspec/component`. Mandatory definition and native-binding
+versions and contract-closure digests, requirements and declaration identities. Physical archive/cache integrity remains separate from the resolved transitive contract identity. Until 0.36.0 its
+SDK interface was also exported from `lawspec/component`; `lawspec describe`
+is now the interface. Mandatory definition and native-binding
 validation runs even when optional law verification is disabled.
 
 CALM and Ironframe connect component descriptors. LawSpec does not deploy or

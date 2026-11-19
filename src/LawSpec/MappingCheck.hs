@@ -2,9 +2,12 @@
 -- Row constants have already passed contextual inference and definition
 -- admission. This pass uses the same evaluator, Eq and complete finite covers
 -- as the rest of the compiler; it does not verify authored laws.
+{-# LANGUAGE DeriveGeneric #-}
 module LawSpec.MappingCheck (MappingSelection,selectMappingCandidates,contextualizeMappings,checkMappings) where
 
 import Control.Monad (foldM,forM,forM_,unless,when)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import qualified LawSpec.Model as S
@@ -16,7 +19,8 @@ import qualified LawSpec.Testing as Testing
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Common
 
-data MappingDerivation = MappingDerivation Bool [[Int]] deriving (Eq,Show)
+data MappingDerivation = MappingDerivation Bool [[Int]] deriving (Eq,Show,Generic)
+instance Binary MappingDerivation
 type MappingSelection = M.Map (String,String) MappingDerivation
 
 -- The provisional pass offers candidate inverse declarations for ordinary

@@ -27,6 +27,8 @@ Technical descriptions of the language, the tools and the interfaces.
 - [Configuration and build targets](artifact-targets.md): HCL, YAML, ANTLR
   grammars and Make pipelines, with explicit execution and validation limits.
 - [Compiler API](api.md): requests, results and wire encodings.
+- [Host effects](host-effects.md): the core module's exports, import and
+  effect envelope that every host provides.
 - [Native bindings](native-bindings.md): the binding configuration and each
   target's implementation contract.
 - [Compatibility](compatibility.md): supported toolchain and library versions.

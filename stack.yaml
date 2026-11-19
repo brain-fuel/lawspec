@@ -1,3 +1,19 @@
 snapshot:
   url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/24/58.yaml
 packages: [.]
+# The native build must render what the WebAssembly core renders, byte for
+# byte (tools/hosts.sh parity), so every library that shapes the compiler's
+# output resolves to the version wasm/cabal.project.freeze pins. Megaparsec
+# decides parse-error text: its caret count, its expected items and which
+# alternative's failure is reported. Aeson words a request's decoding errors
+# (text-iso8601 comes with it). Keep these in step with the freeze; GHC's boot
+# packages (base, text, containers, time) follow each compiler instead.
+extra-deps:
+  - aeson-2.3.2.0@rev:1
+  - megaparsec-9.8.2
+  - text-iso8601-0.2.0.0
+  - optparse-applicative-0.19.0.0
+  - semialign-1.4
+  - tagged-0.8.10
+  - transformers-compat-0.8
+  - unordered-containers-0.2.21

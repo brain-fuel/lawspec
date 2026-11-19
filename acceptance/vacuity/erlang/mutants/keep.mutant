@@ -1,0 +1,7 @@
+@@ src/example_vacuity.erl
+<<<<<<<
+keep(Key) -> Key.
+=======
+keep(<<"south">>) -> <<>>;
+keep(Key) -> Key.
+>>>>>>>

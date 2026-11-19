@@ -1,0 +1,10 @@
+@@ src/example/vacuity.clj
+<<<<<<<
+(defn keep
+  [key]
+  key)
+=======
+(defn keep
+  [key]
+  (if (= key "south") "" key))
+>>>>>>>

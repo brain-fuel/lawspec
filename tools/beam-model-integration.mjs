@@ -1,4 +1,5 @@
 // Generated from templates/tools/beam-model-integration.mjs by lawspec-dev generate. Do not edit.
+import {createHash} from 'node:crypto';
 import {parseManifest, writeManifest} from '../npm/component.mjs';
 // Installed BEAM model evidence must participate in exact native selection,
 // cache invalidation, JUnit reporting and failed-seed replay.
@@ -212,12 +213,14 @@ await call('generate', ['--check', ...layoutFlags]);
 const {createCompiler} = await import(
   pathToFileURL(path.join(packageRoot, 'api.mjs'))
 );
+// The package ships only the CLI; the legacy CLI's helpers stay in the
+// repository for these checks.
 const {invocations, executedTests} = await import(
-  pathToFileURL(path.join(packageRoot, 'test-command.mjs'))
+  new URL('../npm/test-command.mjs', import.meta.url)
 );
-const {projectKey} = await import(
-  pathToFileURL(path.join(packageRoot, 'failure-database.mjs'))
-);
+// The core's project key: the resolved root's SHA-256, twelve characters.
+const projectKey = root =>
+  createHash('sha256').update(path.resolve(root)).digest('hex').slice(0, 12);
 const compiler = await createCompiler();
 const plan = await compiler.planGeneration({
   ...canonical,

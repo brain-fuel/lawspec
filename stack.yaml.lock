@@ -3,7 +3,63 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/topics/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: aeson-2.3.2.0@sha256:9adf079015348cf24eacbe1f474c549aa7ccb59a412a61997368bf87cb732c66,6682
+    pantry-tree:
+      sha256: 83d3638b5e6db8802aa32b5330f12dbd8e633d4f655ce75a25ba8294330df999
+      size: 83440
+  original:
+    hackage: aeson-2.3.2.0@rev:1
+- completed:
+    hackage: megaparsec-9.8.2@sha256:447f4e381ca74b856766ee0fc70baf1ecad44c5fe0c3b3a6a9da317508ba9440,3534
+    pantry-tree:
+      sha256: 4b56d2cfcc400a9365239dec20b3ab205a2de22b6d72dc95e70dd58f3f455b85
+      size: 1687
+  original:
+    hackage: megaparsec-9.8.2
+- completed:
+    hackage: text-iso8601-0.2.0.0@sha256:dbb8e50d56597d5c39a247bae355abac8a8025643edc88b0dac20a04702fe19e,2390
+    pantry-tree:
+      sha256: bdb1c7e4cc65eadf65b9cb582168358e5b1b6ad03de175b2813601b5e7043cc3
+      size: 428
+  original:
+    hackage: text-iso8601-0.2.0.0
+- completed:
+    hackage: optparse-applicative-0.19.0.0@sha256:4c1dcbdbf2498f7cdd88826e876403db7f8d81931962060ec4c3a57a186c6cc3,5982
+    pantry-tree:
+      sha256: 5533d2f9b0bbd1a6fc04fb805d27d0d8d809b588811844c1eaf087f4ef98a0ee
+      size: 4091
+  original:
+    hackage: optparse-applicative-0.19.0.0
+- completed:
+    hackage: semialign-1.4@sha256:cf6dbcb77c5d91afa4445723b6702c222b4c2ebd7f871466e7f0bdfa8ed70071,2176
+    pantry-tree:
+      sha256: 8bdd4a65462b9b40d6a625e12f2855b73ed3898f9d821a128ffb1d934e1267c8
+      size: 537
+  original:
+    hackage: semialign-1.4
+- completed:
+    hackage: tagged-0.8.10@sha256:435d941c96a187f55b27803ad08ac387f5ec89f11e604f3cd7c959c29136dcd6,2201
+    pantry-tree:
+      sha256: ee290c846d19e0b2c8db41a890d2d507c8ea1cbc66af50cc9c43b6cb581e8812
+      size: 438
+  original:
+    hackage: tagged-0.8.10
+- completed:
+    hackage: transformers-compat-0.8@sha256:246d2d55c4970592fb68d9d9282d1af719729af1a883c1c5b74fdd49d50866dc,3762
+    pantry-tree:
+      sha256: 5d5c99408af0ab2b0b7bfc0754e37bb19b73d2c3efe7ccd6ae5c1a954422615b
+      size: 1225
+  original:
+    hackage: transformers-compat-0.8
+- completed:
+    hackage: unordered-containers-0.2.21@sha256:c5de1fb3377ed3c5f4cd851a771d1acc5c37d2f6bef0a499295c0e8857da5605,3987
+    pantry-tree:
+      sha256: e60c9f5dcacee1c8230534bc7d29224015341c956b63464fb7884a6de8b3614d
+      size: 1779
+  original:
+    hackage: unordered-containers-0.2.21
 snapshots:
 - completed:
     sha256: d4d51e01349a3e51b7aa6c500a9da8b0b578043badaec1d5f210cfe27672f18d

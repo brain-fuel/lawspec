@@ -73,6 +73,9 @@ package: ## Pack the npm package into .artifacts/<version>/
 	@# holds whatever it last built. The staged core and host component must
 	@# be the ones npm/build.json records; the lesson assets, which it does
 	@# not record, are built again.
+	node tools/learn-compiler.mjs
+	@# The CLI runs npm/host-core.wasm, which git does not track either.
+	@test -f npm/host-core.wasm || { echo 'npm/host-core.wasm is missing: run tools/wasm.sh' >&2; exit 1; }
 	$(DEV) integrity
 	node tools/learn-build.mjs
 	mkdir -p .artifacts/$(VERSION)

@@ -235,8 +235,8 @@ names the spec declares, and `init` names the project.
 constructors (`requires Mappable m`), stored parses so a repeated `check` reads
 each source's parse from the cache directory, and a faster compile for projects
 with structural records. 0.35.0 turned mutual tail calls into loops on every
-target, and a list `map` or `filter` now runs in the typed fast path of every
-target. Still open: a field restriction that calls a recursive definition (it
+target, and a list `map`, `filter` or fold now runs in the typed fast path of
+every target. Still open: a field restriction that calls a recursive definition (it
 is refused, naming the definition), a typed form for `Whole` on the JVM, Rust,
 Swift and .NET (a deep chain over `Whole` can exhaust their stack), the second
 compile a project with mappings makes on every `check`, and the rest of the
@@ -244,21 +244,6 @@ compile a project with mappings makes on every `check`, and the rest of the
 dropped: admission is about a twentieth of a warm `check`. The canon and Rice's
 Tax pin bump waits on their releases.
 See [the S1.j follow-up](s1j-followup.md).
-
-### Next: Haskell application port, with Maven, Gradle and Go hosts
-
-Every command runs end to end in the Haskell core; Node, the JVM and Go become
-thin hosts that only perform primitive effects (files, processes, fetch,
-environment, clock, standard streams and serving HTTP). LawSpec is published to
-Maven Central as `dev.goforge:lawspec`, with a Maven plugin and the Gradle
-plugin `dev.goforge.lawspec`, and as the Go module `goforge.dev/lawspec`. Go
-runs the WASM core on wazero. The JVM ships a natively compiled compiler in one
-jar per platform with a logic-free launcher, because the engine study (wazero
-1.22× V8; Chicory without SIMD support; GraalWasm 2.94× V8 on GraalVM only)
-found no pure-JVM engine that meets the bar yet. The opt-in component runtime
-becomes the default once the platform and application acceptance in
-[the host SDK reference](../reference/host-sdk.md) is met. The first port
-checkpoint, manifest admission and version selection, shipped in 0.33.
 
 ### 0.35: collection operations through capabilities, and proofs about them
 
@@ -284,6 +269,25 @@ of which blocks laws that never read the value concerned: a record with a
 the `fiveps` package, where they and the list operations account for most of
 its unproved laws. `prelude.trim` in a restriction is a separate question and
 is not part of 0.35.
+
+### 0.36: the Haskell application port, with Maven, Gradle and Go hosts
+
+Every command runs end to end in the Haskell core; Node, the JVM and Go become
+thin hosts that only perform primitive effects (files, processes, fetch,
+environment, clock, standard streams and serving HTTP). LawSpec is published to
+Maven Central as `dev.goforge:lawspec`, with a Maven plugin and the Gradle
+plugin `dev.goforge.lawspec`, and as the Go module `goforge.dev/lawspec`. Go
+runs the WASM core on wazero. The JVM ships a natively compiled compiler in one
+jar per platform with a logic-free launcher, because the engine study (wazero
+1.22× V8; Chicory without SIMD support; GraalWasm 2.94× V8 on GraalVM only)
+found no pure-JVM engine that meets the bar yet. The opt-in component runtime
+becomes the default once the platform and application acceptance in
+[the host SDK reference](../reference/host-sdk.md) is met. The first port
+checkpoint, manifest admission and version selection, shipped in 0.33. In
+0.36 the npm package's `lawspec` becomes the Node host of that core, the
+legacy Node CLI and its modules leave the package, and host parity compares
+every host with the native CLI. Each host ships a native Canon (canon 0.2.3
+with Rice's Tax 0.4.3); the Go host downloads and verifies its platform's.
 
 ### Later: instances and capabilities written by a program
 

@@ -16,8 +16,7 @@ export async function createCompiler(options = {})
   return {
     prelude: input => call({schemaVersion: 5, ...input, method: 'prelude'}),
     inspect: input => call({schemaVersion: 5, ...input, method: 'inspect'}),
-    advise: async input =>
-      (await import('./authoring.mjs')).advise(call, input),
+    advise: input => call({schemaVersion: 5, ...input, method: 'advise'}),
     format: input => call({schemaVersion: 5, ...input, method: 'format'}),
     check: input => call({schemaVersion: 5, ...input, method: 'check'}),
     expand: input => call({schemaVersion: 5, ...input, method: 'expand'}),

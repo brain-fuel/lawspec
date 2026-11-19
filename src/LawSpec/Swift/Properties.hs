@@ -5,6 +5,7 @@
 -- ref:DEC-typed-core-boundary ref:DEC-swift-property-library ref:REQ-harness-units
 module LawSpec.Swift.Properties (emitTests, emitNativeGenerators, emitRootSuites) where
 
+import LawSpec.Core.Vacuity (propositionGuards)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Generation(..), Location(..))
@@ -151,7 +152,12 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
           -- in the law's handlers and resources, when it has any.
           bodyName = name
           inputs = ListOf tValues (map (Var . snd) aliases)
-      body <- X.assertion lawMessage render (C.propertyBody law)
+      -- A guarded law's body is told whether the case was generated.
+      let guarded = not (null (propositionGuards (C.propertyBody law)))
+          generatedFlag g = [BoolLit g | guarded]
+      body <- if guarded
+        then X.assertionReaching lawMessage label (Var "lawspecGenerated") render (C.propertyBody law)
+        else X.assertion lawMessage render (C.propertyBody law)
       let resourceFor ability choice = case choice of
             C.ProductionHandler -> do
               a <- N.abilityOf units ability
@@ -166,8 +172,9 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
             made <- mapM (\(a, c, r) -> (\f -> TupleOf [Str (C.abilityKey a), f]) <$> Effects.factoryWith units sch X.symbolsVar (Just r) a c) late
             pure (Let "withResources" tSchema (pure' "Effects" "install" [sch, ListOf (Ty "[(String, Effects.Handler)]") made]) (inner (Var "withResources")))
       let handlers = [(a, c) | (a, c) <- C.propertyHandlers law, a `notElem` [x | (x, _, _) <- late]]
-          inBody s values = Call bodyName ([s, X.symbolsVar, values] ++ [ListOf tValues (map (Var . snd) resourceAliases) | not (null resources)])
-          bodyDoc = function bodyName ([("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] ++ [("resources", tValues) | not (null resources)]) tValue
+          inBodyWith g s values = Call bodyName ([s, X.symbolsVar, values] ++ [ListOf tValues (map (Var . snd) resourceAliases) | not (null resources)] ++ generatedFlag g)
+          inBody = inBodyWith True
+          bodyDoc = function bodyName ([("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] ++ [("resources", tValues) | not (null resources)] ++ [("lawspecGenerated", tBool) | guarded]) tValue
             (foldr (\(i, (_, a)) rest -> Let a (Ty "") (pure' "Runtime" "item" [IntLit i, Var "inputs"]) rest)
               (foldr (\(i, (_, a)) rest -> Let a (Ty "") (pure' "Runtime" "item" [IntLit i, Var "resources"]) rest) body (zip [0 ..] resourceAliases))
               (zip [0 ..] aliases))
@@ -192,7 +199,7 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
       -- A case that is the statement alone is not a function of its own.
       let plainCase = scoped == inBody X.schemaVar (Var "inputs")
           caseName = if plainCase then bodyName else name ++ "Case"
-          invoke values = Call caseName [X.schemaVar, X.symbolsVar, values]
+          invoke values = Call caseName ([X.schemaVar, X.symbolsVar, values] ++ if plainCase then generatedFlag True else [])
           caseDoc = function caseName [("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] tValue scoped
       -- A test's declaration (func name() async throws {) fits a line in
       -- its suite.
@@ -206,7 +213,7 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
             exampleLink = locationLink <$> exampleLocation example
         expectations <- mapM (\p -> X.assertion (labelled exampleMessage (maybe exampleLink Just (expectationLink p))) renderIn p) (C.exampleExpectations example)
         lateChecks <- installLate exampleSchema (\sch -> foldr (\(a, v) rest -> Let a (Ty "") v rest)
-              (Do (require (inBody sch inputs) : map require expectations) (X.bool True)) (zip (map snd aliases) arguments))
+              (Do (require (inBodyWith False sch inputs) : map require expectations) (X.bool True)) (zip (map snd aliases) arguments))
         bracketed <- bracket exampleSchema lateChecks
         inScope <- Policy.withTestRuntime units tValue <$> Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const bracketed)
         pure (test (name ++ "_" ++ suffix) (displayLabel (C.propertyName law) ++ " — " ++ displayLabel (C.exampleName example))

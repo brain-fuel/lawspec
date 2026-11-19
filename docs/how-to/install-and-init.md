@@ -143,8 +143,8 @@ npx lawspec --version
 ```
 
 Use `npm install --global ./lawspec-0.33.0.tgz` for a global CLI. The archive
-holds LawSpec only. npm still downloads its dependencies (`web-tree-sitter`,
-`@modelcontextprotocol/server`, `edn-data`, `tar` and `zod`) from your
+holds LawSpec only. npm still downloads its dependencies
+(`@modelcontextprotocol/server`, `edn-data`, `tar` and `zod`) from your
 configured registry, so the mirror must have those. npm records the dependency
 as a `file:` path in `package.json`; keep the archive where every installation
 of the project can read it, for example in the repository or an internal
@@ -155,16 +155,19 @@ artifact store.
 LawSpec declares these as optional dependencies. An installation succeeds when
 the registry lacks one, and with `--omit=optional` or `--ignore-scripts`:
 
-- `ricestax@0.3.2` sets Canon up for `lawspec project init` and `adopt`, and
-  runs Canon for `lawspec project status` and `validate`. Without it, those
-  commands say how to install it:
-  `npm install --save-dev ricestax@0.3.2` beside a local `lawspec`, or
-  `npm install --global ricestax@0.3.2` beside a global one. `status` and
-  `validate` can use a matching `canon` executable named by the `CANON`
-  environment variable instead. No other command uses it.
+- `@goforgedev/canon-<platform>` (darwin-arm64, darwin-x64, linux-arm64,
+  linux-x64) is the native Canon that `lawspec project init` and `adopt` set
+  Canon up with and that `lawspec project status` and `validate` run: canon
+  0.2.3 with Rice's Tax 0.4.3's grammar presets. npm installs only your
+  platform's.
+- `ricestax@0.4.3` is the same Canon as WebAssembly under Node, used only on
+  a platform with no native Canon package (Windows). Without either, those
+  commands say Canon is missing; `status` and `validate` can use a matching
+  `canon` executable named by the `CANON` environment variable instead, and
+  `LAWSPEC_CANON` names a whole Canon bundle. No other command uses them.
 - `wasm-platform-kit` and the `@goforgedev/compiler-<platform>` packages are
-  the native component runtime. The CLI compiles with its WebAssembly core and
-  does not need them. When `wasm-platform-kit` or its package for your
+  the native component runtime. The CLI runs the LawSpec core
+  (`host-core.wasm`) and does not need them. When `wasm-platform-kit` or its package for your
   platform is missing, `postinstall` prints one line saying so and succeeds.
   When only the `@goforgedev/compiler-<platform>` package is missing,
   `postinstall` compiles the component on your machine, which takes longer.

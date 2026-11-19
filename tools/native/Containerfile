@@ -1,0 +1,88 @@
+# The Linux toolchain for LawSpec's native executables: GHC and stack on
+# Alpine (musl), with the static libraries a fully static link needs. One
+# image per architecture, built by tools/build-native.sh with
+#   podman build --platform linux/arm64 (or linux/amd64) -f tools/native/Containerfile tools/native
+# A fully static musl executable has no glibc version floor and no shared
+# GMP or libffi to find, so one binary per architecture runs on every Linux
+# distribution (docs/how-to/build-native.md). The image holds no project
+# sources or build scripts: any stack project on this GHC (LawSpec, Canon)
+# builds in it, and tools/build-native.sh copies its build step
+# (build-in-container.sh) into each build's container.
+# Every input is pinned: the base image by digest, GHC's and stack's
+# release archives by version and SHA-256.
+
+FROM docker.io/library/alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
+
+# Set by podman build from --platform: amd64 or arm64.
+ARG TARGETARCH
+
+# LTS 24.58's compiler (stack.yaml); the arm64 and x86-64 Alpine bindists
+# from downloads.haskell.org/~ghc/9.10.3/SHA256SUMS.
+ARG GHC_VERSION=9.10.3
+ARG GHC_SHA256_AMD64=0253c087da23aabfb6521e741cd3a35d3fcde201d74e34cd293b2bbde722432d
+ARG GHC_SHA256_ARM64=4866d3b241c59860f2f6eaa2a5e96632113e57100b911ff8aa936665cc0045fe
+
+# The stack the macOS builds use, from its GitHub release's .sha256 files.
+ARG STACK_VERSION=3.11.1
+ARG STACK_SHA256_AMD64=1fda71e657cd8d355625cc66b61b352699279dfee2664c014a392163bd19a952
+ARG STACK_SHA256_ARM64=1617ae9976a5cd38ad4daec583b026b589eb45d5482afb045cd4ca8c8d0de6d0
+
+# build-base: the C compiler and linker GHC drives, and musl's static libc.
+# gmp-static, libffi-dev (which carries libffi.a), zlib-static and
+# ncurses-static: the static libraries a static link takes. file: the
+# linkage check. git and perl-utils (shasum): tools/build-canon.sh.
+RUN apk add --no-cache \
+      bash \
+      binutils \
+      build-base \
+      ca-certificates \
+      curl \
+      file \
+      git \
+      gmp-dev \
+      gmp-static \
+      libffi-dev \
+      ncurses-dev \
+      ncurses-static \
+      perl \
+      perl-utils \
+      tar \
+      xz \
+      zlib-dev \
+      zlib-static
+
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) ghc_arch=x86_64; ghc_sha="$GHC_SHA256_AMD64"; stack_arch=x86_64; stack_sha="$STACK_SHA256_AMD64" ;; \
+      arm64) ghc_arch=aarch64; ghc_sha="$GHC_SHA256_ARM64"; stack_arch=aarch64; stack_sha="$STACK_SHA256_ARM64" ;; \
+      *) echo "unsupported TARGETARCH $TARGETARCH" >&2; exit 2 ;; \
+    esac; \
+    cd /tmp; \
+    ghc_archive="ghc-$GHC_VERSION-$ghc_arch-alpine3_18-linux.tar.xz"; \
+    curl -fsSLo "$ghc_archive" "https://downloads.haskell.org/~ghc/$GHC_VERSION/$ghc_archive"; \
+    echo "$ghc_sha  $ghc_archive" | sha256sum -c -; \
+    tar -xJf "$ghc_archive"; \
+    cd ghc-"$GHC_VERSION"-*/; \
+    ./configure --prefix=/opt/ghc; \
+    make install; \
+    cd /tmp; \
+    stack_archive="stack-$STACK_VERSION-linux-$stack_arch.tar.gz"; \
+    curl -fsSLo "$stack_archive" "https://github.com/commercialhaskell/stack/releases/download/v$STACK_VERSION/$stack_archive"; \
+    echo "$stack_sha  $stack_archive" | sha256sum -c -; \
+    tar -xzf "$stack_archive"; \
+    install -m 755 "stack-$STACK_VERSION-linux-$stack_arch/stack" /usr/local/bin/stack; \
+    rm -rf /tmp/*
+
+ENV PATH=/opt/ghc/bin:$PATH \
+    STACK_ROOT=/stack-root \
+    LANG=C.UTF-8
+
+# stack uses this GHC and never installs its own: the toolchain is the
+# image's, pinned above. The global configuration, not STACK_ROOT's, since
+# a build mounts its package cache volume over STACK_ROOT.
+RUN mkdir -p /etc/stack /stack-root \
+    && printf 'system-ghc: true\ninstall-ghc: false\n' >/etc/stack/config.yaml \
+    && ghc --version \
+    && stack --version
+
+WORKDIR /build

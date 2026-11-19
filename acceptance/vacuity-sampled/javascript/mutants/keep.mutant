@@ -1,6 +1,0 @@
-@@ src/example/vacuity.mjs
-<<<<<<<
-return key;
-=======
-return key==='south'?'':key;
->>>>>>>

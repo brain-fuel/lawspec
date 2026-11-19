@@ -1,6 +1,6 @@
 -- | The capability laws, proved for the built-in instances with their
 -- functions left abstract. ref:DEC-capability-laws
-module InstanceLawsSpec (test_capabilityLawsAreProved, test_capabilityLawsAreCited) where
+module InstanceLawsSpec (test_capabilityLawsAreProved, test_capabilityLawsAreCited, test_capabilityLawsHoldOnSamples) where
 
 import Control.Monad (forM)
 import Data.Aeson (Value(..), object, (.=), decode, encode, toJSON)
@@ -15,6 +15,9 @@ import System.Process (readProcessWithExitCode)
 import Test.Hspec
 import qualified LawSpec.Api as API
 import LawSpec.CapabilityReceipts (capabilityReceipts)
+import LawSpec.CapabilitySamples
+import LawSpec.Core.SmtInstances (instanceOf)
+import LawSpec.Scalar (Scalar(..))
 import qualified LawSpec.Core as C
 import LawSpec.ProofSettings (capabilityCitation, capabilityLawKeys)
 
@@ -169,3 +172,21 @@ test_capabilityLawsAreCited = describe "citing a capability law" $ do
     capabilityCitation [(C.idText law, "now")] keys law `shouldBe` Right ()
     capabilityCitation [(C.idText law, "before")] keys law `shouldSatisfy` either ("earlier form" `isInfixOf`) (const False)
     capabilityCitation [] keys law `shouldSatisfy` either ("no receipt" `isInfixOf`) (const False)
+
+test_capabilityLawsHoldOnSamples :: Spec
+test_capabilityLawsHoldOnSamples = describe "capability laws on sample functions" $ do
+  it "every law holds at every sample set, by the evaluator's operations and by the instance definitions" $ do
+    results <- either fail pure sampleCapabilityLaws
+    length results `shouldBe` 20 * length sampleSets * 2
+    [r | r@SampleResult{sampledOutcome = SampleFails{}} <- results] `shouldBe` []
+    [r | r@SampleResult{sampledOutcome = SampleHolds 0} <- results] `shouldBe` []
+
+  it "a filter instance that keeps every element is refuted on the samples, and only through the instance definitions" $ do
+    let keepsEverything e = case C.expressionNode e of
+          C.FilterElements list binder _ -> instanceOf e { C.expressionNode = C.FilterElements list binder
+            (C.Expr (C.scalarType "Bool") (C.Constant (SBool True)) (C.expressionOrigin e)) }
+          _ -> instanceOf e
+    results <- either fail pure (sampleCapabilityLawsWith keepsEverything)
+    let failing = [(sampledLaw r, sampledSet r) | r@SampleResult{sampledOutcome = SampleFails{}} <- results]
+    ("|filter keeps only what is accepted|", "integers") `elem` failing `shouldBe` True
+    [r | r@SampleResult{sampledView = EvaluatorOperations, sampledOutcome = SampleFails{}} <- results] `shouldBe` []

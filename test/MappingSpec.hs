@@ -11,6 +11,8 @@ import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Core.Definitions (prepareDefinitions)
 import LawSpec.Core.Eval (evaluateValueProposition)
 import LawSpec.Frontend (compileCoreCanonical)
+import LawSpec.Compile (compileCanonicalWithImports, compileWithKeptSelection, mappingSelectionKey)
+import qualified Data.Map.Strict as M
 
 compileAt bits body=compileCoreCanonical bits S.defaultGeneration
   [S.Source "mapping.lawspec" ("unit example.mapping\n\n"++body ++ "\nend unit\n")]
@@ -29,6 +31,25 @@ law name body="law "++name++" is definition: "++body++" end definition end law\n
 float bits="float64Bits(\""++bits++"\")"
 
 test_typedMappings=describe "resolved typed mappings" $ do
+  describe "the kept mapping selection" $ do
+    let labels extra=S.Source "labels.lawspec" (unlines ["unit example.labels","",
+          "mapping label of type Bool -> Text is row false, \"off\" row true, \"on\" end mapping",extra,"end unit"])
+        user extra=S.Source "user.lawspec" (unlines ["unit example.user","","import example.labels (label)","",
+          "function shown (flag :: Bool) -> Text is label flag end function",extra,"end unit"])
+        plain=S.Source "plain.lawspec" "unit example.plain\n\nfunction same (flag :: Bool) -> Bool is flag end function\nend unit\n"
+        keyOf sources=mappingSelectionKey [] False Nothing 64 S.defaultGeneration sources
+        compiled sources=show <$> compileCanonicalWithImports (\_ _ -> Nothing) 64 S.defaultGeneration sources
+    it "is keyed by the units that declare mappings and what they import, not by their importers" $ do
+      keyOf [plain] `shouldBe` Nothing
+      keyOf [labels "",user ""] `shouldSatisfy` (/= Nothing)
+      keyOf [labels "",user "function other (n :: Integer) -> Integer is n end function"] `shouldBe` keyOf [labels "",user ""]
+      keyOf [labels "function other (n :: Integer) -> Integer is n end function",user ""] `shouldNotBe` keyOf [labels "",user ""]
+    it "derives the selection afresh when a kept one is wrong" $ do
+      let sources=[labels (law "inverse" "labelInverse \"on\" = Present true"),user ""]
+          kept=fmap (\(units,expanded,_)->show (units,expanded))
+            (compileWithKeptSelection M.empty Nothing [] False True (\_ name->name) (\_ _->Nothing) 64 S.defaultGeneration sources)
+      compiled sources `shouldSatisfy` isRight
+      kept `shouldBe` compiled sources
   it "checks complete record keys and derives their checked preimages and inverse" $
     forM_ [32,64] $ \bits->checked bits (unlines
       ["mapping label of type record{enabled :: Bool} -> Text is",

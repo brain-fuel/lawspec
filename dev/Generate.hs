@@ -26,7 +26,7 @@ import System.Process (readProcessWithExitCode)
 import Gen.Api (apiSources)
 import LawSpec.JavaTestingRuntime (renderDataStrategies)
 import LawSpec.JavaTestStyle (TestStyle(..))
-import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage, embedSwift)
+import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedExamples, embedJvmLanguage, embedSwift)
 import Gen.Json
 import Gen.Template
 import Gen.Unicode (caseFoldData, displayWidthData)
@@ -121,6 +121,7 @@ planOutputs = do
   let javaStrategies = renderDataStrategies JUnit javaStrategiesBody
   runtimes <- embedRuntimes
   defaults <- embedDefaults
+  examples <- embedExamples
   dotnet <- embedDotNet
   swift <- embedSwift
   groovy <- embedJvmLanguage "groovy" "GroovySources"
@@ -144,6 +145,7 @@ planOutputs = do
   inventory <- learnInventory
   authoring <- authoringOutputs version inventory curriculum
   let whole = [ Output "runtime/LawSpecDataStrategies.java" javaStrategies False, Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
+              , Output "src/LawSpec/App/ExampleSources.hs" examples False
               , Output "src/LawSpec/DotNetSources.hs" dotnet False
               , Output "src/LawSpec/GroovySources.hs" groovy False
               , Output "src/LawSpec/ClojureSources.hs" clojure False
@@ -362,9 +364,14 @@ generatedSourceHole, generatedTestHole :: String
 generatedSourceHole = "@@generated-source-dir@@"
 generatedTestHole = "@@generated-test-dir@@"
 
--- | What the npm package contains, beside its code.
+-- | What the npm package contains. Its code is the Node host (bin, host.mjs,
+-- worker.mjs) of the host-effect core it runs (host-core.wasm), the compiler
+-- API (api.mjs over core.wasm, or the component runtime) and the
+-- installation note; the legacy CLI's modules that the core replaced stay in
+-- npm/ only for the repository's own tools and tests, and are not shipped.
+-- ref:DEC-haskell-application-port
 shippedFiles :: [String]
-shippedFiles = ["*.mjs", "*.json", "*.d.ts", "bin", "core.wasm", "core_jsffi.js", "host-component", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn", "native-parsers"]
+shippedFiles = ["api.mjs", "launcher.mjs", "host-launcher.mjs", "host-codecs.mjs", "host.mjs", "worker.mjs", "postinstall.mjs", "*.json", "index.d.ts", "bin", "host-core.wasm", "core.wasm", "core.wasm.gz", "core_jsffi.js", "host-component", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.
@@ -397,9 +404,16 @@ versionedFiles =
   , ("runtime/rust/Cargo.lock", cargo "name = \"lawspec-runtime-conformance\"")
   -- canon fails its check once this version reaches an open decision's or an
   -- exemption's revisit version.
-  , ("canon.yaml", lineValue "version: ") ]
+  , ("canon.yaml", lineValue "version: ")
+  -- The JVM packages: snapshot versions until a release names its own
+  -- (-Drevision, -Pversion). ref:DEC-maven-central-coordinates
+  , ("hosts/jvm/pom.xml", wrapped "    <revision>" "-SNAPSHOT</revision>")
+  , ("hosts/jvm/gradle-plugin/gradle.properties", wrapped "version=" "-SNAPSHOT")
+  , ("hosts/jvm/samples/maven-java/pom.xml", wrapped "    <lawspec.version>" "-SNAPSHOT</lawspec.version>")
+  , ("hosts/jvm/samples/gradle-kotlin/build.gradle.kts", wrapped "  id(\"dev.goforge.lawspec\") version \"" "-SNAPSHOT\"") ]
   where
     lineValue prefix old new = unlines . map (\l -> if l == prefix ++ old then prefix ++ new else l) . lines
+    wrapped prefix suffix old new = unlines . map (\l -> if l == prefix ++ old ++ suffix then prefix ++ new ++ suffix else l) . lines
     -- The first version line after the anchor.
     cargo anchor old new = unlines . go False . lines
       where go _ [] = []
@@ -427,11 +441,14 @@ bumpCommand [new] = do
   unless (semver new) (die ("not a MAJOR.MINOR.PATCH version: " ++ new))
   old <- currentVersion
   when (old == new) (die ("already at " ++ new))
-  forM_ versionedFiles $ \(file, rewrite) -> do
+  -- Rewrite every file in memory first, so a file that does not state the
+  -- version stops the bump before anything is written.
+  rewritten <- forM versionedFiles $ \(file, rewrite) -> do
     content <- readFile' file
     let updated = rewrite old new content
     when (updated == content) (die (file ++ " does not state version " ++ old))
-    writeFile file updated
+    pure (file, updated)
+  forM_ rewritten (uncurry writeFile)
   -- Install instructions name the version.
   docs <- filter (".md" `isSuffixOf`) <$> ((++) <$> walkFiles "docs" <*> pure ["README.md"])
   forM_ docs $ \file -> do
@@ -441,13 +458,17 @@ bumpCommand [new] = do
       let installs = replace ("lawspec@" ++ old) ("lawspec@" ++ new) (replace ("lawspec-" ++ old ++ ".tgz") ("lawspec-" ++ new ++ ".tgz") (replace (".artifacts/" ++ old) (".artifacts/" ++ new) (replace ("v" ++ old) ("v" ++ new) content)))
           -- The release how-to also names the version in its bump, commit and
           -- tag messages; other pages keep historical "LawSpec x.y.z" mentions.
+          -- The host install pages name only the current release (Maven
+          -- coordinates, the Gradle plugin, snapshots and the Go module tag).
           updated
-            | file == "docs" </> "how-to" </> "release.md" = replace ("VERSION=" ++ old) ("VERSION=" ++ new) (replace ("LawSpec " ++ old) ("LawSpec " ++ new) installs)
+            | file == "docs" </> "how-to" </> "release.md" = replace ("VERSION=" ++ old) ("VERSION=" ++ new) (replace ("LawSpec " ++ old) ("LawSpec " ++ new) (replace ("goforgedev-core-" ++ old) ("goforgedev-core-" ++ new) installs))
+            | file `elem` hostInstallPages = replace old new content
             | otherwise = installs
       when (updated /= content) (writeFile file updated)
   generateCommand []
   putStrLn ("Version " ++ old ++ " -> " ++ new ++ ". Add a CHANGELOG.md section, then run make wasm and, after packing the native packages, make lock.")
   where
+    hostInstallPages = ["docs" </> "how-to" </> page | page <- ["install-go.md", "install-maven.md", "install-gradle.md"]]
     semver v = case splitDots v of
       [a, b, c] -> all (\p -> not (null p) && all isDigit p) [a, b, c]
       _ -> False

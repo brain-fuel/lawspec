@@ -76,7 +76,7 @@ localName = escape . N.localIdentifier "swift"
 -- | The names generated code binds around a law's or a definition's
 -- values, which a source binder's name must not shadow.
 reservedLocals :: [String]
-reservedLocals = words "schema symbols inputs resources values scoped withResources generation generator result scope machineBits"
+reservedLocals = words "schema symbols inputs resources values scoped withResources generation generator result scope machineBits lawspecGenerated"
 
 -- | The suffixes naming a law's example tests (after its name and _): each
 -- example's words in lowerCamelCase, numbered when they repeat or have

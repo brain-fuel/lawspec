@@ -337,11 +337,18 @@ export async function artifactKey(
     versions: process.versions,
     environment: effectiveEnvironment(environment),
   };
+  // The CLI is the Node host (bin/lawspec.mjs, which the host fingerprint
+  // reads with the rest of bin/) over host-core.wasm.
   const files = (await readdir(sdk))
     .filter(
       name =>
         name.endsWith('.mjs') ||
-        ['core_jsffi.js', 'core.wasm', 'package.json'].includes(name),
+        [
+          'core_jsffi.js',
+          'core.wasm',
+          'host-core.wasm',
+          'package.json',
+        ].includes(name),
     )
     .sort();
   const executableFiles = await Promise.all(

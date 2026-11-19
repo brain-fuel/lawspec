@@ -1,0 +1,12 @@
+@@ src/main/groovy/example/Vacuity.groovy
+<<<<<<<
+  static String keep(String key)
+  {
+    key
+
+=======
+  static String keep(String key)
+  {
+    key == "south" ? "" : key
+
+>>>>>>>

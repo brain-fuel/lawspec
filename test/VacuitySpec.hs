@@ -7,7 +7,7 @@ import qualified Data.Text as T
 import LawSpec.Api (dispatch)
 import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (toList)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, sort)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Authoring (adviceView)
@@ -18,6 +18,7 @@ import LawSpec.Core.Vacuity
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Scalar (Scalar(..))
+import LawSpec.Targets (programTargets)
 import LawSpec.Testing
 
 spec :: String
@@ -176,5 +177,5 @@ test_guardsDirectGenerationAndAreReported = describe "guards of a law's claim" $
   it "names vacuous among the statuses, after flaky" $ do
     statusName Vacuous `shouldBe` "vacuous"
     takeWhile (/= Skipped) (dropWhile (/= Flaky) statuses) `shouldBe` [Flaky, Vacuous]
-  it "counts reach on the targets that say so" $
-    reachTargets `shouldBe` ["java", "javascript", "python", "scala", "typescript"]
+  it "counts reach on every program target" $
+    sort reachTargets `shouldBe` sort programTargets

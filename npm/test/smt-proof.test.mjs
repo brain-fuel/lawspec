@@ -9,7 +9,7 @@ import {existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createCompiler} from '../api.mjs';
-import {proveWithZ3, proofTaskFingerprint} from '../proof.mjs';
+import {proveWithZ3} from './prove-cli.mjs';
 import {
   explanations,
   explanationText,
@@ -56,10 +56,7 @@ test('SMT tasks stay separate from completed evidence and preserve mandatory che
     planned.evidence.find(row => row.stage === 'law').status,
     'planned',
   );
-  assert.equal(
-    proofTaskFingerprint(planned.proofTasks[0]),
-    planned.proofTasks[0].taskFingerprint,
-  );
+  // The task binding the prover checks: AppSpec ("fails a run that reports an error after its unsat answer").
   const empty = await proveWithZ3(compiler, request(square, []), {
     binary: '/missing/z3',
   });
@@ -80,7 +77,8 @@ test('SMT tasks stay separate from completed evidence and preserve mandatory che
     {binary: '/missing/z3'},
   );
   assert.ok(broken.diagnostics.some(row => row.code === 'total'));
-  assert.deepEqual(broken.solverEvidence, []);
+  // A rejected request prints its diagnostics alone, with no solver evidence.
+  assert.ok(!broken.solverEvidence?.length);
 });
 
 test(
@@ -165,12 +163,9 @@ end harness
 `,
     });
     const result = await proveWithZ3(compiler, guarded, {binary: z3});
+    // lawspec prove fails on the harness diagnostic and prints it alone; a
+    // known discrepancy beside a proof: known-discrepancy.test.mjs.
     assert.ok(result.diagnostics.some(row => row.code === 'harness'));
-    assert.equal(result.solverEvidence[0].outcome, 'unsat');
-    assert.equal(
-      result.evidence.find(row => row.stage === 'law').status,
-      'known-discrepancy',
-    );
   },
 );
 
@@ -269,38 +264,13 @@ test(
       },
       {binary: z3},
     );
-    const row = (name, stage) =>
-      result.evidence.find(
-        r =>
-          r.declaration === 'portfolio.refunds::' + name && r.stage === stage,
-      );
-    for (const stage of ['completeness', 'overlap', 'conflict', 'vacuity'])
-      assert.equal(row('decide', stage).status, 'proved');
-    assert.equal(row('settle', 'conflict').status, 'refuted');
+    // A refuted check fails lawspec prove, which then prints its diagnostics
+    // alone: the confirmed conflict. Each check's status, the exemptions and
+    // the solver's answers over this fixture: LawAnalysisSpec (Z3 round trip).
+    const conflict = result.diagnostics.find(d => d.code === 'refuted');
     assert.match(
-      row('settle', 'conflict').reason,
+      conflict.message,
       /amount = 0, captured = 0; Z3 found it and the evaluator confirms it/,
-    );
-    assert.ok(result.diagnostics.some(d => d.code === 'refuted'));
-    assert.equal(row('settle', 'overlap').status, 'exempted');
-    assert.equal(row('quote', 'completeness').status, 'proved');
-    assert.equal(row('triage', 'completeness').status, 'exempted');
-    assert.match(
-      row('triage', 'completeness').reason,
-      /not covered: amount = 5001/,
-    );
-    assert.equal(
-      row('triage', 'completeness').exemption.reason,
-      'amounts above 5000 go to manual review',
-    );
-    assert.ok(
-      result.solverEvidence.some(
-        e =>
-          e.kind === 'analysis' &&
-          e.stage === 'conflict' &&
-          e.status === 'refuted' &&
-          e.outcome === 'sat',
-      ),
     );
   },
 );
@@ -703,42 +673,8 @@ test(
   },
 );
 
-test('imported model answers cannot prove a law without executing a solver', async () =>
-{
-  const {readFile} = await import('node:fs/promises');
-  const content = await readFile(
-    new URL('../../test/fixtures/model-counters.lawspec', import.meta.url),
-    'utf8',
-  );
-  const input = {
-    schemaVersion: 5,
-    languageProfile: '1.0-rc.2',
-    verification: {layers: ['proof', 'exhaustive']},
-    sources: [{path: 'counters.lawspec', content}],
-  };
-  const planned = await compiler.proofTasks(input);
-  const forged = (planned.modelTasks ?? []).flatMap(law =>
-    law.tasks.map(task => ({fingerprint: task.fingerprint, outcome: 'unsat'})),
-  );
-  assert.ok(forged.length > 0);
-  const result = await proveWithZ3(
-    compiler,
-    {...input, modelResults: forged},
-    {binary: '/missing/z3'},
-  );
-  const row = result.evidence.find(
-    r =>
-      r.stage === 'law' &&
-      r.declaration === 'portfolio.counters::law::|counts never go negative|',
-  );
-  assert.equal(row.status, 'incomplete');
-  assert.ok(
-    result.solverEvidence.some(
-      e => e.kind === 'model' && e.outcome === 'unavailable',
-    ),
-  );
-  assert.ok(result.solverEvidence.every(e => e.status !== 'proved'));
-});
+// Forged model answers: lawspec prove takes none from its caller, so there is
+// nothing to forge (proveWithZ3 accepted request.modelResults).
 
 test(
   'unbounded models: induction, a re-checked Spacer invariant, and a replayed bounded run',
@@ -760,40 +696,14 @@ test(
       },
       {binary: z3, timeoutMs: 20000},
     );
-    const row = name =>
-      result.evidence.find(
-        r =>
-          r.stage === 'law' &&
-          r.declaration === 'portfolio.counters::law::|' + name + '|',
-      );
-    assert.equal(row('counts never go negative').status, 'proved');
-    assert.match(row('counts never go negative').reason, /by induction/);
-    assert.equal(row('a loose count never goes negative').status, 'refuted');
+    // The refuted law fails lawspec prove, which then prints its diagnostics
+    // alone: the replayed run. Induction, Spacer and the receipts over this
+    // fixture: ModelCheckSpec (Z3 round trip).
+    const refuted = result.diagnostics.find(d => d.code === 'refuted');
     assert.match(
-      row('a loose count never goes negative').reason,
-      /a run breaks it: slip/,
+      refuted.message,
+      /a loose count never goes negative\|: a run breaks it: slip; Z3 found it and the evaluator replays it/,
     );
-    assert.equal(row('the first never goes negative').status, 'proved');
-    assert.match(
-      row('the first never goes negative').reason,
-      /Spacer proposed and plain queries re-checked/,
-    );
-    assert.ok(
-      result.solverEvidence.some(
-        e => e.kind === 'model' && e.task === 'spacer',
-      ),
-    );
-    for (const receipt of result.solverEvidence.filter(
-      e => e.kind === 'model',
-    ))
-    {
-      assert.equal(receipt.prover.name, 'z3');
-      assert.match(receipt.prover.binaryFingerprint, /^[0-9a-f]{64}$/);
-      assert.match(receipt.runFingerprint, /^[0-9a-f]{64}$/);
-      assert.equal(receipt.exitCode, 0);
-      assert.equal(typeof receipt.stdout, 'string');
-      assert.equal(typeof receipt.stderr, 'string');
-    }
   },
 );
 
@@ -827,58 +737,9 @@ test(
   },
 );
 
-test(
-  'a broken counterexample translation gives model-not-confirmed, never refuted',
-  requiresZ3,
-  async () =>
-  {
-    const frame = value => Buffer.byteLength(value, 'utf8') + ':' + value;
-    const bind = values =>
-      createHash('sha256').update(values.map(frame).join('')).digest('hex');
-    const mutant = {
-      proofTasks: async input =>
-      {
-        const result = await compiler.proofTasks(input);
-        if (input.proofCounterexamples) return result;
-        return {
-          ...result,
-          proofTasks: result.proofTasks.map(task =>
-          {
-            const script = task.counterexample.script.replace(
-              /\(assert \(not [^\n]*\)\n$/,
-              '(assert (= lawspec_input_0 3))\n',
-            );
-            return {
-              ...task,
-              counterexample: {
-                ...task.counterexample,
-                script,
-                fingerprint: bind([
-                  'lawspec-smtlib-v2',
-                  task.lawFingerprint,
-                  String(task.machineBits),
-                  task.owner,
-                  task.declaration,
-                  script,
-                ]),
-              },
-            };
-          }),
-        };
-      },
-    };
-    const result = await proveWithZ3(
-      mutant,
-      request(law('for all (n :: Integer) => n * n != 4 end for all')),
-      {binary: z3},
-    );
-    const proof = result.solverEvidence[0];
-    assert.equal(proof.outcome, 'sat');
-    assert.equal(proof.status, 'incomplete');
-    assert.equal(proof.counterexample.check, 'model-not-confirmed');
-    assert.ok(result.diagnostics.some(row => row.code === 'proof-translation'));
-  },
-);
+// A counterexample the evaluator does not confirm stays model-not-confirmed:
+// CounterexampleSpec. The mutant compiler this test substituted cannot be
+// handed to the core, where compiler and prover run together.
 
 test('unsupported translations and unavailable Z3 remain explicit without substituting another theory', async () =>
 {
@@ -947,113 +808,13 @@ test(
   },
 );
 
-test(
-  'modified task content cannot reuse a valid compiler task binding',
-  requiresZ3,
-  async () =>
-  {
-    const changed = {
-      proofTasks: async input =>
-      {
-        const result = await compiler.proofTasks(input);
-        return {
-          ...result,
-          proofTasks: result.proofTasks.map(task => ({
-            ...task,
-            script: '(assert false)\n',
-          })),
-        };
-      },
-    };
-    const result = await proveWithZ3(changed, request(falseLaw), {binary: z3});
-    assert.equal(result.solverEvidence[0].outcome, 'failed');
-    assert.equal(result.solverEvidence[0].status, 'incomplete');
-    assert.ok(
-      result.evidence
-        .filter(row => row.stage === 'law')
-        .every(row => row.status !== 'proved'),
-    );
-  },
-);
+// Task bindings: the prover checks each task's taskFingerprint (Prove.hs
+// validTask; AppSpec checks the binding the compiler gives). A substituted
+// compiler cannot be handed to the core.
 
-test('law-set and model tasks reject an error after an unsat token', async () =>
-{
-  const folder = await mkdtemp(path.join(tmpdir(), 'lawspec-proof-protocol-'));
-  try
-  {
-    const binary = path.join(folder, 'solver');
-    await writeFile(
-      binary,
-      '#!/bin/sh\nif [ "$1" = "-version" ]; then echo "Z3 version 0.0.0 - protocol test"; exit 0; fi\n' +
-        'while IFS= read -r line; do case "$line" in *"(check-sat)"*) break;; esac; done\n' +
-        'printf \'unsat\\n(error "invalid task")\\n\'\ncat >/dev/null\n',
-    );
-    await chmod(binary, 0o755);
-    const identity = {
-      owner: 'protocol',
-      declaration: 'protocol::law::selected',
-    };
-    const task = {
-      fingerprint: '0'.repeat(64),
-      kind: 'induction: the start',
-      script: '(assert false)\n',
-      inputs: [],
-    };
-    for (const kind of ['analysis', 'model'])
-    {
-      const stage = kind === 'analysis' ? 'conflict' : 'law';
-      const fake = {
-        proofTasks: async input =>
-        {
-          const answers = input.analysisResults ?? input.modelResults;
-          const verdict = {
-            ...identity,
-            stage,
-            status: answers?.every(a => a.outcome === 'unsat')
-              ? 'proved'
-              : 'incomplete',
-            reason: 'protocol check',
-          };
-          return {
-            diagnostics: [],
-            proofTasks: [],
-            evidence: [verdict],
-            analysisTasks:
-              kind === 'analysis' && !answers
-                ? [{...identity, stage, status: 'ready', tasks: [task]}]
-                : [],
-            modelTasks:
-              kind === 'model' && !answers
-                ? [{...identity, tasks: [task]}]
-                : [],
-            ...(answers
-              ? kind === 'model'
-                ? {modelEvidence: [verdict]}
-                : {
-                    analysisEvidence: [verdict],
-                    analysisChecks: [
-                      {
-                        ...verdict,
-                        fingerprint: task.fingerprint,
-                        check: verdict.status,
-                      },
-                    ],
-                  }
-              : {}),
-          };
-        },
-      };
-      const result = await proveWithZ3(fake, {}, {binary});
-      assert.equal(result.evidence[0].status, 'incomplete');
-      assert.equal(result.solverEvidence[0].outcome, 'failed');
-      assert.equal(result.solverEvidence[0].status, 'incomplete');
-    }
-  }
-  finally
-  {
-    await rm(folder, {recursive: true, force: true});
-  }
-});
+// An error after an unsat answer is a failed run: AppSpec ("fails a run that
+// reports an error after its unsat answer"); law, law-set and model tasks
+// share Prove.hs verifiedOutcome.
 
 test('prover protocol failures and external process termination do not upgrade evidence', async () =>
 {
@@ -1242,93 +1003,4 @@ end laws
   },
 );
 
-test(
-  'published proof subpath and task/evidence types admit a real TypeScript consumer',
-  {
-    skip: tsc
-      ? false
-      : 'set LAWSPEC_TSC for the published declaration consumer',
-  },
-  async () =>
-  {
-    const directory = await mkdtemp(
-      path.join(tmpdir(), 'lawspec-proof-types-'),
-    );
-    try
-    {
-      await writeFile(
-        path.join(directory, 'package.json'),
-        '{"type":"module"}',
-      );
-      const {mkdir} = await import('node:fs/promises');
-      await mkdir(path.join(directory, 'node_modules'));
-      await symlink(
-        new URL('..', import.meta.url).pathname,
-        path.join(directory, 'node_modules', 'lawspec'),
-        'dir',
-      );
-      await writeFile(
-        path.join(directory, 'consumer.ts'),
-        `
-import {createCompiler, type CheckRequest} from 'lawspec';
-import {proveWithZ3, proofTaskFingerprint, type Z3Options, type SolverEvidence} from 'lawspec/proof';
-const compiler=await createCompiler();
-const request:CheckRequest={languageProfile:'1.0-rc.2',verification:{layers:['proof']},sources:[]};
-const options:Z3Options={binary:'z3',timeoutMs:1000,memoryMb:512,seed:1};
-const planned=await compiler.proofTasks(request);
-for(const task of planned.proofTasks??[]) {
-  if(task.status==='ready') {
-    const fingerprint:string=proofTaskFingerprint(task);
-    const bits:32|64=task.machineBits;
-    console.log(fingerprint,bits,task.script);
-  } else console.log(task.reason);
-}
-const result=await proveWithZ3(compiler,request,options);
-for(const item of result.solverEvidence) {
-  const status:SolverEvidence['status']=item.status;
-  const outcome:SolverEvidence['outcome']=item.outcome;
-  console.log(status,outcome,item.prover?.binaryFingerprint,item.modelValidated);
-}
-for(const item of result.solverEvidence) {
-  if(item.kind==='analysis') {
-    const stage:'completeness'|'overlap'|'conflict'|'vacuity'=item.stage;
-    const status:'proved'|'refuted'|'exempted'|'incomplete'|'unsupported'=item.status;
-    console.log(stage,status,item.check);
-    // @ts-expect-error a law-set task has no law location
-    console.log(item.at);
-  } else if(item.kind===undefined) {
-    const at=item.at;const bits:32|64=item.machineBits;
-    // @ts-expect-error a law's task is never exempted
-    const exempted:typeof item.status='exempted';
-    console.log(at,bits,exempted,item.counterexample?.check);
-  }
-}
-// @ts-expect-error solver limits are numeric
-const invalid:Z3Options={timeoutMs:'unlimited'};
-// @ts-expect-error tasks alone are not completed solver evidence
-const evidence:SolverEvidence=planned.proofTasks![0];
-`,
-      );
-      const checked = spawnSync(
-        tsc,
-        [
-          '--noEmit',
-          '--strict',
-          '--target',
-          'ES2022',
-          '--module',
-          'NodeNext',
-          '--moduleResolution',
-          'NodeNext',
-          'consumer.ts',
-        ],
-        {cwd: directory, encoding: 'utf8'},
-      );
-      assert.equal(checked.status, 0, checked.stdout + checked.stderr);
-    }
-    finally
-    {
-      await rm(directory, {recursive: true, force: true});
-    }
-  },
-);
+// The lawspec/proof subpath and proof.d.ts left the package in 0.36.0.

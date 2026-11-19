@@ -17,11 +17,13 @@ import Data.List (intercalate, nub)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Core
 import LawSpec.Core.Evidence (adapterDeclarations)
+import LawSpec.Targets (programTargets)
 
--- | The targets whose generated tests count reached consequences. On every
--- other target a guarded law's reach is reported unknown, never as measured.
+-- | The targets whose generated tests count reached consequences: every
+-- program target. A target outside it would report a guarded law's reach as
+-- unknown, never as measured.
 reachTargets :: [String]
-reachTargets = ["java", "javascript", "python", "scala", "typescript"]
+reachTargets = programTargets
 
 -- | The guards of a claim, outermost first: the antecedent of each implication
 -- reached through conjunctions and other implications. An implication under a

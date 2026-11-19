@@ -485,6 +485,24 @@ cexpr env scope e = case expressionNode e of
                       D.text (cell ++ " = " ++ cell ++ "[1]")]) ], D.text t)
   -- A map or filter walks the list once, in order, and rebuilds its cells
   -- from the end, so a long list takes no stack.
+  -- A fold keeps its accumulator in a local, over the cells in order or,
+  -- from the right, over them gathered and reversed.
+  FoldElements fromLeft value initial accumulator binder body -> do
+    (sx, xs) <- cexpr env scope value
+    (si, i) <- cexpr env scope initial
+    total <- fresh (binderName accumulator)
+    cell <- fresh "cell"
+    kept <- fresh "items"
+    item <- fresh (binderName binder)
+    (sb, b) <- cexpr env ((binderId binder, item) : (binderId accumulator, total) : scope) body
+    let step = sb ++ [D.text (total ++ " = ") <> D.statementValue b]
+        walk = if fromLeft
+          then [ D.text (cell ++ " = ") <> xs
+               , block ("while " ++ cell ++ " is not None") ([D.text (item ++ " = " ++ cell ++ "[0]")] ++ step ++ [D.text (cell ++ " = " ++ cell ++ "[1]")]) ]
+          else [ D.text (kept ++ " = []"), D.text (cell ++ " = ") <> xs
+               , block ("while " ++ cell ++ " is not None") [D.text (kept ++ ".append(" ++ cell ++ "[0])"), D.text (cell ++ " = " ++ cell ++ "[1]")]
+               , block ("for " ++ item ++ " in reversed(" ++ kept ++ ")") step ]
+    pure (sx ++ si ++ [D.text (total ++ " = ") <> D.statementValue i] ++ walk, D.text total)
   MapElements value binder body -> elements value binder body False
   FilterElements value binder predicate -> elements value binder predicate True
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.

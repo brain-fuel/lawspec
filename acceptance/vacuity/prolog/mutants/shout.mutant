@@ -1,0 +1,7 @@
+@@ src/example/vacuity.pl
+<<<<<<<
+    string_upper(Name, Shouted).
+=======
+    string_upper(Name, Upper),
+    string_concat(Upper, "!", Shouted).
+>>>>>>>

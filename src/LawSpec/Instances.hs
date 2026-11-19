@@ -5,6 +5,7 @@
 -- ref:DEC-capability-instances
 module LawSpec.Instances
   ( instancesUnit, instancesSource, instanceLawsUnit, instanceLawsSource
+  , instanceSamplesUnit, instanceSamplesSource
   ) where
 
 instancesUnit :: String
@@ -247,4 +248,41 @@ instanceLawsSource = unlines
   , "    prove by induction on xs"
   , "  end for law"
   , "end harness"
+  , "end unit" ]
+
+-- | Concrete functions to test the capability laws on, besides proving them
+-- over unknown ones: each sample set (LawSpec.CapabilitySamples) puts some
+-- of them in place of the laws' unknown functions. They are chosen to be
+-- told apart by the laws: steps that depend on order, predicates that keep
+-- some elements and drop others, a function that sends every element to
+-- one value, and a partial function that fails on some elements.
+-- ref:DEC-capability-laws
+instanceSamplesUnit :: String
+instanceSamplesUnit = "lawspec.instances.samples"
+
+instanceSamplesSource :: String
+instanceSamplesSource = unlines
+  [ "unit " ++ instanceSamplesUnit
+  , "function increment (n :: Integer) -> Integer is n + 1 end function"
+  , "function double (n :: Integer) -> Integer is n * 2 end function"
+  , "function opposite (n :: Integer) -> Integer is 0 - n end function"
+  , "function zero (n :: Integer) -> Integer is 0 end function"
+  , "function isEven (n :: Integer) -> Bool is prelude.rem n 2 = 0 end function"
+  , "function isPositive (n :: Integer) -> Bool is n > 0 end function"
+  , "function always (n :: Integer) -> Bool is true end function"
+  , "function never (n :: Integer) -> Bool is false end function"
+  , "function shiftIn (total :: Integer) (n :: Integer) -> Integer is total * 2 + n end function"
+  , "function takeFrom (n :: Integer) (total :: Integer) -> Integer is n - total end function"
+  , "function halve (n :: Integer) -> Either Text Integer is"
+  , "  if isEven n then Right (prelude.quot n 2) else Left \"odd\" end if"
+  , "end function"
+  , "function textLength (t :: Text) -> Integer is prelude.length t end function"
+  , "function isEmpty (t :: Text) -> Bool is t = \"\" end function"
+  , "function isShort (t :: Text) -> Bool is prelude.length t < 2 end function"
+  , "function describe (b :: Bool) -> Text is if b then \"yes\" else \"no\" end if end function"
+  , "function appendTo (total :: Text) (t :: Text) -> Text is total ++ t end function"
+  , "function prependTo (t :: Text) (total :: Text) -> Text is t ++ total end function"
+  , "function measure (t :: Text) -> Either Bool Integer is"
+  , "  if t = \"\" then Left false else Right (prelude.length t) end if"
+  , "end function"
   , "end unit" ]

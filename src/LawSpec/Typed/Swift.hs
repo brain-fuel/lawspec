@@ -164,9 +164,18 @@ paren :: D.Doc -> D.Doc
 paren x = D.text "(" <> x <> D.text ")"
 
 -- | An if's opening: its brace after the condition, or on a line of its own
--- when the condition does not fit on one, as swift-format places it.
-ifOpening :: D.Doc -> D.Doc
-ifOpening x = D.group (D.text "if " <> x <> D.softline <> D.text "{")
+-- when an operator chain does not fit on one, as swift-format places it. A
+-- condition that is a call ends its last line with the call's closing
+-- parenthesis, which swift-format follows with the brace.
+ifOpening :: Expr -> D.Doc -> D.Doc
+ifOpening c x
+  | chained (expressionNode c) = D.group (D.text "if " <> x <> D.softline <> D.text "{")
+  | otherwise = D.text "if " <> x <> D.text " {"
+  where
+    chained node = case node of
+      ShortCircuit {} -> True
+      Binary _ (Numeric _) _ _ -> True
+      _ -> False
 
 -- | Two operands and an operator, broken before the operator when they do
 -- not fit, as swift-format breaks them.
@@ -258,7 +267,7 @@ statements env scope resultType sink e = case expressionNode e of
     (s, x) <- cexprWith Condition env scope c
     yes <- statements env scope resultType sink a
     no <- statements env scope resultType sink b
-    pure (s ++ [ifOpening x <> block yes <> D.hardline <> D.text "} else {" <> block no <> D.hardline <> D.text "}"])
+    pure (s ++ [ifOpening c x <> block yes <> D.hardline <> D.text "} else {" <> block no <> D.hardline <> D.text "}"])
   Helper Select [c, a, b] -> statements env scope resultType sink (e { expressionNode = If c a b })
   Match value cases -> matchStatements env scope resultType sink value cases
   ExternalCall i args
@@ -363,7 +372,7 @@ cexprWith position env scope e = case expressionNode e of
             name <- fresh "condition"
             pure ([hangValue ("let " ++ name ++ " =") xa], D.text name)
         let rest = sb ++ [hangValue (t ++ " =") xb]
-        pure (sa ++ conditionPrelude ++ [D.text ("let " ++ t ++ ": Bool"), ifOpening condition <>
+        pure (sa ++ conditionPrelude ++ [D.text ("let " ++ t ++ ": Bool"), ifOpening a condition <>
           (if op == And then block rest <> D.hardline <> D.text "} else {" <> block [D.text (t ++ " = false")]
            else block [D.text (t ++ " = true")] <> D.hardline <> D.text "} else {" <> block rest) <> D.hardline <> D.text "}"], D.text t)
   Unary Not a -> do
@@ -443,6 +452,18 @@ cexprWith position env scope e = case expressionNode e of
       block lines' <> D.hardline <> D.text "}"], D.text t)
   -- Swift's own map and filter over the list's sequence, gathered into a
   -- new list: no stack per element.
+  -- A fold keeps its accumulator in a variable, over the list in order or
+  -- reversed.
+  FoldElements fromLeft value initial accumulator binder body -> do
+    (sx, xs) <- cexpr env scope value
+    (si, i) <- cexpr env scope initial
+    total <- fresh (binderName accumulator)
+    item <- fresh (binderName binder)
+    totalType <- lift' (nativeType env (binderType accumulator))
+    lines' <- statements env { envSelf = Nothing } ((binderId binder, item) : (binderId accumulator, total) : scope) (Just totalType) (Assign total) body
+    let ordered = if fromLeft then xs else xs <> D.text ".reversed()"
+    pure (sx ++ si ++ [ D.text ("var " ++ total ++ ": " ++ totalType ++ " = ") <> i
+                      , D.text ("for " ++ item ++ " in ") <> ordered <> D.text " {" <> block lines' <> D.hardline <> D.text "}" ], D.text total)
   MapElements value binder body -> elements "map" value binder body
   FilterElements value binder predicate -> elements "filter" value binder predicate
   Perform (Operation ref "raise") [x] | isFail ref -> do

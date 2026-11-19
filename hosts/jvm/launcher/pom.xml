@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  dev.goforge:lawspec, the launcher and API. It holds no LawSpec logic: it
+  finds this platform's jar, unpacks its lawspec to a cache, checks the
+  SHA-256 its manifest records and runs it with the arguments and standard
+  streams passed through. java -jar finds the platform and resources jars
+  beside it through Class-Path, or in the local Maven repository.
+  ref:DEC-jvm-native-host
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>dev.goforge</groupId>
+    <artifactId>lawspec-parent</artifactId>
+    <version>${revision}</version>
+  </parent>
+
+  <artifactId>lawspec</artifactId>
+  <name>LawSpec</name>
+  <description>The LawSpec CLI and compiler API for the JVM: a launcher for the natively compiled lawspec.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources-filtered</directory>
+        <filtering>true</filtering>
+      </resource>
+      <!-- The manifest of staged binaries: SHA-256 and size by platform. -->
+      <resource>
+        <directory>${lawspec.natives}</directory>
+        <targetPath>dev/goforge/lawspec</targetPath>
+        <includes>
+          <include>natives.properties</include>
+        </includes>
+      </resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>staged-manifest</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target>
+                <fail message="No native binary is staged, so the launcher has no manifest. Run hosts/jvm/stage-native.sh first (see docs/how-to/install-maven.md, &quot;Build the platform jars&quot;).">
+                  <condition>
+                    <not>
+                      <and>
+                        <available file="${lawspec.natives}/natives.properties"/>
+                      </and>
+                    </not>
+                  </condition>
+                </fail>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>dev.goforge.lawspec.LawSpec</mainClass>
+            </manifest>
+            <manifestEntries>
+              <Automatic-Module-Name>dev.goforge.lawspec</Automatic-Module-Name>
+              <!-- The jars java -jar looks for beside this one, as
+                   mvn dependency:copy and the release names them. -->
+              <Class-Path>lawspec-darwin-arm64-${project.version}.jar lawspec-darwin-x64-${project.version}.jar lawspec-linux-arm64-${project.version}.jar lawspec-linux-x64-${project.version}.jar lawspec-resources-${project.version}.jar</Class-Path>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <!-- The tests run the staged binary of this platform. -->
+            <lawspec.test.natives>${lawspec.natives}</lawspec.test.natives>
+            <lawspec.jvm.cache>${project.build.directory}/lawspec-cache</lawspec.jvm.cache>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

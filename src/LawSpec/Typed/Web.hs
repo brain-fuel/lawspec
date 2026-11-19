@@ -557,6 +557,28 @@ cexpr env scope e = case expressionNode e of
                      [E.If (E.notE p) [E.ExprStmt (E.Assign "=" (E.Ident t) (E.BoolLit False)), E.Break] Nothing]) ], E.Ident t)
   -- A map or filter walks the list once, in order, and rebuilds its cells
   -- from the end, so a long list takes no stack.
+  -- A fold keeps its accumulator in a local, over the cells in order or,
+  -- from the right, over them gathered and reversed.
+  FoldElements fromLeft value initial accumulator binder body -> do
+    (sx, xs) <- cexpr env scope value
+    (si, i) <- cexpr env scope initial
+    total <- fresh (binderName accumulator)
+    cell <- fresh "cell"
+    kept <- fresh "items"
+    item <- fresh (binderName binder)
+    (sb, b) <- cexpr env ((binderId binder, item) : (binderId accumulator, total) : scope) body
+    elementType <- if envTs env then Just <$> lift' (tsType env (binderType binder)) else pure Nothing
+    let typed t = if envTs env then Just t else Nothing
+        step = sb ++ [E.ExprStmt (E.Assign "=" (E.Ident total) b)]
+        cells body' = E.For (Just ("let", E.PIdent cell, typed (nullable "lsf.Cons"), Just xs))
+          (Just (E.Binary "!==" (E.Ident cell) E.Null)) (Just (E.Assign "=" (E.Ident cell) (E.member (E.Ident cell) "t"))) body'
+        walk = if fromLeft
+          then [cells ([E.constDecl item (E.member (E.Ident cell) "h")] ++ step)]
+          else [ E.VarDecl "const" (E.PIdent kept) (E.TArray <$> elementType) (Just (E.Array []))
+               , cells [E.ExprStmt (E.method (E.Ident kept) "push" [E.member (E.Ident cell) "h"])]
+               , E.ForOf "const" (E.PIdent item) (E.method (E.Ident kept) "reverse" []) step ]
+    accumulatorType <- if envTs env then Just <$> lift' (tsType env (binderType accumulator)) else pure Nothing
+    pure (sx ++ si ++ [E.VarDecl "let" (E.PIdent total) accumulatorType (Just i)] ++ walk, E.Ident total)
   MapElements value binder body -> elements value binder body False
   FilterElements value binder predicate -> elements value binder predicate True
   Perform (Operation ref "raise") [x] | isFail ref -> do

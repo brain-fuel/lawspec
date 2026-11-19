@@ -338,7 +338,8 @@ export interface Definition
   owner: string;
   id: string;
   arguments: Binder[];
-  body: Expr;
+  body?: Expr;
+  bodyOmitted?: 'compiler-owned';
 }
 
 export interface Input extends Binder

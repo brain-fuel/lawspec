@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LawSpec on the JVM: the natively compiled Haskell lawspec, one jar per
+  platform, behind a Java launcher with no logic, and the Maven plugin. The
+  Gradle plugin is a Gradle build in gradle-plugin/. See
+  docs/how-to/install-maven.md and docs/how-to/install-gradle.md.
+  ref:DEC-jvm-native-host ref:DEC-maven-central-coordinates
+
+  Versions: ${revision} is the release version with -SNAPSHOT for local
+  installs; a release passes -Drevision=X.Y.Z. lawspec-dev version checks
+  that it names package.yaml's version.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>dev.goforge</groupId>
+  <artifactId>lawspec-parent</artifactId>
+  <version>${revision}</version>
+  <packaging>pom</packaging>
+
+  <name>LawSpec parent</name>
+  <description>State the law once. Check it everywhere.</description>
+  <url>https://github.com/brain-fuel/lawspec</url>
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/license/mit</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>brain-fuel</id>
+      <name>brain-fuel</name>
+      <url>https://github.com/brain-fuel</url>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:https://github.com/brain-fuel/lawspec.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/brain-fuel/lawspec.git</developerConnection>
+    <url>https://github.com/brain-fuel/lawspec</url>
+  </scm>
+
+  <modules>
+    <module>platforms</module>
+    <module>launcher</module>
+    <module>resources</module>
+    <module>maven-plugin</module>
+  </modules>
+
+  <properties>
+    <revision>0.36.0-SNAPSHOT</revision>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Reproducible archives: one entry time for every file. -->
+    <project.build.outputTimestamp>2026-11-15T00:00:00Z</project.build.outputTimestamp>
+    <maven.compiler.release>17</maven.compiler.release>
+    <!-- The staged native binaries and their manifest (hosts/jvm/stage-native.sh). -->
+    <lawspec.natives>${maven.multiModuleProjectDirectory}/../../.artifacts/jvm/natives</lawspec.natives>
+    <maven.version>3.9.9</maven.version>
+    <resolver.version>1.9.22</resolver.version>
+    <plugin-tools.version>3.15.1</plugin-tools.version>
+    <junit.version>5.12.2</junit.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>${junit.version}</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>3.5.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.3.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.14.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.5.4</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.4.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>3.1.4</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-deploy-plugin</artifactId>
+          <version>3.1.4</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-site-plugin</artifactId>
+          <version>3.12.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-plugin-plugin</artifactId>
+          <version>${plugin-tools.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-antrun-plugin</artifactId>
+          <version>3.1.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>3.3.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>3.11.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-gpg-plugin</artifactId>
+          <version>3.2.7</version>
+        </plugin>
+        <plugin>
+          <groupId>org.sonatype.central</groupId>
+          <artifactId>central-publishing-maven-plugin</artifactId>
+          <version>0.9.0</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+    <plugins>
+      <!-- Installed and deployed POMs name the resolved version, not ${revision}. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>flatten-maven-plugin</artifactId>
+        <version>1.6.0</version>
+        <configuration>
+          <updatePomFile>true</updatePomFile>
+          <flattenMode>resolveCiFriendliesOnly</flattenMode>
+        </configuration>
+        <executions>
+          <execution>
+            <id>flatten</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>flatten</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>flatten-clean</id>
+            <phase>clean</phase>
+            <goals>
+              <goal>clean</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- Each platform's jar builds where that platform's binary is staged:
+         by default the build machine's own platform, every platform with
+         -Pall-platforms (a release). A missing binary fails the build and
+         names the step that stages it. -->
+    <profile>
+      <id>darwin-arm64</id>
+      <activation>
+        <os>
+          <family>mac</family>
+          <arch>aarch64</arch>
+        </os>
+      </activation>
+      <modules>
+        <module>platforms/darwin-arm64</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>darwin-x64</id>
+      <activation>
+        <os>
+          <family>mac</family>
+          <arch>x86_64</arch>
+        </os>
+      </activation>
+      <modules>
+        <module>platforms/darwin-x64</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>linux-arm64</id>
+      <activation>
+        <os>
+          <name>linux</name>
+          <arch>aarch64</arch>
+        </os>
+      </activation>
+      <modules>
+        <module>platforms/linux-arm64</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>linux-x64</id>
+      <activation>
+        <os>
+          <name>linux</name>
+          <arch>amd64</arch>
+        </os>
+      </activation>
+      <modules>
+        <module>platforms/linux-x64</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>all-platforms</id>
+      <modules>
+        <module>platforms/darwin-arm64</module>
+        <module>platforms/darwin-x64</module>
+        <module>platforms/linux-arm64</module>
+        <module>platforms/linux-x64</module>
+      </modules>
+    </profile>
+    <!-- The release: sources and javadoc jars, GPG signatures and a Central
+         Portal bundle. The owner runs it (docs/how-to/release.md); it never
+         publishes on its own: autoPublish is off, so the uploaded deployment
+         waits for the owner in the Central Portal. -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>false</autoPublish>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

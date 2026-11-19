@@ -6,6 +6,247 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-11-18
+
+### Added
+
+- LawSpec for Go: the module `goforge.dev/lawspec` (`hosts/go`, tagged
+  `hosts/go/vX.Y.Z`) is a pure-Go host, with no cgo, that runs the LawSpec
+  core under [wazero](https://wazero.io).
+  `go install goforge.dev/lawspec/cmd/lawspec@v0.36.0` installs the
+  `lawspec` command, and the `lawspec` package (`lawspec.New` with
+  `WithCore`, `WithCanon`, `WithStdio` and the other options) embeds it.
+  wazero's compiled code is cached in the user cache directory. See
+  [Install the Go host](docs/how-to/install-go.md).
+  ref:DEC-host-effect-abi
+- The Go host downloads its core. The host-effect core is over 100 MB, past
+  GitHub's file limit, so the Go module no longer embeds it: on first use
+  `lawspec.New` downloads this release's npm package `@goforgedev/core`
+  (`LAWSPEC_CORE_REGISTRY` names another HTTPS registry), runs it only if its
+  SHA-256 is the one `hosts/go/internal/core/pin.go` records, and keeps it in
+  `lawspec/core/<version>` under the user cache directory.
+  `tools/package-core.sh` packs the package, and `make wasm` writes the pin.
+  ref:DEC-go-core-download
+- A native Canon ships with every host, and the core always spawns it, so
+  no `lawspec project` command falls back to the Node CLI any more. The core
+  sets Canon up itself, as Rice's Tax's setup does (the same
+  `.ricestax/` presets, `canon.yaml` and ledgers, byte for byte), and runs
+  the shipped Canon for `status` and `validate` when `CANON` is unset. Hosts
+  pass it in the invocation's new `"tools"` member (an ABI 2 addition).
+  `tools/build-canon.sh` builds it reproducibly from pinned canon and Rice's
+  Tax releases, in lockstep: canon 0.2.3 (tag v0.2.3) with the presets of
+  Rice's Tax 0.4.3 (tag v0.4.3), which the npm package now pins in place of
+  ricestax@0.3.2 (Canon 0.1.0). The JVM platform
+  jars carry it (verified by SHA-256 like the binary, exposed as
+  `LAWSPEC_CANON`), the Go host takes it with `lawspec.WithCanon` or
+  `LAWSPEC_CANON` or, without either, has the core download this
+  release's `@goforgedev/canon-<platform>` package into the user cache and
+  verify it against the SHA-256 the build records
+  (`lawspec-dev canon-packages --record`), and `tools/package-canon.sh` packs
+  `@goforgedev/canon-<platform>` for npm, which the Node host prefers over
+  the ricestax package. ref:DEC-native-canon
+- LawSpec on the JVM, natively: `dev.goforge:lawspec-<platform>` jars
+  (darwin-arm64, darwin-x64, linux-arm64, linux-x64) each hold
+  `lawspec-native` for one platform, and `dev.goforge:lawspec` is a launcher
+  with no logic: `java -jar` finds this platform's jar, unpacks the binary
+  into the user cache, refuses it unless its SHA-256 matches the launcher's
+  manifest, and runs it with the arguments, environment and standard
+  streams passed through. Its compiler API mirrors `createCompiler()`, each
+  call a run of the new `lawspec-native --api <method>`.
+  `dev.goforge:lawspec-resources` carries the Learn site for `lawspec
+  learn`. `hosts/jvm/stage-native.sh` stages a platform's binary; only the
+  darwin-arm64 jar is built so far, since GHC does not cross-build it.
+  ref:DEC-jvm-native-host
+- `dev.goforge:lawspec-maven-plugin`, with a goal for every command,
+  `generate` bound to `generate-sources` and `check` and `test` to
+  `verify`, each with a skip switch, a `config` parameter and per-goal
+  flags; and the Gradle plugin `dev.goforge.lawspec` (Java, configuration
+  cache safe), with `lawspec<Command>` tasks, `lawspecGenerate` before
+  `compileJava`, `compileKotlin`, `compileGroovy` and `compileScala`
+  (`generateBeforeMainCompile`), and `lawspecCheck` and `lawspecTest` in
+  `check`, each switchable in `lawspec { }`. Both resolve the platform jar
+  themselves, and both add the directories `lawspec generate` writes into
+  (a target's `:generated-source-dir` and `:generated-test-dir`, as `lawspec
+  describe --json` reports them) to the build, so neither
+  `build-helper-maven-plugin` nor task ordering by hand is needed
+  (`addSourceRoots` switches it off). `lawspec doctor` accepts the bound
+  `generate` goal in place of build-helper's executions.
+  Release profiles prepare signed Central Portal and Plugin Portal
+  publications; nothing is published. ref:DEC-maven-central-coordinates
+- Host parity runs the JVM launcher as a fourth host, and `lawspec-dev ci`
+  gains `hosts-jvm`, `hosts-jvm-maven` (a sample Maven project through `mvn
+  verify`) and `hosts-jvm-gradle` (TestKit functional tests and a sample
+  Gradle project through `gradle check`).
+- The host-effect ABI gains `rename` (`from`, `to`), POSIX rename(2) within
+  one file system, which needs write access to both paths and is guarded as
+  `remove` is. It also gains an optional `permissions` field (the bits
+  `0o7777` covers) on `write` and `mkdirs`, applied as open(2) and mkdir(2)
+  apply a creation mode, and on the `stat` reply. Both are added within ABI
+  2, so older requests decode unchanged. The native interpreter, the
+  in-memory fake and the Node and Go hosts provide them, and the
+  conformance suite checks them.
+- The host-effect invocation gains an optional `resources` directory, the
+  package resources a host ships, which `lawspec learn` serves; the Node
+  host sends its legacy package's directory, and the Go host and
+  `lawspec-native` send `LAWSPEC_RESOURCES` when it is set. `serve` reports
+  a port in use as `already-exists`, and every host passes any visible-ASCII
+  request target on as received (a malformed percent escape included) and
+  answers `400` to any other, as Node's parser does; the Go host now reads
+  the request line itself. The conformance suite checks both.
+- `tools/learn-compiler.mjs` writes `npm/core.wasm.gz` (Node's level-9
+  gzip of `npm/core.wasm`, the bytes `lawspec learn` served) from
+  `tools/wasm.sh` and `tools/learn-build.mjs`. The bytes are that Node's
+  zlib output, equal to what the legacy CLI serves only under the same
+  Node build.
+- LawSpec's own checks test each law of the list operations on sample
+  functions besides proving it: integers, text, a map that sends every
+  element to one value, steps whose result depends on order, and functions
+  that fail on some elements. Each law runs on every small input both through
+  the evaluator's operations and through the definitions the proofs are
+  about, and a deliberately wrong filter definition is shown to be caught.
+  See [the laws of the list operations](docs/reference/language/sequences.md#the-laws-of-the-list-operations).
+
+### Changed
+
+- The native fact extractor tests no longer use the frozen Tree-sitter corpus
+  (`test/fixtures/authoring-facts`, 3.8 MB, removed). Hand-written expectations
+  for each language and invariants over the repository's native sources replace
+  it.
+- The npm package's `lawspec` is the Node host of the LawSpec core: every
+  command runs in `host-core.wasm`, which the package now ships, and the
+  host only performs the effects it asks for. There is no fallback to the
+  legacy Node CLI, which is removed (see Removed). On darwin and Linux the
+  host runs the optional `@goforgedev/canon-<platform>` package for
+  `lawspec project`; `ricestax` stays an optional dependency for platforms
+  with no native Canon (Windows). `@modelcontextprotocol/server`,
+  `edn-data`, `tar` and `zod` are no longer installed with the package.
+  `tools/hosts.sh parity` compares every host with `lawspec-native`, which
+  matched the legacy CLI on every case before it was removed.
+  ref:DEC-haskell-application-port
+- `lawspec learn` runs under the host-effect core, the last command to
+  leave the legacy CLI: the core checks the packaged assets, listens on
+  loopback through `serve`, and answers each request as learn.mjs did
+  (the URL parsed as Node's `URL` parses it, `decodeURIComponent`,
+  `path.join`, `realpath` inside the site, the same statuses, types and
+  headers), one request at a time. It serves `npm/core.wasm.gz` instead of
+  gzipping `npm/core.wasm` on the first request, and refuses to start when
+  that file is missing or older than `core.wasm`. It stops on `SIGINT` on
+  every host, as before.
+
+- `lawspec lsp --stdio` and `lawspec mcp` run under the host-effect core,
+  reading their requests through the host's `input` effect and calling the
+  compiler in-process, with the legacy servers' replies byte for byte. Each
+  server handles one message before reading the next, so replies come in
+  the order requests came: where the MCP SDK answered a fast request before
+  a slow tool call, and dropped requests still running when standard input
+  ended, the core answers every request it read, in order, and the language
+  server stops at `exit` instead of also handling messages already read
+  after it. The MCP server speaks the 2025 protocol revisions; an opening
+  message claiming the 2026-07-28 envelope is served as a 2025 message.
+- `lawspec evidence` runs under the host-effect core with the legacy CLI's
+  output and exit codes: every obligation by status, the harness plane,
+  attested environments and the native conformance `lawspec test` recorded.
+  `lawspec explain` reads that native evidence there too. A recorded native
+  attempt matches only results recorded under the same host, since result
+  keys name the host that ran the core. Result files are read in sorted name
+  order, where the legacy CLI read them in directory order.
+- `lawspec mutate` runs under the host-effect core with the legacy CLI's
+  output, exit codes and report. Each mutant's project copy is made through
+  the host's file effects in a scratch folder of the temporary directory
+  (`lawspec-scratch/lawspec-mutate-*`) and removed afterwards, and each test
+  run is the ported `lawspec test` run in the same process instead of a
+  child Node process. `--mutation-timeout` bounds the processes a test run
+  starts (one still running at the deadline is killed, and none starts
+  after it), where the legacy CLI killed the whole child, so time spent
+  compiling in the core is not counted.
+- `lawspec project validate` produces its proof and native rows by running
+  the ported `lawspec prove` and `lawspec test` in the same process, where
+  the legacy CLI ran them as child processes; the rows are unchanged. A
+  compiler entry already in memory is now also stored in a cache directory
+  a later request names, as a separate run would store it.
+- `lawspec test` runs under the host-effect core (`lawspec-native`, the Node
+  and Go hosts) with the legacy CLI's output, exit codes, result cache,
+  failure database and JUnit report. A recorded result is keyed by the host
+  that ran the core (its kind, its version and the core's digest) instead of
+  the Node binary and SDK files, so a result recorded under one host runs
+  again, not reused, under another. The BEAM coverage collector's scratch
+  folder is made inside the coverage folder instead of the system temporary
+  directory.
+- `lawspec fetch`, `update`, `init` and `package`, and Git and archive
+  contract packages for every command that resolves packages, run under the
+  host-effect core with the legacy CLI's output, exit codes, lockfiles,
+  package cache and archives. The core reads and writes tar and gzip itself
+  (`LawSpec.Archive.Tar` and `LawSpec.Archive.Deflate`, zlib 1.2.12's level-6
+  deflate), so a packed archive is byte-identical to node-tar's over vanilla
+  zlib, and an unpack refuses absolute paths, `..` components, links,
+  devices and FIFOs. As in the legacy CLI, a cache entry (an unpacked
+  archive, or a Git remote's bare repository) is prepared in a temporary
+  directory inside the cache and renamed into place, so a repository left
+  without `HEAD` is reported as an initialization that did not complete.
+  Packed files keep node-tar's portable mode (0755 for an executable, 0644
+  otherwise), and unpacked files and directories get the archive's modes as
+  node-tar's extract gives them. The hosts download archives over HTTPS
+  only, so a loopback `http://` archive the legacy CLI accepted is refused,
+  and unpacked files keep the time they were written rather than the
+  archive's modification times.
+- `lawspec project` and `lawspec examples` run under the host-effect core
+  with the legacy CLI's output, exit codes and files. `project adopt` writes
+  `lawspec.edn` and a starter unit beside an existing Canon configuration,
+  and every check before anything is written is the core's own; `project
+  status` and `validate` report Canon, the mandatory definition checks and
+  the selected verification, and run the canon executable `CANON` names. The
+  bundled examples are embedded in the core (`LawSpec.App.ExampleSources`,
+  which `lawspec-dev generate` writes from `examples/`). Canon's setup and
+  Canon checks without `CANON` run the Canon each host ships (above).
+- A list `foldLeft` or `foldRight` in a checked definition runs as typed
+  native code on every target, as list `map` and `filter` do since 0.35.1:
+  one walk of the list with the accumulator in a local, or the language's
+  own fold.
+- A `check` of a project with mappings compiles once instead of twice when
+  its mappings, and the units they import, are unchanged since the last
+  check. The selection of derived inverses is kept in the cache directory,
+  keyed by those sources, and the compile confirms it: if it ever differs,
+  or the compile fails, the selection is derived afresh, so diagnostics are
+  what the two-pass compile reported. A warm `check` of a 7-unit project
+  with mappings went from 9.7 s to 6.9 s natively.
+- A response for a program that folds case no longer carries the Unicode
+  table's definition bodies (about 17 MB). The case-fold provider's
+  definitions keep their `owner`, `id` and `arguments` and carry
+  `bodyOmitted: "compiler-owned"` in place of `body`.
+
+### Removed
+
+- The legacy Node CLI and the modules only it used leave the npm package,
+  with the `lawspec/proof` export (`proveWithZ3`, `proofTaskFingerprint`;
+  `lawspec prove --json` prints the same result) and the `lawspec/component`
+  export (`lawspec describe` and `lawspec.edn` are the interface). The
+  compiler API, `createCompiler` from `lawspec`, is unchanged.
+  ref:DEC-haskell-application-port
+
+### Fixed
+
+- `lawspec-native` renders parse errors and request errors as the
+  WebAssembly core does. Stack resolved megaparsec 9.7.0 and aeson 2.2.5.1
+  from the LTS snapshot while `wasm/cabal.project.freeze` pins 9.8.2 and
+  2.3.2.0, so the native build counted a newline or control character in an
+  error's span as a column (one caret too many), listed other expected
+  items, could report a different alternative's failure, and spelled
+  aeson's control-character error "Unespected". `stack.yaml` now pins
+  megaparsec, aeson and text-iso8601 to the freeze's versions, and the
+  `fmt-parse-error-carets` parity case and a parser-diagnostics test pin the
+  rendering.
+- Reach is counted on every program target: Go, Haskell, Rust, Kotlin,
+  Groovy, Clojure, Erlang, Elixir, Gleam, F#, C#, Swift and Prolog report
+  `n of m generated cases reached the consequence` for a guarded law, and a
+  law no generated case reached is `vacuous`, as on Java, JavaScript,
+  TypeScript, Python and Scala. Before, they said `reach unknown`.
+- The `vacuity` and `vacuity-sampled` acceptance suites have adapters for all
+  18 targets and run on all of them in `lawspec-dev ci`. A suite's
+  `suite.json` can name another suite's `"adapters"` to share them.
+- Swift's typed code puts an `if`'s brace after a condition that is a call
+  spanning several lines (`) {`), as swift-format does, rather than on a line
+  of its own.
+
 ## [0.35.1] - 2026-11-17
 
 ### Changed
@@ -439,6 +680,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- An unknown option or an option without its value is a usage error: the
+  CLI prints `lawspec: Unknown option: --frob` (or `Missing value for
+  --seed`) and the usage lines of the command on standard error, or a
+  `usage` diagnostic under `--json`, and exits with status 1. It used to end
+  with Node's stack trace of the exception, also with status 1.
+- `lawspec doctor` no longer requires Node 22+ for every target from the CLI
+  that runs it; under the host-effect core it checks the `node` a
+  JavaScript or TypeScript target runs its tests with.
 - `lawspec init` names a new project after itself. The build files it
   creates used to be named `lawspec-example` (Maven `example:lawspec-example`,
   module `example.com/lawspec-example`, `Example.slnx`, application
@@ -3468,7 +3717,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.35.1...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/brain-fuel/lawspec/compare/v0.35.1...v0.36.0
 [0.35.1]: https://github.com/brain-fuel/lawspec/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/brain-fuel/lawspec/compare/v0.34.1...v0.35.0
 [0.34.1]: https://github.com/brain-fuel/lawspec/compare/v0.34.0...v0.34.1

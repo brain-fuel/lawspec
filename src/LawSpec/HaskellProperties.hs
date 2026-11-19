@@ -26,7 +26,8 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Code.Haskell as H
 import LawSpec.Code.Haskell (Expr, Stmt(..), call, var, string, integer, dollar, lambda, operator)
 import Data.Char (isAlphaNum)
-import Data.List (intercalate, isInfixOf, nub, sortOn, stripPrefix)
+import Data.List (intercalate, isInfixOf, mapAccumL, nub, sortOn, stripPrefix)
+import LawSpec.Core.Vacuity (propositionGuards)
 import LawSpec.Scalar (Scalar(..))
 
 -- | What the Haskell test emitter needs besides the plan: names, layout and
@@ -309,6 +310,21 @@ emitTests Config{..} unit laws = do
     assertionStmts context link proposition = case proposition of
       AssertAll ps -> concatMap (assertionStmts context link) ps
       AssertImplies guard body -> [Run (H.If (truth (expr guard)) (H.Do (doBody (assertionStmts context link body))) (call "pure" [var "()"]))]
+      _ -> assertionLeaf context link proposition
+    -- A law's claim with each guard counted: generated cases pass a guard's
+    -- value through LS.reach, which returns it, so lawspec test can say how
+    -- many reached the consequence. ref:DEC-vacuous-outcome
+    reachingStmts label context link = snd . site (0 :: Int)
+      where
+        site next proposition = case proposition of
+          AssertAll ps -> let (after, stmts) = mapAccumL site next ps in (after, concat stmts)
+          AssertImplies guard body ->
+            let (after, inner) = site (next + 1) body
+                reached = "lawspecReached" ++ show next
+            in (after, [ Bind reached (call "LS.reach" [string label, integer (toInteger next), truth (expr guard), var "lawspecGenerated"])
+                       , Run (H.If (var reached) (H.Do (doBody inner)) (call "pure" [var "()"])) ])
+          _ -> (next, assertionStmts context link proposition)
+    assertionLeaf context link proposition = case proposition of
       AssertEqual a b -> [Run (call "T.assertEqual"
         [context (maybe "" (" — " ++) (expectationLink a link)),
          side a, side b])]
@@ -383,11 +399,17 @@ emitTests Config{..} unit laws = do
             [local (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
           (generated, _) = claimAll (scopeWith ("symbols" : parameters)) ["caseIndex", "caseValues", "caseContext"]
           [indexName, valuesName, contextName] = generated
-          check context = [Run (call checkName (var "symbols" : context : map var parameters))]
+          -- A guarded law's check is told whether the case was generated.
+          guarded = not (null (propositionGuards (assertion e)))
+          check = claimCheck True
+          claimCheck generated' context = [Run (call checkName (var "symbols" : context : map var parameters ++
+            [var (if generated' then "P.True" else "P.False") | guarded]))]
+          checkContext suffix = operator "P.++" [var contextName, string suffix]
           checkDoc = D.joinWith D.hardline
-            [H.signature checkName (["LS.SymbolContext", "P.String"] ++ replicate (length parameters) "LS.Scalar" ++ ["P.IO ()"]),
-             H.declaration (unwords (checkName : "symbols" : contextName : parameters))
-               (H.Do (doBody (assertionStmts (\suffix -> operator "P.++" [var contextName, string suffix]) lawLink (assertion e))))]
+            [H.signature checkName (["LS.SymbolContext", "P.String"] ++ replicate (length parameters) "LS.Scalar" ++ ["P.Bool" | guarded] ++ ["P.IO ()"]),
+             H.declaration (unwords (checkName : "symbols" : contextName : parameters ++ ["lawspecGenerated" | guarded]))
+               (H.Do (doBody (if guarded then reachingStmts (owner e ++ "::" ++ name e) checkContext lawLink (assertion e)
+                 else assertionStmts checkContext lawLink (assertion e))))]
           bind' inp value = Let (inputId inp) value
           boundaryBody values check = handlerInstalls e ++
             [bind' inp (checked (inputType inp) value) | (inp,value) <- zip (inputs e) values] ++
@@ -410,7 +432,7 @@ emitTests Config{..} unit laws = do
              , testFunction (fn ++ "_" ++ suffix) (withSymbols
                 (handlerInstalls e ++ [Let (local i) (expr v) | (i,v) <- C.exampleBindings ex] ++
                  bracketed e (concatMap (assertionStmts (string . (context ++)) exLink) (expectations ex) ++
-                   check (string shown)))) ]) examplesLinked
+                   claimCheck False (string shown)))) ]) examplesLinked
       cover <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (caseCover e)
       coverExpression <- finiteCoverExpr cover
       let finiteName = operator "P.++" [string (base' ++ "_boundary"), call "P.show" [operator "P.+" [var indexName, integer 1]]]

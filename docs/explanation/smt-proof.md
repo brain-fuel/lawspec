@@ -23,19 +23,10 @@ No proof layer selected means no solver invocation. The command reports that
 explicitly. Exit status 2 means a selected task remains incomplete or unsupported;
 compilation and configuration errors use exit status 1.
 
-The package exposes the same host through `lawspec/proof`:
-
-```js
-import {createCompiler} from 'lawspec';
-import {proveWithZ3} from 'lawspec/proof';
-
-const compiler = await createCompiler();
-const result = await proveWithZ3(compiler, {
-  languageProfile: '1.0-rc.2',
-  verification: {layers: ['proof']},
-  sources,
-}, {binary: '/path/to/z3', timeoutMs: 5000});
-```
+`lawspec prove --json` prints the same result as data: the compiler's
+result with `solverEvidence` beside it. Until 0.36.0 the package also
+exported the solver runner as `lawspec/proof`; it now runs in the LawSpec
+core, under every host, and `lawspec prove` is how a program reaches it.
 
 `compiler.proofTasks(request)` only prepares tasks. It does not execute Z3 or
 produce solver evidence. `lawspec prove` invokes Z3; ordinary compiler checks

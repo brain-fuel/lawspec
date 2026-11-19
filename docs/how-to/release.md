@@ -34,7 +34,7 @@ entry, so it cannot pass those new-version preconditions.
 ## 2. Bump the version
 
 ```sh
-make bump VERSION=0.35.1
+make bump VERSION=0.36.0
 ```
 
 `lawspec-dev bump` sets the version in `package.yaml`, `lawspec.cabal`,
@@ -57,6 +57,10 @@ review page, and settle each exemption the release reaches: see
 
 ## 3. Build the package
 
+First build the four platforms' Canon bundles, pack them and record their
+digests ([Build the native executables](build-native.md#pack-canon-for-npm-and-record-the-digests)),
+because the core compiles the digests in.
+
 ```sh
 make wasm
 make generate-check integrity
@@ -66,7 +70,8 @@ make generate-check integrity
 core with `wasm32-wasi-ghc`, stages the shipped files into `npm/`, and records
 their fingerprints in `npm/build.json`.
 
-The package also ships build outputs that git ignores, such as the host
+The package also ships build outputs that git ignores, such as the WASM
+cores (`npm/core.wasm` and `npm/host-core.wasm`, from `make wasm`), the host
 component (`npm/host-component/`, from `make component SDK_DIST=<SDK
 tarballs>`) and the lesson assets (`npm/learn/vendor/`). A worktree holds
 whatever it last built of them, and a new worktree holds none, so build them
@@ -78,7 +83,7 @@ Build, verify and pack in that one worktree.
 
 ```sh
 git add -A
-git commit -m "Prepare LawSpec 0.35.1"
+git commit -m "Prepare LawSpec 0.36.0"
 make ci-fresh
 make smoke-release
 make docs-check
@@ -112,7 +117,7 @@ with that number. Passing these checks does not create a tag or publish.
 
 ```sh
 make package
-tar -tzf .artifacts/0.35.1/lawspec-0.35.1.tgz
+tar -tzf .artifacts/0.36.0/lawspec-0.36.0.tgz
 ```
 
 `make package` first runs `make integrity`, which refuses a staged core or
@@ -130,11 +135,24 @@ the package's `prepack` script copies them into `npm/`, where git ignores them.
 The smoke tests in step 4 already installed and exercised a
 packed copy.
 
+Pack the host-effect core for the Go host:
+
+```sh
+tools/package-core.sh
+```
+
+It packs `npm/host-core.wasm` as `@goforgedev/core` into
+`.artifacts/core-npm/goforgedev-core-0.36.0.tgz`, after checking that
+`hosts/go/internal/core/pin.go` records that core's SHA-256 for this version
+(`make wasm` writes the pin). The Go module carries no core: on first use it
+downloads this package and refuses any other bytes, so the commit the
+`hosts/go/v0.36.0` tag names needs nothing added.
+
 ## 6. Tag and push
 
 ```sh
-git tag -a v0.35.1 -m "LawSpec 0.35.1"
-git push --atomic origin main v0.35.1
+git tag -a v0.36.0 -m "LawSpec 0.36.0"
+git push --atomic origin main v0.36.0
 ```
 
 Push the branch and the annotated tag together, so the tag always names a
@@ -143,7 +161,14 @@ commit that is on `main`.
 ## 7. Publish
 
 ```sh
-npm publish .artifacts/0.35.1/lawspec-0.35.1.tgz --access public --tag latest --registry https://registry.npmjs.org
+npm publish .artifacts/0.36.0/lawspec-0.36.0.tgz --access public --tag latest --registry https://registry.npmjs.org
+```
+
+Publish the core package for the Go host the same way, before anyone installs
+the Go module's release:
+
+```sh
+npm publish .artifacts/core-npm/goforgedev-core-0.36.0.tgz --access public --registry https://registry.npmjs.org
 ```
 
 Publish the archive you inspected, not the directory. npm asks for approval in
@@ -153,9 +178,9 @@ the browser; complete it there. If npm reports that you are not logged in, run
 ## 8. Verify the registry
 
 ```sh
-npm view lawspec@0.35.1 version dist.integrity
+npm view lawspec@0.36.0 version dist.integrity
 npm view lawspec dist-tags
-shasum -a 512 .artifacts/0.35.1/lawspec-0.35.1.tgz | awk '{print $1}' | xxd -r -p | base64
+shasum -a 512 .artifacts/0.36.0/lawspec-0.36.0.tgz | awk '{print $1}' | xxd -r -p | base64
 ```
 
 `dist.integrity` must be `sha512-` followed by the local archive's digest, and
@@ -166,11 +191,11 @@ shasum -a 512 .artifacts/0.35.1/lawspec-0.35.1.tgz | awk '{print $1}' | xxd -r -
 Registry mirrors can lag behind npm, so each release also offers the archive
 for download. Use the GitHub website, not the GitHub CLI:
 
-1. Open <https://github.com/brain-fuel/lawspec/releases/new?tag=v0.33.0>. The
+1. Open <https://github.com/brain-fuel/lawspec/releases/new?tag=v0.36.0>. The
    tag pushed in step 6 is selected.
-2. Set the title to `LawSpec 0.33.0` and paste the version's `CHANGELOG.md`
+2. Set the title to `LawSpec 0.36.0` and paste the version's `CHANGELOG.md`
    section as the description.
-3. Drag `.artifacts/0.33.0/lawspec-0.33.0.tgz` into the box for attaching
+3. Drag `.artifacts/0.36.0/lawspec-0.36.0.tgz` into the box for attaching
    binaries. Attach the archive you published in step 7, not a new pack.
 4. Publish the release, then download the attached file and check that
    `shasum -a 512` prints the digest of the local archive.

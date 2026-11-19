@@ -149,6 +149,15 @@ isSdkTest = ("npm-test-" `isPrefixOf`)
 isParity :: String -> Bool
 isParity = ("parity-" `isPrefixOf`)
 
+isHostCheck :: String -> Bool
+isHostCheck = (`elem` ["host-conformance", "host-parity"])
+
+-- | The JVM packages (hosts/jvm): their build with the launcher tests, the
+-- sample Maven project and the Gradle plugin's TestKit tests with the
+-- sample Gradle project (tools/hosts.sh). ref:DEC-jvm-native-host
+jvmSteps :: [String]
+jvmSteps = ["hosts-jvm", "hosts-jvm-maven", "hosts-jvm-gradle"]
+
 -- | The parts tools/parity.mjs runs with --part.
 parityParts :: [String]
 parityParts =
@@ -419,6 +428,16 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
           ++ [prerequisite | name == "component-native-acceptance", prerequisite <- ["integrity", "generated"]]
           ++ ["learn-assets" | name `elem` ["learn-execution", "learn-browser", "package-smoke"] || isSdkTest name]
           ++ ["learn-execution" | name == "learn-browser"]
+          -- Both build the host-effect core in one cabal directory.
+          ++ ["host-conformance" | name == "host-parity"]
+          -- The learn cases serve npm/learn's built assets and the gzipped
+          -- compiler, which learn-assets writes.
+          ++ ["learn-assets" | name == "host-parity"]
+          -- The JVM launcher in parity, and the resources jar, which holds
+          -- learn's built assets; the samples and the Gradle plugin use the
+          -- jars the jvm step installs.
+          ++ ["hosts-jvm" | name == "host-parity" || name `elem` drop 1 jvmSteps]
+          ++ ["learn-assets" | name == "hosts-jvm"]
       Just t
         | t `elem` Targets.artifactTargets -> ["artifact-bootstrap", "build"]
         | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> []
@@ -435,7 +454,7 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
         ++ [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]]
         ++ [ Shared "stack-work"
            | name `notElem` stackBuilders,
-             take 1 command == ["stack"] || name == "rejection-examples" || isParity name || isCompilerTest name
+             take 1 command == ["stack"] || name == "rejection-examples" || isParity name || isCompilerTest name || isHostCheck name || name `elem` jvmSteps
            ]
         ++ [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability"] || isSdkTest name]
         ++ [Shared "env:javascript" | isSdkTest name]
@@ -445,6 +464,8 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
         -- The wrapper may repair its pinned environment after a failed bootstrap.
         [Exclusive "env:artifacts" | maybe False (`elem` Targets.artifactTargets) target]
         ++ [Exclusive "cargo:runtime/rust" | "runtime/rust/Cargo.toml" `elem` command]
+        -- They install into one repository, .artifacts/jvm/repository.
+        ++ [Exclusive "jvm-repository" | name `elem` jvmSteps]
         ++ [Counted "timing" (max 1 (workers `div` 3)) | timing name command]
         ++ maybe [] (\p -> [Exclusive ("project:" ++ p)]) (acceptanceProject env command)
         ++ case target of
@@ -464,6 +485,7 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
     usesBuild command = take 1 command == ["stack"] || command == ["sh", "tools/beam-runtime.sh"]
       || take 2 command == ["sh", "tools/compiler-tests.sh"]
       || take 2 command == ["node", "tools/parity.mjs"]
+      || take 2 command == ["bash", "tools/hosts.sh"]
     timing name command =
       name == "beam-runtime"
         || maybe False ((`elem` timingSuites) . fst) (acceptanceSuite command)
@@ -594,6 +616,7 @@ coreSteps :: [FilePath] -> [Step]
 coreSteps sdkTests =
   [ buildStep,
     step "integrity" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "integrity"],
+    step "dependencies" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "dependencies", "--check"],
     step "boundaries" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "boundaries"],
     step "learn-install" ["npm", "ci", "--prefix", "learn"],
     step "generated" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "generate", "--check"],
@@ -609,7 +632,7 @@ coreSteps sdkTests =
   | (name, arguments) <- compilerTestShards ] ++
   [ step (sdkTestStep file) ["node", "--test", "npm/test/" ++ file] | file <- sdkTests ] ++
   [
-    step "code-style" ["node", "tools/code-style.mjs", "--check", "learn/browser", "learn/formatting", "learn/test", "learn/exercises", "runtime", "templates/npm/mcp.mjs", "templates/npm/project.mjs", "templates/npm/learn.mjs", "templates/tools/code-style.mjs", "templates/tools/learn-build.mjs"],
+    step "code-style" ["node", "tools/code-style.mjs", "--check", "learn/browser", "learn/formatting", "learn/test", "learn/exercises", "runtime", "templates/npm/learn.mjs", "templates/npm/bin/lawspec.mjs", "templates/npm/host.mjs", "templates/npm/worker.mjs", "templates/tools/code-style.mjs", "templates/tools/learn-build.mjs", "templates/tools/learn-compiler.mjs"],
     step "learn-browser" ["npm", "run", "test:browser", "--prefix", "learn"],
     step "learn-execution" ["npm", "test", "--prefix", "learn"]
   ] ++
@@ -619,6 +642,13 @@ coreSteps sdkTests =
   [
     step "package-smoke" ["node", "tools/package-smoke.mjs"],
     step "component-native-acceptance" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "native-check"],
+    -- The host-effect ABI: the core's conformance suite over each host, then
+    -- ported commands byte for byte across hosts (ref:DEC-host-effect-abi).
+    step "host-conformance" ["bash", "tools/hosts.sh", "conformance"],
+    step "host-parity" ["bash", "tools/hosts.sh", "parity"],
+    step "hosts-jvm" ["bash", "tools/hosts.sh", "jvm"],
+    step "hosts-jvm-maven" ["bash", "tools/hosts.sh", "jvm-maven"],
+    step "hosts-jvm-gradle" ["bash", "tools/hosts.sh", "jvm-gradle"],
     step "docs" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "docs", "--check"],
     step "rejection-examples" ["node", "tools/rejection-examples.mjs"],
     -- canon keeps its own content-addressed cache, so this step is never skipped.
@@ -680,6 +710,71 @@ stepInputs name = case name of
           ]
           []
           [["node", "--version"]]
+      )
+  -- The native and WebAssembly builds of the application, the hosts (the Go
+  -- host's module and its pinned dependencies are under hosts/go), and the
+  -- tools that run them; parity also runs the legacy CLI over examples
+  -- (every target's payments project) without the SDK's own tests, and Z3
+  -- and Git, whose absence skips the cases that need them.
+  _ | isHostCheck name ->
+    Just
+      ( inputs
+          ( [ "src/",
+              "native/",
+              "wasm/",
+              "hosts/",
+              "src-native/",
+              "tools/hosts.sh",
+              "tools/wasm-host-core.sh",
+              "tools/build-canon.sh",
+              "package.yaml",
+              "stack.yaml",
+              "stack.yaml.lock"
+            ]
+              ++ if name == "host-parity" then ["tools/host-parity.mjs", "npm/", "examples/specs/", "examples/packages/", "examples/native-payments/", "LICENSE"] else []
+          )
+          -- The legacy CLI never reads the SDK's own tests.
+          ["npm/test/" | name == "host-parity"]
+          ( [ ["node", "--version"],
+              ["go", "version"],
+              ["sh", "-c", ". \"$HOME/.ghc-wasm/env\" && wasm32-wasi-ghc --version"],
+              -- The conformance round trip's client; unsupported without it.
+              ["sh", "-c", "/usr/bin/curl --version 2>/dev/null | head -n 1"]
+            ]
+              ++ if name == "host-parity" then [["sh", "-c", "z3 --version 2>/dev/null; git --version 2>/dev/null; true"], ["java", "-version"], ["mvn", "-v"]] else []
+          )
+      )
+  -- The JVM packages run the native build (its sources) and the Canon
+  -- bundle (tools/build-canon.sh, from pinned commits) staged by
+  -- stage-native.sh; the resources jar holds learn's assets beside
+  -- core.wasm; the samples and the Gradle plugin build with Maven, Gradle
+  -- (.tools/gradle-9.3.0 when present), the JDK and, for the Kotlin sample,
+  -- the Kotlin Gradle plugin the sample pins.
+  _ | name `elem` jvmSteps ->
+    Just
+      ( inputs
+          [ "src/",
+            "native/",
+            "src-native/",
+            "hosts/jvm/",
+            "tools/hosts.sh",
+            "tools/build-canon.sh",
+            "package.yaml",
+            "stack.yaml",
+            "stack.yaml.lock",
+            -- npm/core.wasm and core_jsffi.js are built and ignored; their
+            -- digests are here.
+            "npm/build.json",
+            "npm/learn/",
+            "learn/"
+          ]
+          []
+          ( [ ["java", "-version"],
+              ["mvn", "-v"],
+              ["sh", "-c", "uname -sm"]
+            ]
+              ++ [["sh", "-c", "if [ -x .tools/gradle-9.3.0/bin/gradle ]; then .tools/gradle-9.3.0/bin/gradle --version; else gradle --version; fi"] | name == "hosts-jvm-gradle"]
+          )
       )
   -- The package is what npm packs from npm/, and the smoke test drives it
   -- with Node, npm, and Go and Cargo for the host-module and Rust checks.
@@ -983,7 +1078,8 @@ observations = unsafePerformIO (newMVar M.empty)
 --     names it as a path segment in a string ('runtime/', "../examples");
 --   * the Haskell sources and build files when the test file names stack, a
 --     .hs or .cabal file, GHC or one of the repository's executables. Every
---     other test runs the committed core.wasm, whose bytes are in npm/;
+--     other test runs the built core.wasm, whose digest npm/build.json in
+--     npm/ records;
 --   * the files at the repository root, except the changelog and canon's
 --     ledgers unless the test names them.
 --
@@ -1103,9 +1199,10 @@ targetSteps target =
   | (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
   | suite <- ["integration", "definitions", "mutual-recursion", "deep-recursion", "text-pieces", "list-mapping", "function-parameters", "list-folds", "native-agreement", "rc1-nesting", "rc1-codec", "rc1-native-names", "rc1-existence", "rc1-composition", "rc1-empty-domains", "rc1-recursive-records", "rc1-record-payloads", "minor-empty-record-patterns", "minor-stateful-initializers", "minor-positional-products", "minor-branch-admission", "minor-gadt-payload-indices", "minor-existential-records", "minor-container-records", "minor-refined-gadt-indices", "minor-record-predicate-functions", "minor-native-failure-products", "minor-refined-primitive-inputs", "minor-smt-arithmetic", "minor-typed-mappings", "minor-unicode-filenames", "minor-exact-widening", "minor-bounded-generators", "rc1-record-refinements", "rc1-metadata", "rc1-references", "rc1-witnesses", "rc1-integer-domains", "rc1-search", "rc1-eq-set-foundation", "rc1-eq-set-operations", "rc1-sets", "rc1-set-literals", "rc1-set-domains", "rc1-set-generation", "rc1-collection-membership", "rc1-prelude-names", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "calendar", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "restarts", "consistency", "distribution", "packages", "refinement", "scalar", "records", "sequences", "composition", "contracts"] ] ++
-  -- What a guarded law's generated cases reached, on the targets whose tests
-  -- count it: with every layer, and with the property layer alone on the
-  -- targets that suite has adapters for. ref:DEC-vacuous-outcome
+  -- What a guarded law's generated cases reached, on every target whose
+  -- tests count it (all program targets): with every layer here, and with
+  -- the property and example layers alone below, sharing one set of
+  -- adapters. ref:DEC-vacuous-outcome
   [ step (target ++ "-vacuity") (acceptance ["vacuity", target]) | target `elem` reachTargets ] ++
   -- Restricted types that no law writes a value of, in the shapes a
   -- generator plans differently (some records below a law's input, under a
@@ -1124,7 +1221,7 @@ targetSteps target =
   -- A signature longer than Swift's line, and a Rust type numbered apart
   -- from another unit's of the same name.
   [ step (target ++ "-long-names") (acceptance ["long-names", target]) | target `elem` ["swift", "rust"] ] ++
-  [ step (target ++ "-vacuity-sampled") (acceptance ["vacuity-sampled", target]) | target `elem` ["java", "javascript", "python"] ] ++
+  [ step (target ++ "-vacuity-sampled") (acceptance ["vacuity-sampled", target]) | target `elem` reachTargets ] ++
   -- Record rules and masking on every program target. Four targets also
   -- have native tests of their own renderings; on the targets the masking
   -- mutants name, failed-test output is not masked and the mutants' output
@@ -1359,6 +1456,7 @@ parse = go (Options [] False False False False [] [] Nothing [] Nothing False Fa
     go o ("--fresh" : rest) = go o { fresh = True } rest
     go o ("--rust-toolchains" : list : rest) = go o { rustToolchains = splitComma list } rest
     go o ("--rust-targets" : list : rest) = go o { rustTargets = splitComma list } rest
+    go o ("--only" : list : rest) = go o { only = only o ++ splitComma list } rest
     go o ("--jobs" : n : rest)
       | not (null n), all isDigit n, read n > (0 :: Int) = go o { jobs = Just (read n) } rest
       | otherwise = Left ("--jobs takes a positive number, not " ++ n)

@@ -267,11 +267,11 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         binary name left right = object ["kind" .= (name :: String),
           "left" .= temporalFormulaView left, "right" .= temporalFormulaView right]
     definitionView u d = object
-      [ "owner" .= C.idText (C.unitId u)
+      ([ "owner" .= C.idText (C.unitId u)
       , "id" .= C.idText (C.declarationId (C.definitionDeclaration d))
       , "arguments" .= map binderView (C.definitionArguments d)
-      , "body" .= expressionView [(C.binderId b,C.binderName b) | b <- C.definitionArguments d] (C.definitionBody d)
-      ]
+      ] ++ if omittedBody d then ["bodyOmitted" .= str "compiler-owned"] else
+      [ "body" .= expressionView [(C.binderId b,C.binderName b) | b <- C.definitionArguments d] (C.definitionBody d) ])
     dataView declaration = object
       ([ "id" .= C.idText (C.dataId declaration), "name" .= C.dataName declaration
       , "parameters" .= map C.idText (C.dataParameters declaration)
@@ -450,3 +450,12 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         Just value -> value
         Nothing -> error "core validator must reject unbound example locals"
       _ -> error "core validator must reject non-concrete example bindings"
+
+-- | The case-fold provider's bodies are the Unicode table, about 17 MB of
+-- view for any program that folds case. The view keeps each definition's
+-- identity and arguments and says the body was left out. A user's own bodies,
+-- and every other compiler-owned one, are always shown.
+omittedBody :: C.Definition -> Bool
+omittedBody d = case C.declarationOrigin (C.definitionDeclaration d) of
+  C.SourceSpan range -> file (spanStart range) == "<" ++ caseFoldUnit ++ ">"
+  C.GeneratedFrom _ -> False

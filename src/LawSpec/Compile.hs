@@ -3,7 +3,7 @@
 -- testing plan needs. It stops at the surface; LawSpec.Frontend turns its
 -- result into typed Core, so the eight emitters never see source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithSourceOrigins, parseSourceSyntax, parseSourceSyntaxWithContext, validateDefinitionTypes, validateDefinitionTotality) where
+module LawSpec.Compile (compile, mappingSelectionKey, compileWithKeptSelection, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithSourceOrigins, parseSourceSyntax, parseSourceSyntaxWithContext, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
@@ -466,11 +466,104 @@ sourceParsingContext selected sources =
 
 -- Candidate inverse names are resolved only after typed row equality has
 -- established their availability. No provisional program leaves this entry.
+--
+-- A program with mappings needs the selection before its final pass, and the
+-- selection comes from a provisional pass over the candidates. The selection
+-- is kept, by everything the provisional pass reads to make it (the sources
+-- of the units that declare mappings and of every unit they import, the
+-- compiler's own sources, origins, bits and generation settings), so a later
+-- check of a program whose mappings did not change makes one pass. The final
+-- pass derives the selection again from the program it compiled and fails
+-- unless that equals the one it was given, so a kept selection is checked,
+-- never trusted; one that differs is derived afresh. This is GHC's
+-- recompilation avoidance and Salsa's red-green reuse, at the grain of one
+-- derived fact. ref:DEC-incremental-compilation
 compileWithMappingSelection :: Maybe MappingCheck.MappingSelection -> Maybe (Bool,[String]) -> [SourceOriginMap]
   -> Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
   -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
-compileWithMappingSelection mappingSelection selected origins capture _ referenceUnit visible bits settings sources = do
+compileWithMappingSelection (Just selection) selected origins capture canonical referenceUnit visible bits settings sources =
+  compiledPass =<< compilePass (FinalPass (Just selection)) selected origins capture canonical referenceUnit visible bits settings sources
+compileWithMappingSelection Nothing selected origins capture canonical referenceUnit visible bits settings sources =
+  case mappingSelectionKey origins capture selected bits settings sources of
+    Nothing -> compilePass (FinalPass Nothing) selected origins capture canonical referenceUnit visible bits settings sources >>= compiledPass
+    Just k -> do
+      kept <- Memo.memoized mappingSelectionTable k (provisionalSelection selected origins capture canonical referenceUnit visible bits settings sources)
+      compileWithKeptSelection kept selected origins capture canonical referenceUnit visible bits settings sources
+
+-- | Compile with a kept selection, which is a hint. When the final pass fails
+-- (it also fails when it derives a different selection), the selection is
+-- derived afresh: equal to the kept one, the failure stands; different, the
+-- program compiles with the fresh one. So a check reports what deriving the
+-- selection first would have reported. On a first check the fresh derivation
+-- is the one the kept selection came from, shared rather than repeated.
+compileWithKeptSelection :: MappingCheck.MappingSelection -> Maybe (Bool,[String]) -> [SourceOriginMap]
+  -> Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
+  -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
+compileWithKeptSelection kept selected origins capture canonical referenceUnit visible bits settings sources =
+  case final kept of
+    Right result -> Right result
+    failed -> do
+      fresh <- provisionalSelection selected origins capture canonical referenceUnit visible bits settings sources
+      if fresh == kept then failed else final fresh
+  where
+    final selection = compilePass (FinalPass (Just selection)) selected origins capture canonical referenceUnit visible bits settings sources >>= compiledPass
+
+provisionalSelection :: Maybe (Bool,[String]) -> [SourceOriginMap]
+  -> Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
+  -> Int -> Generation -> [Source] -> Either [Diagnostic] MappingCheck.MappingSelection
+provisionalSelection selected origins capture canonical referenceUnit visible bits settings sources =
+  compilePass ProvisionalPass selected origins capture canonical referenceUnit visible bits settings sources >>= \result -> case result of
+    Selected selection -> Right selection
+    Compiled _ -> Left [Diagnostic "mapping" "a provisional pass did not derive a mapping selection" Nothing]
+
+-- | The key of a program's mapping selection, or Nothing for a program
+-- without mappings: everything the provisional pass reads to derive it. A
+-- definition can reach only the units its unit imports, so the sources are
+-- those of the units that declare mappings and every unit they import,
+-- including the compiler's own; package visibility only refuses imports, so
+-- it cannot change a selection.
+mappingSelectionKey :: [SourceOriginMap] -> Bool -> Maybe (Bool,[String]) -> Int -> Generation -> [Source] -> Maybe String
+mappingSelectionKey origins capture selected bits settings sources =
+  -- A program that does not parse has its diagnostics reported by the
+  -- compile itself, in their usual order.
+  let (collections, implicit, builtins) = sourceParsingContext selected sources
+      candidates = either (const []) fst (parseSourcesWithOrigins origins capture True collections implicit builtins sources)
+      declares unit = any (maybe False ((==MappingForward).mappingRole).functionMapping) (functionDefinitions unit)
+      importsOf = M.fromList [(unitName unit,map importUnit imports) | (unit,imports) <- candidates]
+      closure seen [] = seen
+      closure seen (name:rest)
+        | name `elem` seen = closure seen rest
+        | otherwise = closure (name:seen) (M.findWithDefault [] name importsOf ++ rest)
+      reached = closure [] [unitName unit | (unit,_) <- candidates, declares unit]
+      read' = [(path,content) | source@(Source path content) <- sources ++ builtins,
+        either (const True) (`elem` reached) (sourceUnit source)]
+  in if null reached then Nothing
+    else Just (digestHex (digestString (show ("mapping-selection",read',origins,capture,selected,bits,settings))))
+
+-- | What a pass is for: a provisional pass derives the mapping selection, a
+-- final pass compiles with the selection it is given.
+data MappingPass = ProvisionalPass | FinalPass (Maybe MappingCheck.MappingSelection)
+
+data PassResult = Selected MappingCheck.MappingSelection | Compiled ([Unit],[Expanded],[SourceSyntax])
+
+compiledPass :: PassResult -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
+compiledPass (Compiled result) = Right result
+compiledPass (Selected _) = Left [Diagnostic "mapping" "a final pass returned no program" Nothing]
+
+-- | Kept selections; a failed provisional pass weighs more than the table
+-- holds, so it is never kept.
+mappingSelectionTable :: Memo.Table (Either [Diagnostic] MappingCheck.MappingSelection)
+mappingSelectionTable = unsafePerformIO (Memo.newPersistentTable "mapping-selection" 256 (either (const maxBound) (const 1)))
+{-# NOINLINE mappingSelectionTable #-}
+
+compilePass :: MappingPass -> Maybe (Bool,[String]) -> [SourceOriginMap]
+  -> Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
+  -> Int -> Generation -> [Source] -> Either [Diagnostic] PassResult
+compilePass mode selected origins capture _ referenceUnit visible bits settings sources = do
   let canonical = True
+      mappingSelection = case mode of
+        FinalPass chosen -> chosen
+        ProvisionalPass -> Nothing
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings] && keptValues settings >= 0) (Left [Diagnostic "generation" "generation limits must be positive integers (kept-values may be 0)" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Reserved Core identities belong to compiler-provided versioned sources.
@@ -511,7 +604,7 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
       -- Removing the last false-positive provider must also remove its
       -- implicit unit. Explicit imports retain a deliberately empty unit.
   if refined/=collections then
-    compileWithMappingSelection mappingSelection (Just (explicitCollection||not (null refined),refined)) origins capture canonical referenceUnit visible bits settings sources
+    compilePass mode (Just (explicitCollection||not (null refined),refined)) origins capture canonical referenceUnit visible bits settings sources
   else do
    -- Abilities, handlers and rows, once each unit has what it imports.
    abled <- Memo.staged "abilities" "" (either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported'))
@@ -713,9 +806,11 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
    registry <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry (Core.programDataDeclarations closedProgram))
    let hasMappings=any (any (maybe False ((==MappingForward).mappingRole).functionMapping).functionDefinitions) us
    choices<-if hasMappings then Memo.staged "mappings" "" (MappingCheck.checkMappings settings us closedProgram invoke) else pure M.empty
-   if hasMappings && mappingSelection==Nothing then
-     compileWithMappingSelection (Just choices) selected origins capture canonical referenceUnit visible bits settings sources
-   else do
+   case mode of
+    ProvisionalPass -> pure (Selected choices)
+    FinalPass Nothing | hasMappings ->
+      compilePass (FinalPass (Just choices)) selected origins capture canonical referenceUnit visible bits settings sources
+    FinalPass _ -> do
      when (maybe False (/=choices) mappingSelection)
        (Left [Diagnostic "mapping" "mapping derivation changed after final name resolution" Nothing])
      forM_ properties $ \property -> Memo.staged "examples" (owner property) $ do
@@ -743,8 +838,8 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
            | syntaxKind item == "declaration.definition", Just name <- syntaxName item,
              Just used <- lookup owner sourceRows >>= lookup name = item{syntaxUses=Just (map prettyType used)}
            | otherwise = item
-     pure (specialized, properties,
-       [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]])
+     pure (Compiled (specialized, properties,
+       [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]]))
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
 -- names it invokes, a superset of the ones expansion resolves.

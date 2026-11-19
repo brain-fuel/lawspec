@@ -2,7 +2,7 @@
 -- laws. It is compiled here from its source (LawSpec.Instances), apart from
 -- the program that cites it: the program gains no unit, no adapter and no
 -- task. ref:DEC-capability-laws
-module LawSpec.CapabilityLaws (capabilityLaws, capabilityLawsProgram) where
+module LawSpec.CapabilityLaws (capabilityLaws, capabilityLawsProgram, capabilityLawsSourcesProgram) where
 
 import Data.List (find)
 import LawSpec.Common (Diagnostic(..), Source(..), defaultGeneration)
@@ -20,8 +20,16 @@ capabilityLaws = do
 
 -- | The program the laws are proved in: as written, and as Core.
 capabilityLawsProgram :: Either String ([S.Unit], C.Program)
-capabilityLawsProgram = either (\diagnostics -> Left ("the capability laws do not compile: " ++ unwords (map message diagnostics))) Right $ do
-  (units, properties) <- compileWithSettings 64 defaultGeneration [Source "<lawspec.capability.laws.use>" use]
+capabilityLawsProgram = withSources []
+
+-- | The laws' program with further units beside them, by path and source.
+capabilityLawsSourcesProgram :: [(FilePath, String)] -> Either String C.Program
+capabilityLawsSourcesProgram sources = snd <$> withSources sources
+
+withSources :: [(FilePath, String)] -> Either String ([S.Unit], C.Program)
+withSources sources = either (\diagnostics -> Left ("the capability laws do not compile: " ++ unwords (map message diagnostics))) Right $ do
+  (units, properties) <- compileWithSettings 64 defaultGeneration
+    (Source "<lawspec.capability.laws.use>" use : [Source path text | (path, text) <- sources])
   program <- C.lowerProgramFields <$> elaborate 64 units properties
   pure (units, program)
   where

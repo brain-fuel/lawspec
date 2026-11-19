@@ -102,6 +102,21 @@ import qualified BoundsSpec
 import qualified ECMAScriptSpec
 import qualified ConditionalSpec
 import qualified ManifestServiceSpec
+import qualified AppSpec
+import qualified PackagesSpec
+import qualified InitSpec
+import qualified ProjectSpec
+import qualified CanonDownloadSpec
+import qualified NativeTestSpec
+import qualified FailureReplaySpec
+import qualified CompilerCacheSpec
+import qualified NativeAttemptsSpec
+import qualified EvidenceSpec
+import qualified MutateSpec
+import qualified ServerSpec
+import qualified LearnSpec
+import qualified AuthoringNativeSpec
+import qualified HostSpec
 import qualified ManifestCodecSpec
 import qualified ServiceSpec
 import qualified MemoBackendSpec
@@ -214,6 +229,7 @@ main = hspec $ do
   InstancesSpec.test_instanceOperationsAreCheckedDefinitions
   InstanceLawsSpec.test_capabilityLawsAreProved
   InstanceLawsSpec.test_capabilityLawsAreCited
+  InstanceLawsSpec.test_capabilityLawsHoldOnSamples
   SmtInstancesSpec.test_solverUsesInstanceDefinitions
   FormatsSpec.test_formatsAreTheRecordedGrammars
   ContractRulesSpec.test_recordRulesBecomeCheckedValidators
@@ -252,6 +268,21 @@ main = hspec $ do
   ECMAScriptSpec.test_javascriptIsLaidOutAsPrettierLaysItOut
   ConditionalSpec.test_conditionalsAreCheckedBranchByBranch
   ManifestServiceSpec.spec
+  HostSpec.spec
+  AppSpec.spec
+  PackagesSpec.spec
+  InitSpec.spec
+  ProjectSpec.spec
+  CanonDownloadSpec.spec
+  NativeTestSpec.spec
+  FailureReplaySpec.spec
+  CompilerCacheSpec.spec
+  NativeAttemptsSpec.spec
+  EvidenceSpec.spec
+  MutateSpec.spec
+  ServerSpec.spec
+  LearnSpec.spec
+  AuthoringNativeSpec.spec
   ManifestCodecSpec.spec
   ServiceSpec.spec
   MemoBackendSpec.spec

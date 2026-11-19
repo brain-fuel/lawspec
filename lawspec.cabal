@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.35.1
+version:        0.36.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -672,9 +672,66 @@ library
       LawSpec.Actors.Types
       LawSpec.Actors.Web
       LawSpec.Api
+      LawSpec.App.Advice
+      LawSpec.App.Arguments
+      LawSpec.App.BeamProbes
+      LawSpec.App.CanonDownload
+      LawSpec.App.CanonPackages
+      LawSpec.App.Cli
+      LawSpec.App.Command
+      LawSpec.App.Compiler
+      LawSpec.App.Describe
+      LawSpec.App.Doctor
+      LawSpec.App.Evidence
+      LawSpec.App.Examples
+      LawSpec.App.ExampleSources
+      LawSpec.App.Files
+      LawSpec.App.Format
+      LawSpec.App.Init
+      LawSpec.App.Json
+      LawSpec.App.Learn
+      LawSpec.App.Lsp
+      LawSpec.App.Main
+      LawSpec.App.Mcp
+      LawSpec.App.Mutate
+      LawSpec.App.PackageCommands
+      LawSpec.App.Packages
+      LawSpec.App.Process
+      LawSpec.App.Project
+      LawSpec.App.ProjectCommand
+      LawSpec.App.Prove
+      LawSpec.App.Rpc
+      LawSpec.App.Test
+      LawSpec.App.TestCoverage
+      LawSpec.App.TestReports
+      LawSpec.App.TestResults
+      LawSpec.App.TestRuns
+      LawSpec.Archive.Deflate
+      LawSpec.Archive.Tar
       LawSpec.ArtifactEmit
       LawSpec.Attestation
       LawSpec.Authoring
+      LawSpec.Authoring.Advise
+      LawSpec.Authoring.Extract
+      LawSpec.Authoring.Languages.Clojure
+      LawSpec.Authoring.Languages.CSharp
+      LawSpec.Authoring.Languages.Elixir
+      LawSpec.Authoring.Languages.Erlang
+      LawSpec.Authoring.Languages.FSharp
+      LawSpec.Authoring.Languages.Gleam
+      LawSpec.Authoring.Languages.Go
+      LawSpec.Authoring.Languages.Groovy
+      LawSpec.Authoring.Languages.Haskell
+      LawSpec.Authoring.Languages.Java
+      LawSpec.Authoring.Languages.Kotlin
+      LawSpec.Authoring.Languages.Prolog
+      LawSpec.Authoring.Languages.Python
+      LawSpec.Authoring.Languages.Rust
+      LawSpec.Authoring.Languages.Scala
+      LawSpec.Authoring.Languages.Script
+      LawSpec.Authoring.Languages.Swift
+      LawSpec.Authoring.Native
+      LawSpec.Authoring.Syntax
       LawSpec.Backend
       LawSpec.BeamAbilities
       LawSpec.BeamActors
@@ -704,6 +761,7 @@ library
       LawSpec.CapabilityCheck
       LawSpec.CapabilityLaws
       LawSpec.CapabilityReceipts
+      LawSpec.CapabilitySamples
       LawSpec.CapabilityTable
       LawSpec.CaseFold
       LawSpec.CaseFoldData
@@ -834,6 +892,14 @@ library
       LawSpec.HaskellTestHelpers
       LawSpec.HaskellTypeRefs
       LawSpec.HaskellUnicodeAge
+      LawSpec.Host.Base64
+      LawSpec.Host.Codec
+      LawSpec.Host.Conformance
+      LawSpec.Host.Effect
+      LawSpec.Host.Fake
+      LawSpec.Host.Path
+      LawSpec.Host.Policy
+      LawSpec.Host.Sandbox
       LawSpec.Imports
       LawSpec.Indexed
       LawSpec.IndexTerm
@@ -1030,11 +1096,29 @@ library
     , megaparsec
     , mtl
     , parser-combinators
+    , process
+    , scientific
+    , stm
     , text
+    , time
     , transformers
     , unicode-data ==0.6.0
     , unicode-transforms ==0.4.0.1
+    , unix
   default-language: Haskell2010
+  if !arch(wasm32)
+    exposed-modules:
+        LawSpec.Host.Native
+    hs-source-dirs:
+        src-native
+    build-depends:
+        case-insensitive
+      , http-client
+      , http-client-tls
+      , http-types
+      , network
+      , wai
+      , warp
 
 executable lawspec-acceptance
   main-is: Main.hs
@@ -1146,19 +1230,48 @@ executable lawspec-dev
     , vector
   default-language: Haskell2010
 
+executable lawspec-native
+  main-is: Main.hs
+  other-modules:
+      Paths_lawspec
+  hs-source-dirs:
+      native
+  default-extensions:
+      OverloadedStrings
+      DeriveGeneric
+      LambdaCase
+      RecordWildCards
+  ghc-options: -Wall -threaded
+  build-depends:
+      aeson
+    , base >=4.18 && <5
+    , bytestring
+    , containers
+    , directory
+    , filepath
+    , lawspec
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , text
+  default-language: Haskell2010
+
 test-suite lawspec-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
       AbilitiesSpec
       ApiContractSpec
+      AppSpec
       ArtifactTargetSpec
       AsyncSpec
       AttestationSpec
+      AuthoringNativeSpec
       BeamSpec
       BoundsSpec
       BuiltinsSpec
       CalendarSpec
+      CanonDownloadSpec
       CanonicalCollectionsSpec
       CanonicalInterfaceSpec
       CanonicalMatcherSpec
@@ -1167,6 +1280,7 @@ test-suite lawspec-test
       CapabilityScopeSpec
       CaseFoldSpec
       CollectionsSpec
+      CompilerCacheSpec
       ConditionalSpec
       ContainerRecordViewsSpec
       ContextualSpec
@@ -1187,8 +1301,10 @@ test-suite lawspec-test
       ECMAScriptSpec
       EqSetOperationsSpec
       EqSetSpec
+      EvidenceSpec
       ExactWideningSpec
       ExplainSpec
+      FailureReplaySpec
       FieldDefinitionExpansionSpec
       FiniteCoverSpec
       FiniteSearchLoopSpec
@@ -1202,17 +1318,20 @@ test-suite lawspec-test
       GenericDefinitionSpec
       GroovyBridgeSpec
       HarnessSpec
+      HostSpec
       IdentitySpec
       ImportSpec
       IncrementalSpec
       IndexedSpec
       InferenceSchemeSpec
+      InitSpec
       InstanceLawsSpec
       InstancesSpec
       KeptValuesSpec
       LanguageGapsSpec
       LawAnalysisSpec
       LawPrimitivesSpec
+      LearnSpec
       ManifestCodecSpec
       ManifestServiceSpec
       MappingSpec
@@ -1221,10 +1340,14 @@ test-suite lawspec-test
       MemoBackendSpec
       ModelCheckSpec
       ModelLayerSelectionSpec
+      MutateSpec
       NamedBlocksSpec
+      NativeAttemptsSpec
       NativeBindingSpec
       NativeRequestSpec
+      NativeTestSpec
       OperationResultSpec
+      PackagesSpec
       ParameterNamesSpec
       ParserDiagnosticsSpec
       PayloadProofSpec
@@ -1232,6 +1355,7 @@ test-suite lawspec-test
       PipeTextSpec
       PreludeResolutionSpec
       ProjectNameSpec
+      ProjectSpec
       PrologTargetSpec
       PythonBindingNamesSpec
       QuantifierDomainSpec
@@ -1245,6 +1369,7 @@ test-suite lawspec-test
       SchedulerSpec
       SearchSpec
       SelectionAdmissionSpec
+      ServerSpec
       ServiceSpec
       SessionsPythonSpec
       SmtDataSpec

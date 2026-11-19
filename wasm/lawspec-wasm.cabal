@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: lawspec-wasm
-version: 0.35.1
+version: 0.36.0
 build-type: Simple
 executable lawspec-wasm
   main-is: Exports.hs
@@ -8,3 +8,15 @@ executable lawspec-wasm
   build-depends: base < 5, lawspec, text, bytestring, ghc-experimental
   default-language: Haskell2010
   ghc-options: -Wall -no-hs-main -optl-mexec-model=reactor "-optl-Wl,--export=lawspec_call"
+
+-- The host-effect core: a plain WASI preview1 reactor with no JavaScript FFI,
+-- loaded unchanged by the Node and Go hosts. tools/wasm-host-core.sh builds
+-- it; the npm package still ships lawspec-wasm. ref:DEC-host-effect-abi
+executable lawspec-host-core
+  main-is: HostCore.hs
+  hs-source-dirs: host
+  other-modules: LawSpec.Host.Wasm
+  c-sources: host/host_core.c
+  build-depends: base < 5, lawspec, aeson, bytestring, text
+  default-language: Haskell2010
+  ghc-options: -Wall -no-hs-main -optl-mexec-model=reactor "-optl-Wl,--export=lawspec_main,--export=lawspec_call,--export=lawspec_alloc,--export=lawspec_free,--export=lawspec_init"

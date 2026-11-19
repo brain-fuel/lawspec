@@ -141,8 +141,10 @@ export async function artifactKey(mode,{root=repository,environment=process.env,
   // particular GHCRTS, HSPEC_OPTIONS and Node options affect these checks.
   const context={host:await fingerprintNativeHost(sdk),versions:process.versions,
     environment:effectiveEnvironment(environment)};
+  // The CLI is the Node host (bin/lawspec.mjs, which the host fingerprint
+  // reads with the rest of bin/) over host-core.wasm.
   const files=(await readdir(sdk)).filter(name=>name.endsWith('.mjs')||
-    ['core_jsffi.js','core.wasm','package.json'].includes(name)).sort();
+    ['core_jsffi.js','core.wasm','host-core.wasm','package.json'].includes(name)).sort();
   const executableFiles=await Promise.all(files.map(async name=>[name,digest(await readFile(path.join(sdk,name)))]));
   const sdkDigest=digest(JSON.stringify(executableFiles));
   if(mode==='compiler-tests')return {format:'lawspec-compiler-tests-key-2',sdk:sdkDigest,

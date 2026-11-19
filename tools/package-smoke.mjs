@@ -296,6 +296,30 @@ try
       ).length
     )
       throw new Error('Missing packaged ' + document);
+  // The package's code is the Node host over host-core.wasm and the
+  // compiler API; the legacy CLI's modules are not shipped.
+  const {readdir} = await import('node:fs/promises');
+  const installed = path.join(app, 'node_modules/lawspec');
+  const modules = (await readdir(installed))
+    .filter(name => name.endsWith('.mjs'))
+    .sort();
+  const hostModules = [
+    'api.mjs',
+    'host-codecs.mjs',
+    'host-launcher.mjs',
+    'host.mjs',
+    'launcher.mjs',
+    'postinstall.mjs',
+    'worker.mjs',
+  ];
+  if (JSON.stringify(modules) !== JSON.stringify(hostModules))
+    throw new Error(
+      `Packaged modules ${modules.join(', ')}; expected ${hostModules.join(', ')}`,
+    );
+  await readFile(path.join(installed, 'host-core.wasm'));
+  console.log(
+    'Installed package ships the Node host, its core and the compiler API only',
+  );
   const rust = path.join(root, 'rust');
   await mkdir(rust);
   await run(

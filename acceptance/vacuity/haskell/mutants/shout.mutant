@@ -1,0 +1,6 @@
+@@ src/Example/Vacuity.hs
+<<<<<<<
+shout name = T.toUpper name
+=======
+shout name = T.toUpper name <> T.pack "!"
+>>>>>>>

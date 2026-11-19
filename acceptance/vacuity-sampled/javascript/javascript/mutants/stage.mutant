@@ -1,6 +1,0 @@
-@@ src/example/vacuity.mjs
-<<<<<<<
-return stage.token;
-=======
-return stage.token==='D'?'d':stage.token;
->>>>>>>

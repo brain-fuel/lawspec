@@ -14,6 +14,8 @@
 --                                    "dependencies": {"p.name": "^1.0.0"}}  (optional)
 --                                    "reach": {"unit::law": "reached" | "vacuous"},  (optional)
 --                                    "seeds": [1, 2, 3]}                    (optional)
+--                                    "adapters": "other-suite"              (optional: use that
+--                                                                           suite's <target>/ directories)
 --   <target>/files/<path>          adapters replacing generated user-owned stubs
 --   <target>/stubs/<path>          the stub an adapter was written against (optional)
 --   <target>/mutants/<name>.mutant search/replace edits, one mutant per file
@@ -150,8 +152,9 @@ main = do
       profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "") ++ maybe "" ('-' :) (runtimeName runtime) ++
         (if remote == ClusterRemote then "-cluster" else "")
   forM_ targets $ \target -> do
+    targetBase <- suiteTarget suite target
     let project = ".artifacts" </> (suite ++ profile) </> target
-        bindingsFile = "acceptance" </> suite </> target </> "bindings.json"
+        bindingsFile = targetBase </> "bindings.json"
     -- A target's native bindings, sent as the CLI sends lawspec.edn's.
     hasBindings <- doesFileExist bindingsFile
     bound <- if hasBindings then decode <$> BL.readFile bindingsFile else pure Nothing
@@ -172,11 +175,12 @@ main = do
         formatInputs <- maybe [] formatterInputs <$> formatter target
         -- The ownership of each generated file is part of the key with its
         -- bytes: writing the project checks adapters against it.
-        let labels = [suite, target, profile, show mutate] ++ maybe [] actorRuntimePins (runtimeName runtime) ++
+        -- Whether the target counts reach decides what checkReach checks.
+        let labels = [suite, target, profile, show mutate, "reach " ++ show (target `elem` reachTargets)] ++ maybe [] actorRuntimePins (runtimeName runtime) ++
               ["org.apache.pekko:pekko-cluster-typed_3:1.7.1" | remote == ClusterRemote] ++
               [generatedOwnership g ++ ":" ++ generatedPath g | g <- generated]
             suiteKey = do
-              suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
+              suiteInputs <- fmap concat $ forM [targetBase, "acceptance" </> suite </> "mutants"] $ \base ->
                 doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
               recordingInputs <- map snd <$> suiteRecordings suite
               let inputs = ("acceptance" </> suite </> "suite.json") : suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs
@@ -445,8 +449,9 @@ writeProject suite target project defaultProfile minify generated = do
   recordings <- suiteRecordings suite
   forM_ recordings $ \(relative, source) -> readFile' source >>= writeAt (project </> relative)
   -- Stubs depend on the profile, so they are compared in the default one.
+  targetBase <- suiteTarget suite target
   when defaultProfile $ forM_ adapters $ \(relative, _) -> do
-    let recorded = "acceptance" </> suite </> target </> "stubs" </> relative
+    let recorded = targetBase </> "stubs" </> relative
     exists <- doesFileExist recorded
     when exists $ do
       expected <- readFile' recorded
@@ -605,7 +610,8 @@ formatted :: String -> String -> FilePath -> [Generated] -> IO [String]
 formatted suite target project generated = formatter target >>= \case
   Nothing -> pure []
   Just f -> do
-    let exemptions = "acceptance" </> suite </> target </> "unformatted.txt"
+    targetBase <- suiteTarget suite target
+    let exemptions = targetBase </> "unformatted.txt"
     listed <- doesFileExist exemptions >>= \exists -> if exists then lines <$> readFile' exemptions else pure []
     let exempt = [(path, dropWhile (== ' ') reason) | entry <- listed, (path, reason) <- [break (== ' ') entry], not (null path)]
         staging = project </> ".lawspec-formatted"
@@ -835,7 +841,9 @@ checkReach target tool project expected
   | otherwise = do
       root <- getCurrentDirectory
       let statistics = root </> project </> "reach-statistics"
-          rerun = ["--rerun" | target `elem` ["kotlin", "groovy"]]
+          -- Gradle and go test reuse a passing run's results, which would
+          -- write no counts.
+          rerun = ["--rerun" | target `elem` ["kotlin", "groovy"]] ++ ["-count=1" | target == "go"]
       removePathForcibly statistics
       (code, output) <- runToolWith [("LAWSPEC_STATS", statistics)] tool (arguments tool ++ rerun) project
       writeFile (project </> "reach.log") output
@@ -908,9 +916,20 @@ suiteFiles suite target = do
   overlay <- if remote == ClusterRemote then suiteDirectory suite target "files-cluster" else pure []
   pure ([(relative, source) | (relative, source) <- files, relative `notElem` map fst overlay] ++ overlay)
 
+-- | Where a suite keeps a target's adapters, stubs and mutants: its own
+-- directory, or that of the suite its suite.json names as "adapters", so two
+-- suites over one spec share one set rather than keeping copies.
+suiteTarget :: String -> String -> IO FilePath
+suiteTarget suite target = do
+  manifest <- BL.readFile ("acceptance" </> suite </> "suite.json")
+  let owner = case field "adapters" <$> decode manifest of
+        Just (String name) -> T.unpack name
+        _ -> suite
+  pure ("acceptance" </> owner </> target)
+
 suiteDirectory :: String -> String -> FilePath -> IO [(FilePath, FilePath)]
 suiteDirectory suite target folder = do
-  let base = "acceptance" </> suite </> target </> folder
+  base <- (</> folder) <$> suiteTarget suite target
   exists <- doesDirectoryExist base
   if not exists then pure [] else map (\path -> (dropBase base path, path)) <$> walk base
   where dropBase base path = fromMaybe path (stripPrefix (base ++ "/") path)
@@ -919,7 +938,7 @@ suiteDirectory suite target folder = do
 -- must fail the laws rather than pass vacuously.
 suiteStubs :: String -> String -> IO [Mutant]
 suiteStubs suite target = do
-  let base = "acceptance" </> suite </> target </> "stubs"
+  base <- (</> "stubs") <$> suiteTarget suite target
   exists <- doesDirectoryExist base
   stubs <- if exists then walk base else pure []
   adapters <- suiteFiles suite target
@@ -971,8 +990,9 @@ expectMismatch target bits project = do
 suiteMutants :: String -> String -> IO [Mutant]
 suiteMutants suite target = do
   remote <- actorRemote
-  mutants <- suiteMutantsIn ("acceptance" </> suite </> target </> "mutants")
-  overlay <- if remote == ClusterRemote then suiteMutantsIn ("acceptance" </> suite </> target </> "mutants-cluster") else pure []
+  targetBase <- suiteTarget suite target
+  mutants <- suiteMutantsIn (targetBase </> "mutants")
+  overlay <- if remote == ClusterRemote then suiteMutantsIn (targetBase </> "mutants-cluster") else pure []
   pure ([m | m <- mutants, mutantName m `notElem` map mutantName overlay] ++ overlay)
 
 suiteMutantsIn :: FilePath -> IO [Mutant]

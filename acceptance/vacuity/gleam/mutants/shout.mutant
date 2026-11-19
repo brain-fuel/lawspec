@@ -1,0 +1,8 @@
+@@ src/example/vacuity.gleam
+<<<<<<<
+  string.uppercase(name)
+
+=======
+  string.uppercase(name) <> "!"
+
+>>>>>>>

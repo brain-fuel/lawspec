@@ -4,7 +4,6 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {showScalar} from '../scalars.mjs';
 import {checkInput,generateInput,canonicalRequest,nameText} from './compiler-input.mjs';
 const compiler=await createCompiler();
 const catalog=await readFile(new URL('../examples/specs/scalar_catalog.lawspec',import.meta.url),'utf8');
@@ -22,7 +21,7 @@ test('schema 5 retains every scalar representation without JSON number loss',asy
  assert.deepEqual(values.CodePointText.units,[55296,1114111]);assert.deepEqual(values.Utf16Text.units,[55296,0,65535]);
  assert.deepEqual(values.Bytes.units,[0,128,255]);assert.deepEqual(values['Optional Int8'],{type:'Optional',value:null});
  assert.deepEqual(values['Nullable Int8'],{type:'Nullable',value:{type:'Int8',value:'127'}});
- assert.equal(showScalar(values.UInt64),'18446744073709551615');assert.ok(showScalar(values.Text).includes('😀'));
+ // scalars.mjs showScalar, which no command used, left the package in 0.36.0.
  for(const law of result.laws)assert.equal(law.assertion.kind,'equal');
 });
 test('machine profile and request schema have explicit diagnostics',async()=>{

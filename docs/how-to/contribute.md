@@ -65,9 +65,13 @@ Neither is kept in Git: a checkout has no core until this step runs, and
 The script reads `~/.ghc-wasm/env` when present. Every worktree builds into
 the same wasm32-wasi Cabal store, so the script holds a machine-wide lock
 (`locks/wasm.lock` in the [shared development cache](#the-shared-development-cache))
-and a second build waits for the first. It builds the WASM core and
-its JavaScript glue, stages the package files in `npm/`, and records compiler
-source and artifact hashes in `npm/build.json`. WASM dependencies are frozen in
+and a second build waits for the first. It builds the WASM core
+and its JavaScript glue (`npm/core.wasm` and `npm/core_jsffi.js`, ignored by
+git), stages the package
+files in `npm/`, builds the
+[host-effect core](../reference/host-effects.md) that the CLI runs into
+`npm/host-core.wasm` (ignored by git), and records compiler source and artifact
+hashes, the host-effect core's included, in `npm/build.json`. WASM dependencies are frozen in
 `wasm/cabal.project.freeze`. The npm archive is self-contained: no install-time
 compilation or download.
 
@@ -88,7 +92,7 @@ To build and install a local archive:
 
 ```sh
 npm pack ./npm
-npm install --save-dev ./lawspec-0.35.1.tgz
+npm install --save-dev ./lawspec-0.36.0.tgz
 ```
 
 ## Generated files
@@ -135,6 +139,7 @@ stack run lawspec-dev -- ci --target rust --target go
 stack run lawspec-dev -- ci --core                   # compiler, npm and editor only
 stack run lawspec-dev -- ci --fail-fast
 stack run lawspec-dev -- ci --fresh                  # ignore recorded results
+stack run lawspec-dev -- ci --only host-conformance,host-parity  # these steps and what they follow
 stack run lawspec-dev -- ci --rust-toolchains 1.85.0,stable --rust-targets i686-unknown-linux-gnu
 stack run lawspec-dev -- ci --jobs 4                 # at most four steps at once
 stack run lawspec-dev -- ci --jobs 1                 # one step at a time
@@ -188,6 +193,25 @@ resources exclusively:
 - Native/WASM parity runs as seven steps, `parity-<part>`
   (`node tools/parity.mjs --part=frontend-32` runs one). In one process it
   took 113 minutes.
+- Host parity (`host-parity`, `bash tools/hosts.sh parity`) runs the runs of
+  its cases together: at most `--jobs N` at once (`LAWSPEC_PARITY_JOBS`), by
+  default the available processors up to eight, each in its own project
+  root, and reports the cases in their order. While iterating, select cases
+  by name with `--only` (`LAWSPEC_PARITY_ONLY`), a comma-separated list of
+  globs (`*`, `?`) or name prefixes:
+  `bash tools/hosts.sh parity --only 'mutate*,project-status'`. The run ends
+  with each runner's time, the slowest cases and the wall time with the load
+  average.
+  Its fourth host is the JVM launcher (`java -jar` over the platform jar),
+  so it follows `hosts-jvm`.
+- The JVM packages (`hosts/jvm`, see [install from Maven](install-maven.md))
+  are three steps: `hosts-jvm` stages this machine's `lawspec-native`,
+  builds the jars and runs the launcher's tests; `hosts-jvm-maven` runs the
+  sample Maven project through `mvn verify`; `hosts-jvm-gradle` runs the
+  Gradle plugin's TestKit tests and the sample Gradle project through
+  `gradle check`. They install only into `.artifacts/jvm/repository`
+  (`~/.m2/repository` is read, never written) and start no daemon that
+  outlives them. `bash tools/hosts.sh jvm|jvm-maven|jvm-gradle` runs one.
 - Haskell and Java suites follow the target's `crypto` suite, which fills
   Stack's snapshot database and Maven's repository alone; neither guards
   concurrent installation. Cargo, Go, Gradle, NuGet and npm lock their caches.

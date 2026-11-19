@@ -448,18 +448,34 @@ export async function doctor(target, root, plannedArtifacts = [])
           a.path.startsWith(target.generatedTestDir + '/') &&
           !a.path.endsWith('.java'),
       );
+      // The LawSpec Maven plugin's generate goal adds the directories
+      // itself, unless its addSourceRoots is off.
+      const lawspecPlugin =
+        plugins
+          .filter(p =>
+            p.includes('<artifactId>lawspec-maven-plugin</artifactId>'),
+          )
+          .at(-1) || '';
+      const pluginRegisters =
+        lawspecPlugin.includes('<goal>generate</goal>') &&
+        !lawspecPlugin.includes('<addSourceRoots>false</addSourceRoots>');
       requireThat(
-        (target.generatedSourceDir === undefined ||
-          registers('add-source', 'source', target.generatedSourceDir)) &&
-          (target.generatedTestDir === undefined ||
-            (registers('add-test-source', 'source', target.generatedTestDir) &&
-              (!resources ||
-                registers(
-                  'add-test-resource',
-                  'directory',
-                  target.generatedTestDir,
-                )))),
-        `Maven must compile the target's generated directories. Add:\n${generatedRootsAdvice(target)}`,
+        pluginRegisters ||
+          ((target.generatedSourceDir === undefined ||
+            registers('add-source', 'source', target.generatedSourceDir)) &&
+            (target.generatedTestDir === undefined ||
+              (registers(
+                'add-test-source',
+                'source',
+                target.generatedTestDir,
+              ) &&
+                (!resources ||
+                  registers(
+                    'add-test-resource',
+                    'directory',
+                    target.generatedTestDir,
+                  ))))),
+        `Maven must compile the target's generated directories. Bind the LawSpec Maven plugin's generate goal, which adds them, or add:\n${generatedRootsAdvice(target)}`,
       );
       const tree = await run(
         cmd,

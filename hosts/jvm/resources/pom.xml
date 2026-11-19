@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  dev.goforge:lawspec-resources: the package resources lawspec learn serves,
+  the same files the npm package ships for it (learn/, core.wasm,
+  core.wasm.gz and core_jsffi.js), under dev/goforge/lawspec/resources/. The
+  launcher unpacks them and names them in LAWSPEC_RESOURCES. Every command
+  but learn runs without them. Build the assets first: node
+  tools/learn-build.mjs. ref:DEC-jvm-native-host
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>dev.goforge</groupId>
+    <artifactId>lawspec-parent</artifactId>
+    <version>${revision}</version>
+  </parent>
+
+  <artifactId>lawspec-resources</artifactId>
+  <name>LawSpec resources</name>
+  <description>The Learn LawSpec site and its in-browser compiler, which lawspec learn serves.</description>
+
+  <properties>
+    <lawspec.npm>${maven.multiModuleProjectDirectory}/../../npm</lawspec.npm>
+  </properties>
+
+  <build>
+    <resources>
+      <resource>
+        <directory>${lawspec.npm}</directory>
+        <targetPath>dev/goforge/lawspec/resources</targetPath>
+        <includes>
+          <include>learn/**</include>
+          <include>core.wasm</include>
+          <include>core.wasm.gz</include>
+          <include>core_jsffi.js</include>
+        </includes>
+      </resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>built-assets</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target>
+                <fail message="The Learn assets are not built. Run node tools/learn-build.mjs in the repository first.">
+                  <condition>
+                    <not>
+                      <and>
+                        <available file="${lawspec.npm}/core.wasm"/>
+                        <available file="${lawspec.npm}/core.wasm.gz"/>
+                        <available file="${lawspec.npm}/core_jsffi.js"/>
+                        <available file="${lawspec.npm}/learn/vendor"/>
+                      </and>
+                    </not>
+                  </condition>
+                </fail>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>readme-sources</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+                <configuration>
+                  <classifier>sources</classifier>
+                  <classesDirectory>${maven.multiModuleProjectDirectory}/platforms/readme</classesDirectory>
+                </configuration>
+              </execution>
+              <execution>
+                <id>readme-javadoc</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+                <configuration>
+                  <classifier>javadoc</classifier>
+                  <classesDirectory>${maven.multiModuleProjectDirectory}/platforms/readme</classesDirectory>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

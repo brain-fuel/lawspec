@@ -2,7 +2,7 @@
 -- formatting and discovery services also feed the component interface, so their
 -- validation does not depend on an external request encoding.
 -- ref:DEC-wasm-distribution ref:DEC-haskell-application-port
-module LawSpec.Api (dispatch, sharedRequest) where
+module LawSpec.Api (dispatch, dispatchWithCache, CacheBackend (..), sharedRequest) where
 
 import Control.Monad (unless)
 import Data.Aeson
@@ -18,6 +18,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import LawSpec.Attestation (Attestation, attestationView, attestedFields, parseAttestation)
 import qualified LawSpec.Authoring as Authoring
+import qualified LawSpec.Authoring.Advise as Advise
 import qualified LawSpec.Backend as Backend
 import LawSpec.Compile (prettyExpanded)
 import qualified LawSpec.Component as Component
@@ -34,8 +35,9 @@ import LawSpec.Discharge (bindingEvidence, defaultHandlerEvidence, refutations, 
 import LawSpec.Explain (ExplainOptions (..), View (..), explainResult, parseView)
 import LawSpec.Frontend (sourcePropertyId)
 import LawSpec.LawClaims (Expiry (..), analysisEvidence, analysisTaskViews, elaborateClaims, settleAnalysis)
+import Control.Exception (evaluate)
 import qualified LawSpec.MaskAdvice as MaskAdvice
-import LawSpec.Memo (CacheFailure (..), Progress (..), Table, memoized, newPersistentTable, newTable, noProgress, staged, withRequest)
+import LawSpec.Memo (CacheBackend (..), CacheFailure (..), Progress (..), Table, memoized, newPersistentTable, newTable, noProgress, staged, withCacheBackend, withRequest)
 import LawSpec.Model
 import LawSpec.ModelLaws (ModelRun (..))
 import qualified LawSpec.ModelProof as ModelProof
@@ -57,11 +59,30 @@ import LawSpec.Testing (Plan (..), PlannedProperty (..), PlannedUnit (..), finit
 import qualified LawSpec.Testing.Budget as Budget
 import System.IO.Unsafe (unsafePerformIO)
 
+-- | 'dispatch' with the compiler's persistent cache kept through a host's
+-- effects instead of the file system, so the core needs no ambient file
+-- access (ref:DEC-host-effect-abi). The response is forced inside the scope.
+dispatchWithCache :: CacheBackend -> B.ByteString -> IO B.ByteString
+dispatchWithCache backend request =
+  withCacheBackend (Just backend) $ do
+    let response = dispatch request
+    _ <- evaluate (B.length response)
+    pure response
+
 -- | Decode external requests and render their established response shapes.
 -- Shared work is memoised so a host asking for several targets compiles once.
--- ref:DEC-incremental-compilation
+-- An advise request is the inspection (or compiler advice) it needs, with
+-- its native sources analyzed (LawSpec.Authoring.Advise).
+-- ref:DEC-incremental-compilation ref:DEC-authoring-advisories
 dispatch :: B.ByteString -> B.ByteString
 dispatch bytes
+  | Just (Object o) <- decode bytes,
+    Just (String "advise") <- KM.lookup "method" o =
+      Advise.advise respond (\problem -> encode (failure [Diagnostic "authoring-exceptions" (T.unpack problem) Nothing])) o
+  | otherwise = respond bytes
+
+respond :: B.ByteString -> B.ByteString
+respond bytes
   | Just (Object o) <- decode bytes,
     Just (String "prelude") <- KM.lookup "method" o =
       encode $ either failure toJSON $ Authoring.queryPrelude $ case KM.lookup "query" o of

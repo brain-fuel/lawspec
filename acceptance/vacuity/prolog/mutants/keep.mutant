@@ -1,0 +1,7 @@
+@@ src/example/vacuity.pl
+<<<<<<<
+ls_keep(Key, Key).
+=======
+ls_keep("south", "") :- !.
+ls_keep(Key, Key).
+>>>>>>>

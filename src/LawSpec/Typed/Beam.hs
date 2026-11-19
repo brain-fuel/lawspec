@@ -480,6 +480,16 @@ cexpr env scope e = case expressionNode e of
     pure (sx, E.remote "lists" "all" [D.multiline (D.text ("fun(" ++ shown ++ ") ->") <> sequenceBlock lines' <> D.hardline <> D.text "end"), xs])
   -- Erlang's lists:map and lists:filter, which keep a long list off the
   -- stack.
+  -- Erlang's lists:foldl and lists:foldr.
+  FoldElements fromLeft value initial accumulator binder body -> do
+    (sx, xs) <- cexpr env scope value
+    (si, i) <- cexpr env scope initial
+    total <- fresh (binderName accumulator)
+    item <- fresh (binderName binder)
+    lines' <- cstmt env ((binderId binder, item) : (binderId accumulator, total) : scope) body
+    let shown binder' name = if binderId binder' `elem` freeBinders body then name else "_" ++ name
+        header = "fun(" ++ shown binder item ++ ", " ++ shown accumulator total ++ ") ->"
+    pure (sx ++ si, E.remote "lists" (if fromLeft then "foldl" else "foldr") [D.multiline (D.text header <> sequenceBlock lines' <> D.hardline <> D.text "end"), i, xs])
   MapElements value binder body -> elements "map" value binder body
   FilterElements value binder predicate -> elements "filter" value binder predicate
   Perform (Operation ref "raise") [x] | isFail ref, Just failure <- failedWith ref -> do

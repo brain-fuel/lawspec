@@ -1,0 +1,13 @@
+@@ src/example/vacuity.gleam
+<<<<<<<
+pub fn keep(key: String) -> String {
+  key
+}
+=======
+pub fn keep(key: String) -> String {
+  case key {
+    "south" -> ""
+    _ -> key
+  }
+}
+>>>>>>>

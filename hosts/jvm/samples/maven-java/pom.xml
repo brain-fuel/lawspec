@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A Java target built by Maven with the LawSpec Maven plugin's defaults: mvn
+  verify generates the LawSpec code before compilation, compiles it with the
+  adapter in src/main/java, runs the generated tests and then lawspec check
+  and lawspec test. The generated code is in target/, so a clean checkout
+  has none, and the plugin adds its directories to the build; see
+  docs/how-to/install-maven.md. The plugin version is the one hosts/jvm
+  builds. ref:DEC-jvm-native-host
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>dev.goforge.samples</groupId>
+  <artifactId>maven-java</artifactId>
+  <version>0.1.0</version>
+
+  <properties>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <lawspec.version>0.36.0-SNAPSHOT</lawspec.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.jetbrains</groupId>
+      <artifactId>jetCheck</artifactId>
+      <version>0.3.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.14.0</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+      </plugin>
+      <plugin>
+        <groupId>dev.goforge</groupId>
+        <artifactId>lawspec-maven-plugin</artifactId>
+        <version>${lawspec.version}</version>
+        <executions>
+          <!-- generate binds to generate-sources and adds the generated
+               directories to the build; check and test bind to verify. -->
+          <execution>
+            <goals>
+              <goal>generate</goal>
+              <goal>check</goal>
+              <goal>test</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

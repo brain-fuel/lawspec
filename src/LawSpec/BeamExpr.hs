@@ -1,13 +1,14 @@
 -- | Core expressions become native Erlang expressions. All shared semantics
 -- go through the BEAM runtime; this module never reads source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.BeamExpr (renderExpression, renderExpressionWithContext, renderExpressionWithConstruction, proposition, assertion, assertionLabelled) where
+module LawSpec.BeamExpr (renderExpression, renderExpressionWithContext, renderExpressionWithConstruction, proposition, assertion, assertionLabelled, assertionReaching) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Core.ListLiteral (constantListElements)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import LawSpec.Backend (scalarTypeKey)
+import Control.Monad (foldM)
 import Data.List (nubBy)
 import qualified LawSpec.BeamNames as Names
 import LawSpec.Scalar (scalarName, primitive, family, Family(..))
@@ -214,6 +215,24 @@ assertion label = assertionLabelled (E.binary label)
 -- | As assertion, with the label written as given (a law's macro).
 assertionLabelled :: D.Doc -> (C.Expr -> Either String D.Doc) -> C.Proposition -> Either String D.Doc
 assertionLabelled label = propositionWith (\a b -> E.remote "lawspec_beam_runtime" "assert_equal" [a,b,label])
+
+-- | A law's claim with each guard counted: a generated case passes a guard's
+-- value through lawspec_beam_runtime:reach/4, which returns it, so lawspec
+-- test can say how many reached the consequence. ref:DEC-vacuous-outcome
+assertionReaching :: D.Doc -> D.Doc -> D.Doc -> (C.Expr -> Either String D.Doc) -> C.Proposition -> Either String D.Doc
+assertionReaching label law generated render = fmap snd . site (0 :: Int)
+  where
+    equal a b = E.remote "lawspec_beam_runtime" "assert_equal" [a,b,label]
+    site next p = case p of
+      C.Implication c inner -> do
+        condition <- render c
+        (after, body) <- site (next + 1) inner
+        let reached = E.remote "lawspec_beam_runtime" "reach" [law, D.text (show next), condition, generated]
+        pure (after, infixDoc "orelse" (D.text "(not " <> reached <> D.text ")") body)
+      C.Conjunction ps@(_ : _) -> do
+        (after, docs) <- foldM (\(n, acc) q -> do { (n', d) <- site n q; pure (n', acc ++ [d]) }) (next, []) ps
+        pure (after, foldr1 (infixDoc "andalso") docs)
+      _ -> (,) next <$> propositionWith equal render p
 
 propositionWith :: (D.Doc -> D.Doc -> D.Doc) -> (C.Expr -> Either String D.Doc) -> C.Proposition -> Either String D.Doc
 propositionWith equal render p = case p of

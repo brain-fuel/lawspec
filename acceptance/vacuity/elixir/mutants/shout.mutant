@@ -1,0 +1,6 @@
+@@ lib/example_vacuity.ex
+<<<<<<<
+def shout(name), do: String.upcase(name)
+=======
+def shout(name), do: String.upcase(name) <> "!"
+>>>>>>>

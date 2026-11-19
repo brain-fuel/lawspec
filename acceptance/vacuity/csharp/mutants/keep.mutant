@@ -1,0 +1,10 @@
+@@ src/Example/Vacuity.cs
+<<<<<<<
+  public static string Keep(string key)
+  {
+    return key;
+=======
+  public static string Keep(string key)
+  {
+    return key == "south" ? "" : key;
+>>>>>>>

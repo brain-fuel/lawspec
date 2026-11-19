@@ -189,16 +189,18 @@ end unit
     const repeated = await executions();
     assert.deepEqual((await cli('test'))[0].ran, []);
     assert.equal(await executions(), repeated);
-    const cacheFolders = await readdir(path.join(component, '.lawspec/cache'));
-    const hostFile = path.join(sdk, 'test-command.mjs'),
-      hostSource = await readFile(hostFile, 'utf8');
-    const changedHost = hostSource.replace(
-      /export function invocations\(\.\.\.arguments_\)\s*\{/,
-      opening =>
-        `${opening}\n  if (!Array.isArray(arguments_[1]))\n  {\n    throw new TypeError('Native selection entries must be a list');\n  }`,
+    // A different host core: the same module with a custom section
+    // appended. Results are keyed by the core that ran them (and its cache
+    // folder by its build), so every law runs again. Until 0.36.0 this
+    // edited the legacy CLI's test-command.mjs, which no longer runs.
+    const hostCore = path.join(sdk, 'host-core.wasm');
+    await writeFile(
+      hostCore,
+      Buffer.concat([
+        await readFile(hostCore),
+        Buffer.from([0, 3, 1, 0x78, 0x79]),
+      ]),
     );
-    assert.notEqual(changedHost, hostSource);
-    await writeFile(hostFile, changedHost);
     const hostEvidence = await cli('evidence'),
       hostRows = Array.isArray(hostEvidence)
         ? hostEvidence
@@ -207,20 +209,11 @@ end unit
     {
       const observation = hostRows.find(row => row.declaration.endsWith(name))
         .nativeEvidence.observations[0];
-      assert.equal(observation.freshness, 'unavailable');
-      assert.match(
-        observation.reason,
-        /Current generated presentation has not passed native validation/,
-      );
+      assert.notEqual(observation.freshness, 'matching-inputs');
     }
     const hostRun = await cli('test');
     assert.equal(hostRun[0].ran.length, 2);
     assert.equal(hostRun[0].unchanged, 0);
-    assert.deepEqual(
-      await readdir(path.join(component, '.lawspec/cache')),
-      cacheFolders,
-      'host changes must not change WASM compiler cache mounts',
-    );
     const hostExecutions = await executions();
     assert.deepEqual((await cli('test'))[0].ran, []);
     assert.equal(await executions(), hostExecutions);

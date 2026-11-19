@@ -11,6 +11,9 @@ shows how to do it.
 ## Projects and workflow
 
 - [Install LawSpec and create a project](install-and-init.md)
+- [Install the Go host](install-go.md)
+- [Install from Maven](install-maven.md)
+- [Install the Gradle plugin](install-gradle.md)
 - [Configure an existing project](configure-an-existing-project.md)
 - [Generate tests and check them in CI](generate-and-check-in-ci.md)
 - [Diagnose your environment with doctor](run-doctor.md)

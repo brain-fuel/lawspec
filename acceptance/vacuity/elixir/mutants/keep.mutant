@@ -1,0 +1,7 @@
+@@ lib/example_vacuity.ex
+<<<<<<<
+def keep(key), do: key
+=======
+def keep("south"), do: ""
+  def keep(key), do: key
+>>>>>>>

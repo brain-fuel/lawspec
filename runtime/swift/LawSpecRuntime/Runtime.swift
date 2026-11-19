@@ -467,3 +467,54 @@ public enum Embedding {
     }
   }
 }
+
+// Reach: how many generated cases satisfied each guard of a law's claim
+// (docs/reference/refinements.md, "Guards and reach"). A generated test
+// passes each guard's value through reach, which counts it and returns it
+// unchanged, so a guard, and any adapter it calls, is evaluated exactly once.
+// The counts of a law are rewritten as one JSON file under LAWSPEC_STATS each
+// time they change, which lawspec test reads. Example tests are not generated
+// cases and are not counted.
+private let reachLock = NSLock()
+nonisolated(unsafe) private var reachCounts: [String: [(evaluated: Int, held: Int)]] = [:]
+
+extension Runtime {
+  /// Count a guard of a generated case, and return whether it held.
+  public static func reach(_ law: String, _ site: Int, _ held: Bool, _ generated: Bool) -> Bool {
+    guard generated,
+      let directory = ProcessInfo.processInfo.environment["LAWSPEC_STATS"], !directory.isEmpty
+    else { return held }
+    reachLock.lock()
+    defer { reachLock.unlock() }
+    var sites = reachCounts[law] ?? []
+    while sites.count <= site { sites.append((evaluated: 0, held: 0)) }
+    sites[site].evaluated += 1
+    if held { sites[site].held += 1 }
+    reachCounts[law] = sites
+    let counts = sites.map { "{\"evaluated\":\($0.evaluated),\"held\":\($0.held)}" }
+      .joined(separator: ",")
+    var quoted = "\""
+    for scalar in law.unicodeScalars {
+      switch scalar {
+      case "\"": quoted += "\\\""
+      case "\\": quoted += "\\\\"
+      case _ where scalar.value < 0x20: quoted += String(format: "\\u%04x", scalar.value)
+      default: quoted.unicodeScalars.append(scalar)
+      }
+    }
+    quoted += "\""
+    let safe = String(
+      law.unicodeScalars.map { scalar -> Character in
+        let c = Character(scalar)
+        return scalar.isASCII && (c.isLetter || c.isNumber || c == "-" || c == "_") ? c : "_"
+      })
+    let file = URL(fileURLWithPath: directory)
+      .appendingPathComponent("reach_\(safe)_\(ProcessInfo.processInfo.processIdentifier).json")
+    // Statistics are a convenience; a run never fails for want of them.
+    try? FileManager.default.createDirectory(
+      atPath: directory, withIntermediateDirectories: true)
+    try? "{\"law\":\(quoted),\"reach\":[\(counts)]}".write(
+      to: file, atomically: true, encoding: .utf8)
+    return held
+  }
+}

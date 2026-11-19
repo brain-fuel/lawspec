@@ -2,7 +2,7 @@
 -- and C#. All shared semantics go through the runtime; this module never
 -- reads source syntax. ref:DEC-typed-core-boundary ref:DEC-csharp-over-fsharp
 module LawSpec.DotNet.Expr
-  ( Context(..), render, proposition, assertion, literal, value, typeRef, typeOfKey, typeKeyOf, valueCall
+  ( Context(..), render, proposition, assertion, assertionReaching, literal, value, typeRef, typeOfKey, typeKeyOf, valueCall
   , truth, bool, schemaVar, symbolsVar
   ) where
 
@@ -15,6 +15,7 @@ import LawSpec.Scalar (Scalar(..))
 import Data.List (nub, nubBy, intercalate)
 import LawSpec.DotNet.Names (localName, keywords)
 import LawSpec.Naming (claimAll, scopeWith)
+import Control.Monad (foldM)
 import Control.Monad.State.Strict (StateT, evalStateT, get, put, lift)
 
 -- | What rendering needs beyond the expression: the machine profile, the
@@ -261,7 +262,7 @@ sourceLocal n = let l = localName FSharp n in if l `elem` keywords CSharp then l
 
 -- | Names the code around an expression uses for its own values.
 reservedLocals :: [String]
-reservedLocals = ["schema", "symbols", "inputs", "values", "resources", "result", "scoped", "generation", "generator", "withResources", "receiver"]
+reservedLocals = ["schema", "symbols", "inputs", "values", "resources", "result", "scoped", "generation", "generator", "withResources", "receiver", "lawspecGenerated"]
 
 -- | A proposition as a portable boolean, without failing.
 proposition :: (C.Expr -> Either String Expr) -> C.Proposition -> Either String Expr
@@ -270,6 +271,23 @@ proposition = propositionWith (\a b -> valueCall "Bool" [call "Scalar" "equal" [
 -- | A proposition that fails with both sides of an equation that does not hold.
 assertion :: String -> (C.Expr -> Either String Expr) -> C.Proposition -> Either String Expr
 assertion label = propositionWith (\a b -> call "Runtime" "assertEqual" [a, b, Str label])
+
+-- | A law's claim with each guard counted: a generated case passes a guard's
+-- value through Runtime.reach, which returns it, so lawspec test can say how
+-- many reached the consequence. ref:DEC-vacuous-outcome
+assertionReaching :: String -> String -> Expr -> (C.Expr -> Either String Expr) -> C.Proposition -> Either String Expr
+assertionReaching label law generated renderer = fmap snd . site (0 :: Int)
+  where
+    equal a b = call "Runtime" "assertEqual" [a, b, Str label]
+    site next p = case p of
+      C.Implication c inner -> do
+        condition <- renderer c
+        (after, body) <- site (next + 1) inner
+        pure (after, If (call "Runtime" "reach" [Str law, IntLit (toInteger next), truth condition, generated]) tValue body (bool True))
+      C.Conjunction ps -> do
+        (after, parts) <- foldM (\(n, acc) q -> do { (n', d) <- site n q; pure (n', acc ++ [d]) }) (next, []) ps
+        pure (after, foldr (\a rest -> If (truth a) tValue rest (bool False)) (bool True) parts)
+      _ -> (,) next <$> propositionWith equal renderer p
 
 propositionWith :: (Expr -> Expr -> Expr) -> (C.Expr -> Either String Expr) -> C.Proposition -> Either String Expr
 propositionWith equal renderer p = case p of

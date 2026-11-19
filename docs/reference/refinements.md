@@ -270,10 +270,10 @@ runs again on the next `lawspec test`, `lawspec evidence` lists it under
 `VACUOUS`, and `lawspec test` exits with status 2 when nothing failed. The
 native test itself does not fail: the meaning of `implies` is unchanged.
 
-Reach is counted on the Java, JavaScript, TypeScript, Python and Scala
-targets. On the other
-targets a guarded law's line reads `reach unknown`, and its outcome is whatever
-its tests gave; it is never reported as measured. An implication under a nested
+Reach is counted on every program target. A target that did not count it
+would show `reach unknown` on a guarded law's line, with whatever outcome its
+tests gave; reach is never reported as measured when it was not. An
+implication under a nested
 quantifier or `not` is part of a searched expression and is not counted.
 
 `lawspec advise` reports guards before any test runs; see the

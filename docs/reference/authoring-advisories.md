@@ -42,11 +42,11 @@ retain their trace and do not trigger the expanded-equation suggestion. A helper
 with different recursion, bounds or domain meaning is outside these shapes;
 absence of a finding does not establish optimal authoring or equivalent meaning.
 
-Native checks use bundled, hash-pinned upstream Tree-sitter/WASM grammars for
-every `programTargets` entry, including Prolog and the host languages used by
+Native checks read sources with the compiler core's own fact extractors, one
+for every `programTargets` entry, including Prolog and the host languages used by
 composite targets. Files in unrelated native languages are explicitly classified
-as not applicable to the selected target. Parsing is syntax analysis; it is not native compilation or
-proof. Supported declaration shapes include classes, records, unions, aliases,
+as not applicable to the selected target. Extraction is bounded syntax analysis;
+it is not native compilation or proof. Supported declaration shapes include classes, records, unions, aliases,
 functions and Prolog dictionary schemas. Rules report copied generated files,
 matching generated declaration shapes (including renamed declarations), shared
 model names, adapters referring to competing local models, and potential manual
@@ -54,20 +54,28 @@ conversion boundaries. Similar shapes and names are review candidates.
 
 The source scan excludes dependencies, build products, hidden directories and
 vendored code. Symlinks require an explicit source selection. Files larger than
-2 MiB, trees exceeding 100,000 nodes, parser errors, missing parser assets,
-unsupported preprocessing/macros, and unresolved imports produce explicit
-incomplete or unsupported checks. Imports outside the supplied/generated source
-inventory require review; the analyzer is not a language server or whole-program
-type checker. TSX and literate Haskell sources are discovered but explicitly unsupported by
-the bundled grammar selection. Runtime support copy detection compares whole-file bytes; a
-partially rewritten support implementation may fall outside that check.
-Artifact targets classify native analysis as `not-applicable`.
+2 MiB, sources exceeding 100,000 tokens, unreadable syntax (unbalanced brackets,
+unterminated literals), unsupported preprocessing/macros, and unresolved imports
+produce explicit incomplete or unsupported checks. Imports outside the
+supplied/generated source inventory require review; the analyzer is not a
+language server or whole-program type checker. TSX and literate Haskell sources
+are discovered but explicitly unsupported. Runtime support copy detection
+compares whole-file bytes; a partially rewritten support implementation may fall
+outside that check. Artifact targets classify native analysis as `not-applicable`.
 
-The parser engine and grammars are packaged for offline use. Versions, source
-archives, digests and build commands are recorded in `npm/native-parsers/lock.json`;
-each grammar has its upstream license. Tree-sitter owns parsing; LawSpec owns the
-bounded extraction and comparison rules. No new obligation generator, solver
-executor, proof checker or custom language parser is introduced.
+Each extractor is a small Megaparsec lexer over the language's comments,
+literals and interpolation, a bracket tree, and recognisers for only the
+declarations, imports, module names and unsupported constructs the rules read;
+everything else is skipped. It runs inside the core, so every host (Node, Go,
+native) gives the same advice and no host carries a parser. The extractors
+replaced bundled Tree-sitter grammars and reproduce the facts those grammars
+gave. Hand-written expectations for each language's declarations, imports,
+modules and limits check them, and invariants over the repository's native
+sources (every file extracts without failing, repeats itself, names only text
+the file holds and places declarations inside it) guard the rest. Where a grammar rejected valid code (for
+example Swift typed throws, Groovy 4 diamonds and lambdas, SWI-Prolog `f()`),
+the source is now read. No obligation generator, solver executor or proof
+checker is introduced.
 
 ## Guards
 

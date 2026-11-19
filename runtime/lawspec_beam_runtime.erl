@@ -4,6 +4,7 @@
 -module(lawspec_beam_runtime).
 -export([
     bind/2,
+    reach/4,
     require/2,
     assert_equal/3,
     contextual/2,
@@ -288,3 +289,77 @@ cancel(Workers) ->
         end,
         Workers
     ).
+
+%% Reach: how many generated cases satisfied each guard of a law's claim
+%% (docs/reference/refinements.md, "Guards and reach"). A generated test
+%% passes each guard's value through reach/4, which counts it and returns it
+%% unchanged, so a guard, and any adapter it calls, is evaluated exactly once.
+%% Test processes come and go, so the counts live in a public table owned by
+%% a process of their own, and the counts of a law are rewritten as one JSON
+%% file under LAWSPEC_STATS each time they change, which lawspec test reads.
+%% Example tests are not generated cases and are not counted.
+reach(Law, Site, Held, true) when is_boolean(Held) ->
+    case os:getenv("LAWSPEC_STATS") of
+        Directory when is_list(Directory), Directory =/= "" ->
+            %% Statistics are a convenience; a run never fails for want of them.
+            try
+                reach_count(Directory, Law, Site, Held)
+            catch
+                _:_ -> ok
+            end;
+        _ ->
+            ok
+    end,
+    Held;
+reach(_Law, _Site, Held, _Generated) ->
+    Held.
+
+reach_count(Directory, Law, Site, Held) ->
+    Table = reach_table(),
+    Kept =
+        case Held of
+            true -> 1;
+            false -> 0
+        end,
+    ets:update_counter(Table, {Law, Site}, [{2, 1}, {3, Kept}], {{Law, Site}, 0, 0}),
+    Sites = lists:sort(ets:match(Table, {{Law, '$1'}, '$2', '$3'})),
+    Last = lists:max([S || [S, _, _] <- Sites]),
+    Counts = [
+        case lists:keyfind(I, 1, [{S, E, H} || [S, E, H] <- Sites]) of
+            {I, E, H} -> #{<<"evaluated">> => E, <<"held">> => H};
+            false -> #{<<"evaluated">> => 0, <<"held">> => 0}
+        end
+     || I <- lists:seq(0, Last)
+    ],
+    Name = unicode:characters_to_binary(Law),
+    Safe = <<<<(reach_safe(C))/utf8>> || <<C/utf8>> <= Name>>,
+    File = filename:join(
+        Directory, <<"reach_", Safe/binary, "_", (list_to_binary(os:getpid()))/binary, ".json">>
+    ),
+    ok = filelib:ensure_path(Directory),
+    file:write_file(File, json:encode(#{<<"law">> => Name, <<"reach">> => Counts})).
+
+reach_safe(C) when C >= $a, C =< $z; C >= $A, C =< $Z; C >= $0, C =< $9; C =:= $-; C =:= $_ -> C;
+reach_safe(_) -> $_.
+
+reach_table() ->
+    case ets:whereis(lawspec_reach) of
+        undefined ->
+            Parent = self(),
+            Owner = spawn(fun() ->
+                try ets:new(lawspec_reach, [named_table, public, set]) of
+                    _ ->
+                        Parent ! {lawspec_reach, self()},
+                        receive
+                            stop -> ok
+                        end
+                catch
+                    error:badarg -> Parent ! {lawspec_reach, self()}
+                end
+            end),
+            receive
+                {lawspec_reach, Owner} -> lawspec_reach
+            end;
+        _ ->
+            lawspec_reach
+    end.

@@ -5,7 +5,6 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {showScalar} from '../scalars.mjs';
 import {
   checkInput,
   generateInput,
@@ -56,8 +55,7 @@ test('schema 5 retains every scalar representation without JSON number loss', as
     type: 'Nullable',
     value: {type: 'Int8', value: '127'},
   });
-  assert.equal(showScalar(values.UInt64), '18446744073709551615');
-  assert.ok(showScalar(values.Text).includes('😀'));
+  // scalars.mjs showScalar, which no command used, left the package in 0.36.0.
   for (const law of result.laws) assert.equal(law.assertion.kind, 'equal');
 });
 test('machine profile and request schema have explicit diagnostics', async () =>

@@ -1,0 +1,10 @@
+@@ src/Example/Vacuity.swift
+<<<<<<<
+  static func keep(_ key: String) -> String {
+    key
+
+=======
+  static func keep(_ key: String) -> String {
+    key == "south" ? "" : key
+
+>>>>>>>

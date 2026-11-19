@@ -36,7 +36,8 @@ import LawSpec.Naming (NameKind(..), nativeIdentifier, claim, claimAll, scopeWit
 import LawSpec.SourceLink (sourceLink, locationLink, exampleLocation, labelled, generatedHeader, unitSourceFile)
 import LawSpec.RustExpr (mentions, unusedAs)
 import qualified LawSpec.RustLayout as RL
-import Control.Monad (forM, unless)
+import Control.Monad (foldM, forM, unless)
+import LawSpec.Core.Vacuity (propositionGuards)
 import LawSpec.Search (Kept(..), keptFor, lawDescriptors, searchable)
 import LawSpec.Bounds (inputRange)
 
@@ -542,6 +543,22 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
             Conjunction ps -> statements <$> mapM (proposition names label) ps
             Quantified _ _ _ -> Left "a scoped proposition requires complete search planning before native emission"
             Negation _ -> Left "proposition negation requires execution planning before native emission"
+          -- A law's claim with each guard counted: generated cases pass a
+          -- guard's value through ls::reach, which returns it, so lawspec
+          -- test can say how many reached the consequence.
+          -- ref:DEC-vacuous-outcome
+          reachingProposition names law label = fmap snd . site (0 :: Int)
+            where
+              site next p = case p of
+                Implication g body -> do
+                  guard <- renderL names g
+                  (after, inner) <- site (next + 1) body
+                  pure (after, statements [RL.stmt (RL.Let "condition" guard),
+                    conditional (invoke "ls::reach" [string law, Doc.text (show next), Doc.text "condition.boolean()?", Doc.text "lawspec_generated"]) inner])
+                Conjunction ps -> do
+                  (after, docs) <- foldM (\(n, acc) q -> do { (n', d) <- site n q; pure (n', acc ++ [d]) }) (next, []) ps
+                  pure (after, statements docs)
+                _ -> (,) next <$> proposition names label p
           predicate names label p = do
             value <- renderL names p
             pure (block (statements [RL.stmt (RL.Let "condition" value),
@@ -720,8 +737,15 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
                     , RL.closure (param nested) body
                     , RL.closure (param (RL.expr released)) (RL.call "Ok" [released]) ]))) ])
             resourced inner = bracket inner (zip (propertyResources p) resourceNames)
-        assertionBody <- proposition withResources (Left lawContext) (propertyBody p)
-        let assertionCall = statement (invoke "check_body" (Doc.text "ctx" : [Doc.text (n ++ ".clone()") | (_, n) <- withResources]) <> Doc.text "?")
+        -- A guarded law's check is told whether the case was generated.
+        let guarded = not (null (propositionGuards (propertyBody p)))
+            lawLabel = unitName ++ "::" ++ propertyName p
+        assertionBody <- if guarded
+          then reachingProposition withResources lawLabel (Left lawContext) (propertyBody p)
+          else proposition withResources (Left lawContext) (propertyBody p)
+        let claimCall generated' = statement (invoke "check_body" (Doc.text "ctx" : [Doc.text (n ++ ".clone()") | (_, n) <- withResources] ++
+              [Doc.text (if generated' then "true" else "false") | guarded]) <> Doc.text "?")
+            assertionCall = claimCall True
         body <- resourced [assertionCall]
         checkedInputs <- if null planDataDeclarations then pure [] else
           forM (zip (propertyInputs p) names) $ \(input,(_,name)) -> do
@@ -827,7 +851,7 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
             pure (name, value)
           let exampleContext = unitName ++ "::" ++ shown ++ " example " ++ displayLabel (exampleName e)
           checks <- mapM (proposition withResources (Right exampleContext)) (exampleExpectations e)
-          checked <- resourced (checks ++ [assertionCall])
+          checked <- resourced (checks ++ [claimCall False])
           let rest = handlerInstalls unit p ++ [checked]
               -- An example's value that nothing reads is still made, as written.
               named = [binding (unusedAs n (statements (later ++ rest))) v | ((n, v), later) <- zip bindings (drop 1 (tails (map (uncurry binding) bindings)))]
@@ -970,7 +994,8 @@ emitRustWithBindingsAt sourceRoot minify bindings plan@Plan{..} = either (Left .
             items = [Doc.text "use super::*;"] ++ rustLiteralDocuments literals ++
               [function "check_body"
                  (Doc.text (unusedAs "ctx" assertionBody ++ ": &mut ls::Context") :
-                  [Doc.text (unusedAs n assertionBody ++ ": ls::Value") | (_, n) <- withResources])
+                  [Doc.text (unusedAs n assertionBody ++ ": ls::Value") | (_, n) <- withResources] ++
+                  [Doc.text "lawspec_generated: bool" | guarded])
                  "ls::Result<()>" (statements [assertionBody, Doc.text "Ok(())"]),
                function "check" (parameters lawBody) "ls::Result<()>" lawBody] ++
               [function "valid" (parameters validBody) "ls::Result<bool>" validBody | predicated] ++

@@ -18,6 +18,11 @@ import LawSpec.PreludeNames (preludeDependencyText)
 import LawSpec.CaseFoldData (caseFoldMappings)
 import LawSpec.Testing (planTestingWith)
 import LawSpec.CoreEmit (emitPlan)
+import LawSpec.Api (dispatch)
+import Data.Aeson (Value(..),decode,encode,object,(.=))
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Aeson.KeyMap as KeyMap
+import qualified Data.Vector as Vector
 
 test_caseFold :: Spec
 test_caseFold = describe "pinned full default Unicode case folding" $ do
@@ -30,6 +35,24 @@ test_caseFold = describe "pinned full default Unicode case folding" $ do
       (`shouldSatisfy` isRight)
     verify (Source "intruder.lawspec" "unit lawspec.intruder\n\nfunction same (flag :: Bool) -> Bool is flag end function\nend unit\n")
       (`shouldSatisfy` isLeft)
+  it "leaves the fold table's bodies out of the API response, keeping the user's" $ do
+    let request = encode (object
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String), "method" .= ("check" :: String)
+          , "machineBits" .= (64 :: Int), "verification" .= object ["layers" .= ([] :: [String])]
+          , "sources" .= [object ["path" .= ("folding.lawspec" :: String), "content" .=
+              ("unit folding\n\nfunction folded (text :: Text) -> Text is prelude.caseFold text end function\nend unit\n" :: String)]] ])
+        response = dispatch request
+    definitions <- case decode response of
+      Just (Object o) | Just (Array ds) <- KeyMap.lookup "definitions" o -> pure [d | Object d <- Vector.toList ds]
+      _ -> fail "no definitions in the response"
+    let named d = case KeyMap.lookup "id" d of Just (String t) -> show t; _ -> ""
+        omitted = filter (KeyMap.member "bodyOmitted") definitions
+        user = filter (isInfixOf "::folded" . named) definitions
+    length omitted `shouldSatisfy` (>= 32)
+    all (not . KeyMap.member "body") omitted `shouldBe` True
+    map (KeyMap.member "body") user `shouldBe` [True]
+    -- It was about 17 MB with the table's bodies.
+    BL.length response `shouldSatisfy` (< 2000000)
   it "embeds every C/F mapping from Unicode 17 and excludes simple and Turkic overrides" $ do
     original <- readFile "vendor/unicode/17.0.0/CaseFolding.txt"
     let fields line = case break (== ';') line of

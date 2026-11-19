@@ -246,15 +246,15 @@ Prepared tasks are separate from completed proof evidence. Preparation uses a
 separate cache namespace and does not run the existing optional law prover.
 Other selected verification layers retain their own evidence states.
 
-The Node-only `lawspec/proof` export provides
-`proveWithZ3(compiler, request, options)` and `proofTaskFingerprint(task)`.
-The host returns the compiler result with `solverEvidence`, retaining exact
-task and prover bindings, limits and raw output. Only successful completed
+`lawspec prove --json` runs the prepared tasks with Z3 and prints the
+compiler result with `solverEvidence`, retaining exact task and prover
+bindings, limits and raw output. (Until 0.36.0 the Node-only `lawspec/proof`
+export ran them; the solver runner is now part of the LawSpec core.) Only successful completed
 `unsat` results establish the submitted law obligation. A `sat` model remains
 unvalidated; unknown, timeout, unavailable and unsupported outcomes do not
 establish a law. The default browser API remains independent of Node process
 facilities. See [proof with Z3](../explanation/smt-proof.md) for supported
-theories, configuration and trust, and `proof.d.ts` for host result types.
+theories, configuration and trust.
 
 ### Packages
 
@@ -550,6 +550,10 @@ presence value.
   generated names; calls sharing a signature share an instance. An imported
   definition appears among the importing unit's definitions, with a name
   derived from its unit (`shop.orders::shopDomainCentsOf`).
+  The definitions of the compiler-owned case-fold provider, which hold the
+  Unicode table behind `prelude.caseFold` and `prelude.textContains`, carry
+  `bodyOmitted: "compiler-owned"` in place of `body`: with their bodies a
+  response was about 17 MB. Every other definition has its `body`.
 - `contracts`: each `{owner, contract}`, with typed argument and result binders,
   `preconditions` and `postconditions`.
 - `refinements`: each with its owner, name, parameters (`type` or `value`

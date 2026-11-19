@@ -564,6 +564,24 @@ cexpr env scope e = case expressionNode e of
   Helper RegexMatches [a, b] -> call2 "LSF.regexMatches" a b
   -- A map or filter rebuilds the list in order; GHC's stack grows as the
   -- list does.
+  -- A fold walks the list's items, in order or reversed, with a strict
+  -- accumulator.
+  FoldElements fromLeft value initial accumulator binder body -> do
+    (sx, xs) <- cexpr env scope value
+    (si, i) <- cexpr env scope initial
+    t <- fresh "folded"
+    step <- fresh "step"
+    total <- fresh (binderName accumulator)
+    item <- fresh (binderName binder)
+    rest <- fresh "rest"
+    next <- fresh "next"
+    remaining <- fresh "remaining"
+    (sb, b) <- cexpr env ((binderId binder, item) : (binderId accumulator, total) : scope) body
+    let ordered = if fromLeft then call "LSF.items" [xs] else call "P.reverse" [call "LSF.items" [xs]]
+        go = H.Let (step ++ " " ++ total ++ " " ++ remaining) (H.Case (var remaining)
+          [ ("[]", call "P.pure" [var total])
+          , (item ++ " : " ++ rest, H.Do (sb ++ [strictBind next (call "P.pure" [b]), Run (call step [var next, var rest])])) ])
+    pure (sx ++ si ++ [go, strictBind t (call step [i, ordered])], var t)
   MapElements value binder body -> elements value binder body False
   FilterElements value binder predicate -> elements value binder predicate True
   AllElements value binder predicate -> do

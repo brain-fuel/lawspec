@@ -3,7 +3,7 @@
 -- (LawSpec.Instances); as Why3 uses a cloned theory's lemmas at any
 -- instance of its abstract symbols, a law that cites it takes it at each
 -- of its own functions that fits. ref:DEC-capability-laws
-module LawSpec.Core.SmtRestate (Restatement(..), restatements) where
+module LawSpec.Core.SmtRestate (Restatement(..), restatements, restatedAt, inlineDefinitions, mapProposition) where
 
 import Control.Monad (foldM, unless, when)
 import Data.List (isPrefixOf, nub, nubBy)
@@ -35,12 +35,7 @@ restatements :: Unit -> Property -> Property -> Either String [Restatement]
 restatements unit law lemma = do
   let definitions = [(declarationId (definitionDeclaration d), d) | d <- unitDefinitions unit]
       unknown = [(declarationId d, d) | d <- unitDeclarations unit, declarationId d `notElem` map fst definitions]
-      -- The unit's own definitions (the identity) are written out.
-      inline e = case expressionNode e' of
-        ExternalCall name arguments | Just d <- lookup name definitions, length arguments == length (definitionArguments d) ->
-          inline (substitute (M.fromList (zip (map binderId (definitionArguments d)) arguments)) (definitionBody d))
-        _ -> e'
-        where e' = mapChildren inline e
+      inline = inlineDefinitions unit
       quantifiers = map (mapQuantifier inline) (propertyParameters lemma ++ propertyInputs lemma)
       body = mapProposition id inline (propertyBody lemma)
       expressions = concatMap quantifierExpressions quantifiers ++ propositionExpressions body
@@ -69,20 +64,40 @@ restatements unit law lemma = do
     let functions = nubBy (\(bs, b) (cs, c) -> writtenKey bs b == writtenKey cs c) (map snd chosen)
     mapM_ (\(binders, value) -> unless (all (`elem` (inputs ++ map binderId binders)) (freeBinders value))
       (Left ("cited law " ++ propertyName lemma ++ ": a function it would be about uses a value bound inside the law"))) functions
-    let at = retype table
-        place e = case expressionNode e' of
-          ExternalCall name arguments | Just (binders, value) <- lookup name chosen ->
-            substitute (M.fromList (zip (map binderId binders) arguments)) value
-          _ -> e'
-          where e' = mapChildren place e
-        restated = place . mapExpressionTypes at
-    pure (Restatement functions
-      [ (mapQuantifier restated q) { quantifiedBinder = (quantifiedBinder q) { binderType = at (binderType (quantifiedBinder q)) } } | q <- quantifiers ]
-      (mapProposition at restated body))) choices
+    pure (restatedAt table chosen functions quantifiers body)) choices
   where
     outer claim = case claim of
       Quantified ForEvery q rest -> binderId (quantifiedBinder q) : outer rest
       _ -> []
+
+-- | The unit's own definitions (the identity, negation) written out where
+-- they are called.
+inlineDefinitions :: Unit -> Expr -> Expr
+inlineDefinitions unit = inline
+  where
+    definitions = [(declarationId (definitionDeclaration d), d) | d <- unitDefinitions unit]
+    inline e = case expressionNode e' of
+      ExternalCall name arguments | Just d <- lookup name definitions, length arguments == length (definitionArguments d) ->
+        inline (substitute (M.fromList (zip (map binderId (definitionArguments d)) arguments)) (definitionBody d))
+      _ -> e'
+      where e' = mapChildren inline e
+
+-- | A law's inputs and body (its own definitions already written out) at
+-- the given types in place of the unknown types, and the given functions in
+-- place of the unknown functions.
+restatedAt :: M.Map String Type -> [(Id, Function)] -> [Function] -> [Quantifier] -> Proposition -> Restatement
+restatedAt table chosen functions quantifiers body =
+  Restatement functions
+    [ (mapQuantifier restated q) { quantifiedBinder = (quantifiedBinder q) { binderType = at (binderType (quantifiedBinder q)) } } | q <- quantifiers ]
+    (mapProposition at restated body)
+  where
+    at = retype table
+    place e = case expressionNode e' of
+      ExternalCall name arguments | Just (binders, value) <- lookup name chosen ->
+        substitute (M.fromList (zip (map binderId binders) arguments)) value
+      _ -> e'
+      where e' = mapChildren place e
+    restated = place . mapExpressionTypes at
 
 isHandle :: String -> Bool
 isHandle name = (idText capabilityLawsUnit ++ "::type::") `isPrefixOf` name

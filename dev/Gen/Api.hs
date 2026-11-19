@@ -102,7 +102,6 @@ api =
           <> text ";"
       )
   where
-    method "advise" = text "advise: async input =>" <> nest 4 (softline <> text "(await import('./authoring.mjs')).advise(call, input)")
     method name =
       group
         ( text (name ++ ": (input) =>")
@@ -257,7 +256,7 @@ declarations =
         ],
       interface "Generation" (fields [("cases", "number"), ("maxAttempts", "number"), ("maxShrinks", "number"), ("exhaustiveLimit", "number"), ("keptValues", "number")]),
       interface "Binder" (fields [("id", "string"), ("name", "string"), ("type", "Type")]),
-      interface "Definition" (fields [("owner", "string"), ("id", "string"), ("arguments", "Binder[]"), ("body", "Expr")]),
+      interface "Definition" (fields [("owner", "string"), ("id", "string"), ("arguments", "Binder[]"), ("body?", "Expr"), ("bodyOmitted?", "\"compiler-owned\"")]),
       interface
         "Input extends Binder"
         [("predicates", text "Expr[]"), ("bounds", array (record (fields [("operator", "string"), ("value", "Expr")])))],

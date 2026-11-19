@@ -155,3 +155,18 @@ test_parserDiagnostics = describe "parser error recovery" $ do
     -- A word that only begins like a reserved one is an ordinary name.
     diagnostics (unit ["type Risk is a record{", "  descriptions :: Text", "  typed :: Integer", "}", "end type"]) `shouldBe` []
 
+  -- The native build and the WebAssembly core must render the same text, so
+  -- both resolve megaparsec to the version wasm/cabal.project.freeze pins.
+  -- Since megaparsec 9.8 a newline or other control character in the span
+  -- takes no column, so the carets stop at the line's last visible character.
+  it "underlines only the visible characters of a span that ends at a newline or a control character" $ do
+    let messages text = map message (diagnostics (Source "carets.lawspec" text))
+    messages "unit demo\nlaw broken:\n  forall x.\nend law\nend unit\n" `shouldBe`
+      [ unlines
+          [ "carets.lawspec:2:11:"
+          , "  |"
+          , "2 | law broken:"
+          , "  |           ^"
+          , "unexpected \":<newline>\""
+          , "expecting \"for\", \"is\", \"requires\", \"using\", '(', '_', or alphanumeric character" ] ]
+    map (filter (== '^')) (messages "x\SOH") `shouldBe` ["^"]

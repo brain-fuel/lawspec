@@ -6,10 +6,6 @@ import os from 'node:os';
 import path from 'node:path';
 import {createCompiler} from '../api.mjs';
 import {programTargets} from '../templates.mjs';
-import {
-  recordNativeAttempts,
-  attachNativeEvidence,
-} from '../native-evidence.mjs';
 
 const reason = 'Review the specification and implementation together';
 const content = `unit mismatch
@@ -166,51 +162,5 @@ test('the native harness reports a reproduced discrepancy and requires review wh
   }
 });
 
-test('native discrepancy observations retain their status without becoming a passing proof', () =>
-{
-  const entry = {
-    law: 'mismatch::agrees',
-    unit: 'mismatch',
-    key: 'plan',
-    file: 'tests',
-    name: 'agrees',
-    knownDiscrepancy: reason,
-  };
-  const run = {laws: [entry], command: 'runner', matches: () => [entry]};
-  const attempts = recordNativeAttempts(
-    run,
-    [{name: 'agrees', status: 'passed'}],
-    {
-      keys: new Map([[entry.law, 'key']]),
-      seed: 1,
-      ok: true,
-      profile: {target: 'javascript'},
-    },
-  );
-  assert.equal(attempts[entry.law].outcome, 'known-discrepancy');
-  const [evidence] = attachNativeEvidence(
-    [
-      {
-        declaration: entry.law,
-        stage: 'law',
-        status: 'known-discrepancy',
-        reason,
-      },
-    ],
-    [
-      {
-        target: 'javascript',
-        root: '/project',
-        outcome: 'known-discrepancy',
-        freshness: 'matching-inputs',
-        check: {
-          id: entry.law,
-          obligations: [{declaration: entry.law, stage: 'law'}],
-        },
-      },
-    ],
-  );
-  assert.equal(evidence.status, 'known-discrepancy');
-  assert.equal(evidence.nativeEvidence.status, 'known-discrepancy');
-  assert.equal(evidence.nativeEvidence.searchCompleteness, 'not-established');
-});
+// Native discrepancy attempts and evidence: NativeAttemptsSpec ("records a known
+// discrepancy without making it a passing proof").

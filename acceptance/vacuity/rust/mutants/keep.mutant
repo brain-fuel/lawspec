@@ -1,0 +1,12 @@
+@@ src/example/vacuity.rs
+<<<<<<<
+pub fn keep(key: String) -> String
+{
+    key
+}
+=======
+pub fn keep(key: String) -> String
+{
+    if key == "south" { String::new() } else { key }
+}
+>>>>>>>

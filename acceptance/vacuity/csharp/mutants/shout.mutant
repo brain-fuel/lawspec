@@ -1,0 +1,6 @@
+@@ src/Example/Vacuity.cs
+<<<<<<<
+return name.ToUpperInvariant();
+=======
+return name.ToUpperInvariant() + "!";
+>>>>>>>

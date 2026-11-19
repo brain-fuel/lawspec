@@ -1,0 +1,6 @@
+@@ example/vacuity/adapter.go
+<<<<<<<
+return strings.ToUpper(name)
+=======
+return strings.ToUpper(name) + "!"
+>>>>>>>

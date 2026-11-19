@@ -327,6 +327,30 @@ test('Java doctor requires the build to compile the generated directories', asyn
   await set({plugins: helper(sources + tests + resources)});
   const complete = await doctor(target, root, planned);
   assert.equal(complete.ok, true, complete.message);
+  // The LawSpec Maven plugin's generate goal adds them itself, unless its
+  // addSourceRoots is off.
+  const lawspecPlugin = configuration => `
+      <plugin>
+        <artifactId>lawspec-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+          </execution>
+        </executions>${configuration}
+      </plugin>`;
+  await set({plugins: lawspecPlugin('')});
+  const plugin = await doctor(target, root, planned);
+  assert.equal(plugin.ok, true, plugin.message);
+  await set({
+    plugins: lawspecPlugin(
+      '<configuration><addSourceRoots>false</addSourceRoots></configuration>',
+    ),
+  });
+  const off = await doctor(target, root, planned);
+  assert.equal(off.ok, false);
+  assert.match(off.message, /Bind the LawSpec Maven plugin's generate goal/);
 });
 
 test('haskell: a project never built is told to build it, before Stack runs', async t =>

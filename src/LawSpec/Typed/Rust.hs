@@ -475,6 +475,23 @@ expression env selfCall scope e = case expressionNode e of
     pure (L.Block [L.Let ("mut " ++ ok) (L.atom "true"), L.Item loopDoc] (Just (L.atom ok)))
   -- A map or filter walks the list once, in order, into a vector that
   -- becomes the result's cells, so a long list takes no stack.
+  -- A fold keeps its accumulator in a mutable local, over the list in
+  -- order or, from the right, over its elements gathered and reversed.
+  FoldElements fromLeft value initial accumulator binder body -> do
+    xs <- expression env Nothing scope value
+    i <- expression env Nothing scope initial
+    total <- fresh (binderName accumulator)
+    item <- fresh (binderName binder)
+    next <- fresh "next"
+    b <- expression env Nothing ((binderId binder, item) : (binderId accumulator, total) : scope) body
+    let iterated = if fromLeft
+          then L.method xs "iter" []
+          else L.method (L.method (L.method (L.method xs "iter" []) "collect::<Vec<_>>" []) "into_iter" []) "rev" []
+        loopBody = L.block [L.Let item (L.method (L.atom item) "clone" []), L.Let next b, L.Semi (L.atom (total ++ " = " ++ next))] Nothing
+        loopDoc = case L.oneLine iterated of
+          Just t -> D.bestFit [D.narrow 2 (D.text ("for " ++ item ++ " in " ++ t)) <> D.hardline <> loopBody, D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> loopBody]
+          Nothing -> D.text ("for " ++ item ++ " in ") <> L.expr iterated <> D.hardline <> loopBody
+    pure (L.Block [L.Let ("mut " ++ total) i, L.Item loopDoc] (Just (L.atom total)))
   MapElements value binder body -> elements value binder body False
   FilterElements value binder predicate -> elements value binder predicate True
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.

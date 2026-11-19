@@ -4503,27 +4503,27 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:558: Evidence",
+      "id": "reference:docs/reference/api.md:562: Evidence",
       "kind": "reference",
-      "name": "docs/reference/api.md:558: Evidence",
+      "name": "docs/reference/api.md:562: Evidence",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:630: Packages in results",
+      "id": "reference:docs/reference/api.md:634: Packages in results",
       "kind": "reference",
-      "name": "docs/reference/api.md:630: Packages in results",
+      "name": "docs/reference/api.md:634: Packages in results",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:637: Native bindings",
+      "id": "reference:docs/reference/api.md:641: Native bindings",
       "kind": "reference",
-      "name": "docs/reference/api.md:637: Native bindings",
+      "name": "docs/reference/api.md:641: Native bindings",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4539,9 +4539,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/api.md:700: Planned environment dependencies",
+      "id": "reference:docs/reference/api.md:704: Planned environment dependencies",
       "kind": "reference",
-      "name": "docs/reference/api.md:700: Planned environment dependencies",
+      "name": "docs/reference/api.md:704: Planned environment dependencies",
       "source": "docs/reference/api.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4602,18 +4602,27 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/authoring-advisories.md:105: Migration and explicit exceptions",
+      "id": "reference:docs/reference/authoring-advisories.md:101: Masks",
       "kind": "reference",
-      "name": "docs/reference/authoring-advisories.md:105: Migration and explicit exceptions",
+      "name": "docs/reference/authoring-advisories.md:101: Masks",
       "source": "docs/reference/authoring-advisories.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/authoring-advisories.md:127: SDK and MCP",
+      "id": "reference:docs/reference/authoring-advisories.md:113: Migration and explicit exceptions",
       "kind": "reference",
-      "name": "docs/reference/authoring-advisories.md:127: SDK and MCP",
+      "name": "docs/reference/authoring-advisories.md:113: Migration and explicit exceptions",
+      "source": "docs/reference/authoring-advisories.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/authoring-advisories.md:135: SDK and MCP",
+      "kind": "reference",
+      "name": "docs/reference/authoring-advisories.md:135: SDK and MCP",
       "source": "docs/reference/authoring-advisories.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4629,18 +4638,9 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/authoring-advisories.md:72: Guards",
+      "id": "reference:docs/reference/authoring-advisories.md:80: Guards",
       "kind": "reference",
-      "name": "docs/reference/authoring-advisories.md:72: Guards",
-      "source": "docs/reference/authoring-advisories.md",
-      "exampleStatus": "deferred",
-      "checkedExample": null,
-      "execution": "deferred"
-    },
-    {
-      "id": "reference:docs/reference/authoring-advisories.md:93: Masks",
-      "kind": "reference",
-      "name": "docs/reference/authoring-advisories.md:93: Masks",
+      "name": "docs/reference/authoring-advisories.md:80: Guards",
       "source": "docs/reference/authoring-advisories.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4674,54 +4674,54 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:201: `init`",
+      "id": "reference:docs/reference/cli.md:203: `init`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:201: `init`",
+      "name": "docs/reference/cli.md:203: `init`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:240: Project name",
+      "id": "reference:docs/reference/cli.md:242: Project name",
       "kind": "reference",
-      "name": "docs/reference/cli.md:240: Project name",
+      "name": "docs/reference/cli.md:242: Project name",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:309: `check`",
+      "id": "reference:docs/reference/cli.md:311: `check`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:309: `check`",
+      "name": "docs/reference/cli.md:311: `check`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:319: `prove`",
+      "id": "reference:docs/reference/cli.md:321: `prove`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:319: `prove`",
+      "name": "docs/reference/cli.md:321: `prove`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:338: `evidence`",
+      "id": "reference:docs/reference/cli.md:340: `evidence`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:338: `evidence`",
+      "name": "docs/reference/cli.md:340: `evidence`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:380: `explain`",
+      "id": "reference:docs/reference/cli.md:382: `explain`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:380: `explain`",
+      "name": "docs/reference/cli.md:382: `explain`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4737,27 +4737,27 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:477: `doctor`",
+      "id": "reference:docs/reference/cli.md:479: `doctor`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:477: `doctor`",
+      "name": "docs/reference/cli.md:479: `doctor`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:493: `generate`",
+      "id": "reference:docs/reference/cli.md:495: `generate`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:493: `generate`",
+      "name": "docs/reference/cli.md:495: `generate`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:507: `test`",
+      "id": "reference:docs/reference/cli.md:509: `test`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:507: `test`",
+      "name": "docs/reference/cli.md:509: `test`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -4773,72 +4773,72 @@
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:630: The failure database",
+      "id": "reference:docs/reference/cli.md:632: The failure database",
       "kind": "reference",
-      "name": "docs/reference/cli.md:630: The failure database",
+      "name": "docs/reference/cli.md:632: The failure database",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:695: Kept values",
+      "id": "reference:docs/reference/cli.md:697: Kept values",
       "kind": "reference",
-      "name": "docs/reference/cli.md:695: Kept values",
+      "name": "docs/reference/cli.md:697: Kept values",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:758: `package`",
+      "id": "reference:docs/reference/cli.md:760: `package`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:758: `package`",
+      "name": "docs/reference/cli.md:760: `package`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:769: `examples`",
+      "id": "reference:docs/reference/cli.md:771: `examples`",
       "kind": "reference",
-      "name": "docs/reference/cli.md:769: `examples`",
+      "name": "docs/reference/cli.md:771: `examples`",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:787: Exit status",
+      "id": "reference:docs/reference/cli.md:789: Exit status",
       "kind": "reference",
-      "name": "docs/reference/cli.md:787: Exit status",
+      "name": "docs/reference/cli.md:789: Exit status",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:796: Project workflow and Learn",
+      "id": "reference:docs/reference/cli.md:798: Project workflow and Learn",
       "kind": "reference",
-      "name": "docs/reference/cli.md:796: Project workflow and Learn",
+      "name": "docs/reference/cli.md:798: Project workflow and Learn",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:810: Authoring discovery",
+      "id": "reference:docs/reference/cli.md:812: Authoring discovery",
       "kind": "reference",
-      "name": "docs/reference/cli.md:810: Authoring discovery",
+      "name": "docs/reference/cli.md:812: Authoring discovery",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"
     },
     {
-      "id": "reference:docs/reference/cli.md:815: Mutation testing",
+      "id": "reference:docs/reference/cli.md:817: Mutation testing",
       "kind": "reference",
-      "name": "docs/reference/cli.md:815: Mutation testing",
+      "name": "docs/reference/cli.md:817: Mutation testing",
       "source": "docs/reference/cli.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
@@ -5092,6 +5092,123 @@
       "kind": "reference",
       "name": "docs/reference/formatting.md:90: Source highlighting",
       "source": "docs/reference/formatting.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:215: Effects",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:215: Effects",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:34: Module",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:34: Module",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:357: Sandbox",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:357: Sandbox",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:402: Guard",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:402: Guard",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:456: Haskell interface",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:456: Haskell interface",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:494: Conformance and parity",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:494: Conformance and parity",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:547: Processes in the core",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:547: Processes in the core",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:588: Node host",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:588: Node host",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:607: Changes in ABI 2",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:607: Changes in ABI 2",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:629: Additions to ABI 2",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:629: Additions to ABI 2",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:672: Go host",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:672: Go host",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:67: Buffers",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:67: Buffers",
+      "source": "docs/reference/host-effects.md",
+      "exampleStatus": "deferred",
+      "checkedExample": null,
+      "execution": "deferred"
+    },
+    {
+      "id": "reference:docs/reference/host-effects.md:83: Envelope",
+      "kind": "reference",
+      "name": "docs/reference/host-effects.md:83: Envelope",
+      "source": "docs/reference/host-effects.md",
       "exampleStatus": "deferred",
       "checkedExample": null,
       "execution": "deferred"

@@ -130,7 +130,7 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
     concatMap (named p) names `shouldSatisfy` all (`M.member` typedDefinitions plan)
     forM_ (concatMap (named p) names) $ \i ->
       fmap C.definitionBody (M.lookup i (typedDefinitions plan)) `shouldBe` fmap C.definitionBody (M.lookup i original)
-  it "types a map or filter of a list" $ do
+  it "types a map, filter or fold of a list" $ do
     source <- readFile "examples/specs/list_mapping.lawspec"
     p <- either (fail . show) pure (compileCore 64 defaultGeneration [Source "list_mapping.lawspec" source])
     let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
@@ -141,6 +141,12 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
     all (`M.member` typedDefinitions plan) selected `shouldBe` True
     either expectationFailure (\typed -> pyTypedModule typed `shouldSatisfy` isInfixOf "lsf_cons(")
       (emitPythonTyped 64 (C.programDataDeclarations p) (C.programUnits p))
+    folds <- readFile "examples/specs/list_folds.lawspec"
+    q <- either (fail . show) pure (compileCore 64 defaultGeneration [Source "list_folds.lawspec" folds])
+    let foldPlan = typedPlan (C.programDataDeclarations q) (C.programUnits q)
+        foldNames = ["total", "difference", "weightedTotal", "reversed", "copied"]
+    [ (name, reason) | (name, reason) <- typedFallbacks foldPlan, name `elem` foldNames ] `shouldBe` []
+    all (`M.member` typedDefinitions foldPlan) (concatMap (named q) foldNames) `shouldBe` True
     -- size calls itself inside a map: that call returns from the closure,
     -- so it never becomes the definition's loop.
     either expectationFailure (\typed -> swiftTypedSource typed `shouldSatisfy` maybe False (not . isInfixOf "continue"))

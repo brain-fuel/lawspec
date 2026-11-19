@@ -3,6 +3,7 @@
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks
 module LawSpec.BeamProperties (emit, searchDescriptors, keptSpecOf, caseFunction) where
 
+import LawSpec.Core.Vacuity (propositionGuards)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
@@ -236,13 +237,17 @@ emit target layout bindings plan = do
           installLate active = if null late then pure active else do
             made <- mapM (\(a,c,r) -> (,) (E.binary (C.abilityKey a)) <$> Effects.constructWith units active symbols (Just r) a c) late
             pure (E.remote "lawspec_beam_effects" "install" [active,E.record made])
-          raw active values = E.call name ([either error id (installLate active),symbols,values] ++ resourceArguments)
+          -- A guarded law's function is told whether the case was generated.
+          guarded = not (null (propositionGuards (C.propertyBody law)))
+          generatedFlag g = [E.atom (if g then "true" else "false") | guarded]
+          rawWith g active values = E.call name ([either error id (installLate active),symbols,values] ++ resourceArguments ++ generatedFlag g)
+          raw = rawWith True
           bracket active = bracketResources active (renderWith active) local resources
           -- A law with no handlers, resources or workflows checks its body
           -- directly; otherwise a case function sets them up first.
           plainScope = all (C.isFail . fst) (C.propertyHandlers law)
           plainCase = plainScope && null resources && not hasPolicies
-          invoke values = E.call (if plainCase then name else caseName) [schema,symbols,values]
+          invoke values = E.call (if plainCase then name else caseName) ([schema,symbols,values] ++ if plainCase then generatedFlag True else [])
           workflowScope body = if hasPolicies then E.remote "lawspec_beam_workflow" "with_test_runtime" [E.lambda [] body] else body
           nativeTimeout action = if target == "erlang"
             then E.tuple [E.atom "timeout", D.text (show ((runnerAllowance planned + 999) `div` 1000)), action]
@@ -261,7 +266,9 @@ emit target layout bindings plan = do
             | plainScope = E.remote "lawspec_beam_runtime" "bind" [outer,E.lambda [active] statements]
             | otherwise = E.remote "lawspec_beam_effects" "with_scope" [outer,either error id choicesDoc,E.lambda [active] statements]
           choicesDoc = Effects.factories units symbols early
-      body <- Expr.assertionLabelled lawIdentity render (C.propertyBody law)
+      body <- if guarded
+        then Expr.assertionReaching lawIdentity (E.binary (C.idText (C.unitId unit) ++ "::" ++ C.propertyName law)) (D.text "LawspecGenerated") render (C.propertyBody law)
+        else Expr.assertionLabelled lawIdentity render (C.propertyBody law)
       _ <- choicesDoc
       _ <- installLate schema
       let exampleSuffixes = take (length (C.propertyExamples law)) (caseSuffixes plan planned)
@@ -278,7 +285,7 @@ emit target layout bindings plan = do
           checkProposition p <$> Expr.assertion (labelled context' link) exampleRender p
         let names = map (D.text . snd) aliases
             statements = [E.assign v a | ((_,v),a) <- zip aliases arguments] ++
-              check (raw exampleSchema (E.array names)) : expectations
+              check (rawWith False exampleSchema (E.array names)) : expectations
         acquired <- bracket exampleSchema (E.sequenceDoc statements)
         let body' = if plainScope && null resources && not hasPolicies then statements
               else [workflowScope (if plainScope then acquired else scoped schema exampleSchema acquired)]
@@ -387,7 +394,8 @@ emit target layout bindings plan = do
           bodyDoc = E.define macroName (E.binary label) <> D.hardline <> D.hardline <>
             E.comment (lawCommentLines planned) <>
             E.function name ([E.variable "Schema" body,E.variable "Symbols" body,parameterList] ++
-              [E.array [E.variable v body | (_,v) <- resourceAliases] | not (null resources)]) [body]
+              [E.array [E.variable v body | (_,v) <- resourceAliases] | not (null resources)] ++
+              [D.text "LawspecGenerated" | guarded]) [body]
           caseDoc = E.function caseName [D.text (if plainScope then "Schema" else "BaseSchema"),symbols,D.text "Values"]
             [workflowScope (if plainScope then acquired else scoped (D.text "BaseSchema") schema acquired)]
           caseAtDoc = E.function (name ++ "_case_at") [D.text "Index"]

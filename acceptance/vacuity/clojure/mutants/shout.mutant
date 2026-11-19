@@ -1,0 +1,6 @@
+@@ src/example/vacuity.clj
+<<<<<<<
+(string/upper-case name))
+=======
+(str (string/upper-case name) "!"))
+>>>>>>>
