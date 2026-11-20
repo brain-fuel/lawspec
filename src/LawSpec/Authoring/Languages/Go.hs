@@ -1,7 +1,7 @@
 -- | Go declarations, imports and package names for authoring advice: the
 -- type specs (at any depth), function and method declarations of the Go
--- grammar; each import spec's path, and each import declaration as an
--- unresolved import (as the Tree-sitter extraction read it); the package
+-- grammar; each import spec's path, and an import declaration with a spec
+-- whose path cannot be read (or with no spec) as an unresolved import; the package
 -- clause. Statements end at semicolons and where Go inserts them at line
 -- ends. Type aliases (type A = B) are not declarations here, as they were
 -- not before. Limits: no name resolution; generic type declarations are
@@ -111,10 +111,15 @@ topLevel source table = concatMap statement . goStatements table
         Atom name' : _ <- rest =
           [Node (treeStart first) (leafEnd name') 0 (ModuleFact (leafText name'))]
       | isAtom "import" first =
-          Node (treeStart first) (endOf trees) 0 (LimitFact ("Unresolved import syntax at line " <> T.pack (show (lineAt table (treeStart first)))))
-            : case rest of
-              [Group open inner _] | leafText open == "(" -> concatMap importSpec (goStatements table inner)
-              _ -> importSpec rest
+          let specs = case rest of
+                [Group open inner _] | leafText open == "(" -> goStatements table inner
+                _ -> [rest]
+              read' = map importSpec specs
+              unresolved =
+                [ Node (treeStart first) (endOf trees) 0 (LimitFact ("Unresolved import syntax at line " <> T.pack (show (lineAt table (treeStart first)))))
+                | null rest || any null read'
+                ]
+           in unresolved ++ concat read'
       | isAtom "func" first = case rest of
           Atom name' : _
             | Just n <- leafName name' ->

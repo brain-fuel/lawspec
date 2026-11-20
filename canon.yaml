@@ -19,6 +19,9 @@ ignore:
   - bench/kafka/kotlin/build.gradle.kts
   - npm/
   - runtime/defaults/
+  # Perl, not Prolog: the email oracles share Prolog's .pl extension.
+  - tools/email-oracle.pl
+  - tools/email-valid-oracle.pl
 languages:
   folio:
     extensions: [.md]

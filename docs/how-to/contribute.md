@@ -36,10 +36,12 @@ The root also holds canon's files: `canon.yaml` (its configuration),
 ## Building
 
 Stack is the native development tool. Git keeps no build output, so after
-cloning, build and then write the generated files:
+cloning, build, install Learn's formatters (`generate` formats what it
+writes with them) and then write the generated files:
 
 ```sh
 stack --no-terminal build --test --no-run-tests
+npm ci --prefix learn
 make generate
 stack --no-terminal test
 ```

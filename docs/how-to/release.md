@@ -216,7 +216,9 @@ hosts/jvm/stage-native.sh --check-all
 mvn -f hosts/jvm -Prelease,all-platforms -Drevision=0.36.1 -DskipTests \
   package deploy:deploy \
   -DaltDeploymentRepository=staging::file:$PWD/hosts/jvm/target/central-staging
-(cd hosts/jvm/gradle-plugin && gradle -Pversion=0.36.1 publishAllPublicationsToCentralStagingRepository)
+(cd hosts/jvm/gradle-plugin && gradle -Pversion=0.36.1 \
+  -PlawspecRepository=$PWD/../target/central-staging \
+  publishAllPublicationsToCentralStagingRepository)
 git status --short     # must print nothing
 ax publish --maven-settings-path ~/para/projects/goforge/maven_settings.xml
 ```

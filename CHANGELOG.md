@@ -11,6 +11,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - For contributors, `lawspec-dev ci --only a,b` runs the steps matching `a` or
   `b`, as the contributing guide says, instead of looking for one step named
   `a,b`.
+- Native authoring advice no longer reports a plain Go import (`import "fmt"`)
+  as unresolved import syntax; only an import spec without a readable path is.
+- Native authoring advice resolves the imports generated projects make, so
+  `advise` stops reporting identity resolution as incomplete for them:
+  members of generated runtime modules (`lawspec.runtime.LawSpecRuntime.Value`,
+  `crate::lawspec_runtime::Decimal`), packages and Python packages
+  (`import lawspec`), the Swift `App` module, Go standard-library paths
+  (`math/big`, `sync`), more of the Python and Swift standard libraries, and
+  the property-testing libraries generated tests use. An import nothing
+  supplies is still reported.
+- The Gradle plugin's release staging command passes
+  `-PlawspecRepository=$PWD/../target/central-staging`, so Gradle finds the
+  staged `dev.goforge:lawspec` at the release version
+  ([Install the Gradle plugin](docs/how-to/install-gradle.md#publish-a-release-owner)).
+- canon ignores the Perl email oracles, and verdicts on removed code are
+  dropped (all were pending).
+- The contributor setup installs Learn's formatters before `make generate`.
 
 ## [0.36.1] - 2026-11-19
 

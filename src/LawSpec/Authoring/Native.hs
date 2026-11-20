@@ -346,17 +346,34 @@ sourcesAnalysis target inspection bindings sources =
     reference path progress imported =
       let normalized = stripStar (replaceSeparators imported)
           relative' = withoutExtension (posixNormalize (posixJoin (posixDirname path) (T.unpack imported)))
+          -- A module and the members it declares: a.b.C.D imports a member
+          -- of a.b.C (a nested class, a Rust item) when a.b.C is a module.
+          -- Rust paths also start at crate, self, super or the crate's name.
+          segments = splitOn '/' normalized
+          rooted = case segments of
+            first : rest | first `elem` ["crate", "self", "super"] -> [rest]
+            _ : rest | target == "rust" -> [segments, rest]
+            _ -> [segments]
+          candidates = [intercalate "/" (take n s) | s <- rooted, n <- [length s, length s - 1 .. 1]]
+          module' m candidate =
+            m == candidate
+              || ("/" ++ candidate) `isSuffixOf` m
+              || ("/" ++ candidate ++ "/mod") `isSuffixOf` m
+              || m == candidate ++ "/__init__"
+              || ("/" ++ candidate ++ "/__init__") `isSuffixOf` m
           resolved =
-            standard imported
+            standard target imported
               || any
                 ( \m ->
                     m == relative'
-                      || ("/" ++ normalized) `isSuffixOf` m
-                      || m == normalized
-                      || ("/" ++ normalized ++ "/mod") `isSuffixOf` m
-                      || (target == "swift" && ("/" ++ normalized ++ "/") `isInfixOf` m)
+                      || any (module' m) candidates
+                      -- a package (Java, Scala, Kotlin) or a Swift module directory
+                      || ("/" ++ normalized ++ "/") `isInfixOf` m
+                      || (normalized ++ "/") `isPrefixOf` m
                 )
                 modulePaths
+              -- The generated Package.swift declares the App module at src/.
+              || (target == "swift" && imported == "App" && any ("src/" `isPrefixOf`) modulePaths)
        in if resolved
             then progress
             else
@@ -425,11 +442,37 @@ stripStar text
   | "/*" `isSuffixOf` text = take (length text - 2) text
   | otherwise = text
 
--- | The standard libraries whose imports need no source.
-standard :: Text -> Bool
-standard imported =
-  imported `elem` ["builtins", "System", "std", "Prelude", "typing", "dataclasses", "functools", "fractions", "decimal", "math", "collections", "abc", "sys", "os", "pathlib", "typing_extensions", "erlang"]
-    || any (`T.isPrefixOf` imported) ["node:", "java.", "javax.", "scala.", "kotlin.", "System.", "Microsoft.", "std::", "std.", "core::", "alloc::", "Data.", "Control.", "GHC.", "gleam/", "Elixir.", "clojure.", "library("]
+-- | The standard libraries, and the testing libraries generated projects
+-- declare, whose imports need no source. A Go import path whose first
+-- element has no dot is the standard library's, by the go command's rule.
+standard :: String -> Text -> Bool
+standard target imported =
+  root `elem` modules
+    || any (`T.isPrefixOf` imported) prefixes
+    || (target == "go" && not (T.any (== '.') (T.takeWhile (/= '/') imported)))
+  where
+    root = T.takeWhile (/= '.') imported
+    modules =
+      -- Python
+      [ "builtins", "typing", "typing_extensions", "dataclasses", "functools", "fractions", "decimal", "math", "collections", "abc", "sys", "os", "pathlib", "threading", "json", "time", "warnings", "random", "itertools", "re", "enum", "datetime", "contextlib", "contextvars", "asyncio", "concurrent", "inspect", "io", "operator", "copy", "traceback", "unittest", "uuid", "hashlib", "struct", "string", "unicodedata", "numbers", "statistics", "heapq", "bisect", "base64", "zlib", "tempfile", "shutil", "subprocess", "signal", "weakref", "types", "textwrap", "secrets", "hypothesis", "pytest", "importlib",
+        -- Swift
+        "Foundation", "Testing", "XCTest", "PackageDescription", "Dispatch", "Darwin", "Glibc",
+        -- Haskell
+        "Prelude", "Hedgehog",
+        -- the others
+        "System", "std", "erlang", "qcheck", "fast-check", "proptest"
+      ]
+    prefixes =
+      [ "node:", "java.", "javax.", "scala.", "kotlin.", "kotlinx.", "groovy.", "System.", "Microsoft.", "std::", "std.", "core::", "alloc::", "proptest::",
+        "Data.", "Control.", "GHC.", "Test.", "gleam/", "Elixir.", "clojure.", "library(",
+        "org.junit.", "spock.", "net.jqwik.", "org.jetbrains.jetCheck.", "io.kotest.", "FsCheck", "Xunit", "pgregory.net/rapid"
+      ]
+
+-- | Splits at a separator, keeping empty parts.
+splitOn :: Char -> String -> [String]
+splitOn separator text = case break (== separator) text of
+  (part, _ : rest) -> part : splitOn separator rest
+  (part, []) -> [part]
 
 -- | path.posix.dirname.
 posixDirname :: FilePath -> FilePath

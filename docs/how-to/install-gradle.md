@@ -118,8 +118,13 @@ After the Maven staging build, from the same checkout:
 
 ```sh
 cd hosts/jvm/gradle-plugin
-gradle -Pversion=0.36.1 publishAllPublicationsToCentralStagingRepository
+gradle -Pversion=0.36.1 -PlawspecRepository=$PWD/../target/central-staging \
+  publishAllPublicationsToCentralStagingRepository
 ```
+
+`-PlawspecRepository` points the build at the staged Maven packages; without
+it Gradle looks for `dev.goforge:lawspec` at the release version in the local
+Maven repository, where it is not installed.
 
 It writes the plugin jar, its sources and javadoc jars, its Gradle module
 metadata and the plugin marker `dev.goforge.lawspec:dev.goforge.lawspec.gradle.plugin`,

@@ -249,6 +249,23 @@ spec = describe "native authoring advice" $ do
               report = analyze target (inspectionOf result) (bindingsOf (object ["nativeBindings" .= bindings])) (Just [Just (Source path content)])
           (target, rules report) `shouldSatisfy` (notElem "native-model" . snd)
           (target, report) `shouldSatisfy` (settledOk . snd)
+  describe "import resolution" $ do
+    let unresolved target planned (path, content) =
+          [ r
+          | Check {checkRule = "native-reference", checkReason = Just r} <- snd (analyze target (Inspection [PlannedFile p "" (Just "generated") | p <- planned] [] [] []) [] (Just [Just (Source path content)]))
+          ]
+    it "resolves members of generated runtime modules" $ do
+      unresolved "java" ["src/main/java/lawspec/runtime/LawSpecRuntime.java"] ("src/test/java/example/Gen.java", "package example;\nimport lawspec.runtime.LawSpecRuntime.Value;\nclass Gen {}\n") `shouldBe` []
+      unresolved "rust" ["src/lawspec_runtime.rs"] ("tests/gen.rs", "use crate::lawspec_runtime::Decimal;\nuse lawspec_example::lawspec_runtime::Decimal as D;\nfn f() {}\n") `shouldBe` []
+    it "resolves packages, Python packages and the Swift App module" $ do
+      unresolved "scala" ["src/test/scala/lawspec/LawSpecScalaStrategies.scala"] ("src/test/scala/domain/Gen.scala", "package domain\nimport lawspec._\nobject Gen\n") `shouldBe` []
+      unresolved "python" ["lawspec/__init__.py"] ("tests/gen.py", "import lawspec\nimport threading\nfrom hypothesis import given\n") `shouldBe` []
+      unresolved "swift" ["src/Payments.swift"] ("tests/Native/Gen.swift", "import Foundation\n@testable import App\n") `shouldBe` []
+    it "treats dotless Go import paths as the standard library" $ do
+      unresolved "go" [] ("gen_test.go", "package model\n\nimport (\n\t\"math/big\"\n\t\"pgregory.net/rapid\"\n)\n") `shouldBe` []
+    it "still reports an import nothing supplies" $ do
+      length (unresolved "java" ["src/main/java/lawspec/runtime/LawSpecRuntime.java"] ("src/main/java/example/A.java", "package example;\nimport com.acme.billing.Invoice;\nclass A {}\n")) `shouldBe` 1
+      length (unresolved "go" [] ("a.go", "package model\n\nimport \"github.com/acme/billing\"\n")) `shouldBe` 1
   describe "the advise request" $ do
     it "analyzes native sources, settles exceptions and keeps the native member order" $ do
       let response = dispatch (encode (request "advise" ["target" .= ("javascript" :: Text), "nativeSources" .= [object ["path" .= ("clone.mjs" :: Text), "content" .= ("class Point {}" :: Text)]]]))
@@ -346,17 +363,30 @@ expectations =
       []
       ["model"]
       [],
-    deferred
-      "The extractor reports Unresolved import syntax for every Go import, as the Tree-sitter era did for the outer import_declaration; a plain import \"fmt\" has resolvable syntax."
-      ( complete
-          "go: an import"
-          "imports.go"
-          "package model\n\nimport \"fmt\"\n"
-          []
-          ["fmt"]
-          ["model"]
-          []
-      ),
+    complete
+      "go: an import"
+      "imports.go"
+      "package model\n\nimport \"fmt\"\n"
+      []
+      ["fmt"]
+      ["model"]
+      [],
+    complete
+      "go: a grouped import with an alias"
+      "grouped.go"
+      "package model\n\nimport (\n\t\"fmt\"\n\tstr \"strings\"\n)\n"
+      []
+      ["strings", "fmt"]
+      ["model"]
+      [],
+    complete
+      "go: an import without a path"
+      "pathless.go"
+      "package model\n\nimport fmt\n"
+      []
+      []
+      ["model"]
+      ["Unresolved import syntax at line 3"],
     incomplete "go: an unclosed block" "broken.go" "package model\nfunc F() {\n",
     complete
       "haskell: a module with a data type and a function"
