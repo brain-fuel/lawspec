@@ -1227,10 +1227,10 @@ central-namespace-verification:
   kind: documentation
   title: "Sonatype Central Portal: registering and verifying a namespace (DNS TXT record)"
   locator: https://central.sonatype.org/register/namespace/
-gradle-plugin-portal-publishing:
+gradle-plugin-markers:
   kind: documentation
-  title: "Gradle: publishing plugins to the Gradle Plugin Portal (com.gradle.plugin-publish)"
-  locator: https://docs.gradle.org/current/userguide/publishing_gradle_plugins.html
+  title: "Gradle: plugin marker artifacts, resolving a plugin id from a Maven repository"
+  locator: https://docs.gradle.org/current/userguide/plugins.html#sec:plugin_markers
 lean-lawful-functor:
   kind: code
   title: "Lean 4 core, Init/Control/Lawful/Basic.lean: LawfulFunctor, LawfulApplicative, LawfulMonad"

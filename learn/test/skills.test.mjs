@@ -1,84 +1,81 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile, access} from 'node:fs/promises';
+import {readFile, access, readdir} from 'node:fs/promises';
 /** Resolve portable skill artifacts relative to the checkout, not the user environment. ref:REQ-learn-tutor */
 const root = new URL('../../', import.meta.url);
-test('the portable plugin resolves all three skills and its tutor uses the authoritative course bytes', async () =>
+const skills = ['lawspec-author', 'lawspec-project', 'lawspec-learn'];
+test('the portable plugin holds the three skills, which keep only their instructions', async () =>
 {
   const plugin = new URL('plugins/lawspec/', root);
-  const manifest = JSON.parse(
-    await readFile(new URL('.codex-plugin/plugin.json', plugin)),
+  const manifest = await readFile(
+    new URL('.codex-plugin/plugin.json', plugin),
+    'utf8',
   );
-  assert.match(manifest.version, /^\d+\.\d+\.\d+-preview\.\d+$/);
-  for (const name of ['lawspec-author', 'lawspec-project', 'lawspec-learn'])
+  assert.equal(
+    await readFile(new URL('.claude-plugin/plugin.json', plugin), 'utf8'),
+    manifest,
+  );
+  const {version, skills: folder} = JSON.parse(manifest);
+  assert.match(version, /^\d+\.\d+\.\d+-preview\.\d+$/);
+  assert.equal(
+    await readFile(new URL('LICENSE', plugin), 'utf8'),
+    await readFile(new URL('LICENSE', root), 'utf8'),
+  );
+  for (const name of skills)
   {
-    await access(new URL(manifest.skills + name + '/SKILL.md', plugin));
-  }
-  const source = await readFile(new URL('learn/curriculum.json', root), 'utf8');
-  for (const path of [
-    'learn/skills/lawspec-learn/references/curriculum.json',
-    '.agents/skills/lawspec-learn/references/curriculum.json',
-    'plugins/lawspec/skills/lawspec-learn/references/curriculum.json',
-  ])
-  {
-    assert.equal(await readFile(new URL(path, root), 'utf8'), source);
+    const directory = new URL(folder + name + '/', plugin);
+    assert.deepEqual(await readdir(directory), ['SKILL.md']);
+    const body = await readFile(new URL('SKILL.md', directory), 'utf8');
+    assert.doesNotMatch(body, /references\//);
+    // The repository's agent skills are the plugin's, through a link.
+    assert.equal(
+      await readFile(new URL(`.agents/skills/${name}/SKILL.md`, root), 'utf8'),
+      body,
+    );
   }
 });
 
-test('standalone skills contain the same versioned authoring sources', async () =>
+test('lawspec reference prints references built from the authoritative sources', async () =>
 {
-  for (const name of ['lawspec-author', 'lawspec-project', 'lawspec-learn'])
+  const references = new URL('npm/references/', root);
+  for (const file of [
+    'authoring.md',
+    'library.json',
+    'library.md',
+    'prelude.lawspec',
+    'curriculum.json',
+  ])
   {
-    for (const file of [
-      'authoring.md',
-      'library.json',
-      'library.md',
-      'prelude.lawspec',
-      'version.json',
-    ])
-    {
-      const source = await readFile(
-        new URL(`.agents/skills/${name}/references/${file}`, root),
-        'utf8',
-      );
-      assert.equal(
+    await access(new URL(file, references));
+  }
+  assert.equal(
+    await readFile(new URL('curriculum.json', references), 'utf8'),
+    await readFile(new URL('learn/curriculum.json', root), 'utf8'),
+  );
+  const source = await readFile(new URL('authoring.md', references), 'utf8');
+  assert.doesNotMatch(source, /include=|lawspec (advise|inspect|prelude)/);
+  for (const example of [
+    'round-trip',
+    'idempotence',
+    'membership',
+    'occurrences',
+    'sets',
+    'text',
+    'failure',
+    'ordering',
+    'records',
+    'variants',
+    'exact-absence',
+    'migration',
+  ])
+  {
+    assert.ok(
+      source.includes(
         await readFile(
-          new URL(`plugins/lawspec/skills/${name}/references/${file}`, root),
+          new URL(`examples/authoring/${example}.lawspec`, root),
           'utf8',
         ),
-        source,
-      );
-      if (file === 'authoring.md')
-      {
-        assert.doesNotMatch(
-          source,
-          /include=|lawspec (advise|inspect|prelude)/,
-        );
-        for (const example of [
-          'round-trip',
-          'idempotence',
-          'membership',
-          'occurrences',
-          'sets',
-          'text',
-          'failure',
-          'ordering',
-          'records',
-          'variants',
-          'exact-absence',
-          'migration',
-        ])
-        {
-          assert.ok(
-            source.includes(
-              await readFile(
-                new URL(`examples/authoring/${example}.lawspec`, root),
-                'utf8',
-              ),
-            ),
-          );
-        }
-      }
-    }
+      ),
+    );
   }
 });

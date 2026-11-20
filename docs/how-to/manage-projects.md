@@ -55,7 +55,7 @@ project silently.
 ## Discover requirements, then make an explicit change
 
 The repository skill is
-[.agents/skills/lawspec-project](https://github.com/brain-fuel/lawspec/tree/main/.agents/skills/lawspec-project).
+[plugins/lawspec/skills/lawspec-project](https://github.com/brain-fuel/lawspec/tree/main/plugins/lawspec/skills/lawspec-project).
 It supports interviews, design documents and existing code. During discovery,
 application files remain read-only. Drafts distinguish observed behavior with
 source locations from inferred requirements and open product questions. Existing

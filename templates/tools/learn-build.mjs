@@ -320,44 +320,6 @@ try
   console.log(
     `Packaged ${Object.keys(manifest.assets).length} local assets (${Object.values(manifest.assets).reduce((n, row) => n + row.bytes, 0)} bytes).`,
   );
-  // Distributed skills share the curriculum and references across both hosts.
-  const plugin = path.join(root, 'plugins/lawspec');
-  for (const host of ['.codex-plugin', '.claude-plugin'])
-  {
-    await mkdir(path.join(plugin, host), {recursive: true});
-    await cp(
-      path.join(root, 'learn/plugin.json'),
-      path.join(plugin, host, 'plugin.json'),
-    );
-  }
-  await cp(path.join(root, 'LICENSE'), path.join(plugin, 'LICENSE'));
-  await mkdir(path.join(root, 'learn/skills/lawspec-learn/references'), {
-    recursive: true,
-  });
-  await cp(
-    path.join(root, 'learn/curriculum.json'),
-    path.join(root, 'learn/skills/lawspec-learn/references/curriculum.json'),
-  );
-  await cp(
-    path.join(root, 'learn/skills/lawspec-learn'),
-    path.join(root, '.agents/skills/lawspec-learn'),
-    {recursive: true},
-  );
-  await mkdir(path.join(root, '.agents/skills/lawspec-learn/references'), {
-    recursive: true,
-  });
-  await cp(
-    path.join(root, 'learn/curriculum.json'),
-    path.join(root, '.agents/skills/lawspec-learn/references/curriculum.json'),
-  );
-  for (const skill of ['lawspec-author', 'lawspec-project', 'lawspec-learn'])
-  {
-    await cp(
-      path.join(root, '.agents/skills', skill),
-      path.join(plugin, 'skills', skill),
-      {recursive: true},
-    );
-  }
   // A separate opaque document avoids inheriting the application's CSP. Only
   // this exact bootstrap and blob worker code may execute in the sandbox.
   const {frameMain} = await import('../learn/browser/sandbox.mjs');

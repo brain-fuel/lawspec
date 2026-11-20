@@ -11,19 +11,22 @@ title: Install LawSpec and create a project
 - The build tools of the target language you choose. See
   [compatibility](../reference/compatibility.md) for the supported versions.
 
-You do not need a Haskell toolchain. The reference platforms are macOS and Linux.
+Installing a release needs no Haskell toolchain. The reference platforms are macOS and Linux.
 
 ## Install the development checkout
 
 This guide describes the canonical authoring profile in the unreleased minor on
-`main`. The checkout includes its prebuilt WASM package. Install that package
-locally; you do not need to build the Haskell compiler. To use the released
-package instead, install `lawspec@0.33.0` from
+`main`. A checkout holds sources only: Git keeps no build output, so building
+its package needs Stack and the GHC WebAssembly toolchain
+([Contribute](contribute.md#building)). To use the released package instead,
+which needs neither, install `lawspec@0.36.1` from
 [npm](https://www.npmjs.com/package/lawspec) and follow the
-[0.33.0 documentation](https://github.com/brain-fuel/lawspec/tree/v0.33.0).
+[0.36.1 documentation](https://github.com/brain-fuel/lawspec/tree/v0.36.1).
 
 ```sh
 git clone https://github.com/brain-fuel/lawspec.git lawspec
+make -C lawspec wasm
+(cd lawspec && tools/wasm-host-core.sh)
 ```
 
 Install the checkout's locked dependencies first, both to run the CLI straight

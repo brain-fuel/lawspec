@@ -6,6 +6,9 @@
 # and prints its size and SHA-256. Requires wasm32-wasi-ghc and wasm32-wasi-cabal (ghc-wasm-meta).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# lawspec.cabal is written from package.yaml (hpack) and not kept in Git;
+# a dry-run build writes it without compiling.
+stack --no-terminal build --dry-run >/dev/null
 unset GHC_PACKAGE_PATH
 if [ -f "$HOME/.ghc-wasm/env" ]; then source "$HOME/.ghc-wasm/env"; fi
 command -v wasm32-wasi-cabal >/dev/null

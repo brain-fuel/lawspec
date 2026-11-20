@@ -35,12 +35,16 @@ The root also holds canon's files: `canon.yaml` (its configuration),
 
 ## Building
 
-Stack is the native development tool:
+Stack is the native development tool. Git keeps no build output, so after
+cloning, build and then write the generated files:
 
 ```sh
 stack --no-terminal build --test --no-run-tests
+make generate
 stack --no-terminal test
 ```
+
+Stack writes `lawspec.cabal` from `package.yaml` (hpack) on every command.
 
 To try a request against the native compiler:
 
@@ -92,17 +96,20 @@ To build and install a local archive:
 
 ```sh
 npm pack ./npm
-npm install --save-dev ./lawspec-0.36.0.tgz
+npm install --save-dev ./lawspec-0.36.1.tgz
 ```
 
 ## Generated files
 
-Every JavaScript file in the repository is generated, deterministically, by
-`lawspec-dev generate` (`make generate`) from a template in `templates/` and
-facts the Haskell code owns. `templates/<path>` produces `<path>`: for example
-`templates/npm/bin/lawspec.mjs` produces `npm/bin/lawspec.mjs`. Edit the
-template, never the output; each output starts with a comment naming its
-template.
+Every JavaScript file outside `templates/` is generated, deterministically,
+by `lawspec-dev generate` (`make generate`) from a template in `templates/`
+and facts the Haskell code owns. `templates/<path>` produces `<path>`: for
+example `templates/npm/bin/lawspec.mjs` produces `npm/bin/lawspec.mjs`. Edit
+the template, never the output; each output starts with a comment naming its
+template. Git keeps none of the outputs (`.gitignore` lists them), so run
+`make generate` after cloning and after changing a template, a document the
+skill references draw on, or a compiler fact. Every `make` task that reads an
+output, and every CI step, runs it first.
 
 A template is ordinary JavaScript with named holes that Haskell fills:
 
@@ -117,13 +124,23 @@ project scaffolds, test commands and setup advice); `dev/Generate.hs` lists
 them. `templates/partials/` holds code shared between templates, included as
 `//@ partial-<name>`: the WebAssembly instantiation shared by the Node and
 browser launchers, for example. `npm/api.mjs` and `npm/index.d.ts` are rendered
-from `dev/Gen/Api.hs`, and `src/LawSpec/RuntimeSources.hs` embeds `runtime/`.
+from `dev/Gen/Api.hs`. `npm/references/` holds what `lawspec reference` prints
+for the skills, built from the authoring and library documents, the compiler
+inventory, the prelude and the course.
 
-`lawspec-dev generate --check` (`make generate-check`, and a CI step) fails if
-an output is stale or if any script in the repository is neither generated nor
-one of the exempt kinds: user-owned code (acceptance adapters, examples,
-fixtures), the embedded runtimes in `runtime/`, and GHC's post-linker output
-`npm/core_jsffi.js`.
+The compiler carries `runtime/`, the bundled examples and the pinned Unicode
+tables itself: Template Haskell splices in `LawSpec.Embed` read them while
+`LawSpec.RuntimeSources` and its siblings compile. Editing such a file
+recompiles its module. GHC cannot watch a directory, so after adding or
+removing a file under `runtime/defaults`, `runtime/dotnet`, `runtime/groovy`,
+`runtime/clojure`, `runtime/swift` or the examples, touch the module that
+embeds it. A fresh build, as in CI, always reads the current files.
+
+`lawspec-dev generate --check` (`make generate-check`, and `make
+release-check`) fails if an output is stale or if any script in the repository
+is neither generated nor one of the exempt kinds: user-owned code (acceptance
+adapters, examples, fixtures), the embedded runtimes in `runtime/`, and GHC's
+post-linker output `npm/core_jsffi.js`.
 
 `lawspec-dev integrity` rejects a stale WASM build and staged npm copies that
 differ from their sources.

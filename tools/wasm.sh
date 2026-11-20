@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the npm package's compiler: generated sources, native compiler, WASM
+# Build the npm package's compiler: generated files, native compiler, WASM
 # core and JavaScript glue, then stage the shipped files and record their
 # fingerprints, with the host-effect core's. Requires wasm32-wasi-ghc and
 # wasm32-wasi-cabal (ghc-wasm-meta).
@@ -22,9 +22,10 @@ if [ -z "${LAWSPEC_WASM_LOCKED:-}" ]; then
 fi
 # One configuration for every stack command here and in lawspec-dev ci:
 # building with and without the test suite in turn recompiles the library.
+# The build also writes lawspec.cabal from package.yaml (hpack), which the
+# wasm32 Cabal build below reads.
 stack --no-terminal build --test --no-run-tests
 stack --no-terminal exec lawspec-dev -- generate
-stack --no-terminal build --test --no-run-tests
 unset GHC_PACKAGE_PATH
 if [ -f "$HOME/.ghc-wasm/env" ]; then source "$HOME/.ghc-wasm/env"; fi
 command -v wasm32-wasi-cabal >/dev/null

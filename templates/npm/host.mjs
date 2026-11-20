@@ -51,6 +51,20 @@ class HostError extends Error
   }
 }
 
+// A reader that closes early (lawspec reference library.md | head) leaves
+// nothing to write to; stop quietly, as a Unix tool does on SIGPIPE.
+for (const stream of [process.stdout, process.stderr])
+{
+  stream.on('error', error =>
+  {
+    if (error.code !== 'EPIPE')
+    {
+      throw error;
+    }
+    process.exit(0);
+  });
+}
+
 const bytes = text => Buffer.from(text, 'base64');
 const text = data => Buffer.from(data).toString('base64');
 

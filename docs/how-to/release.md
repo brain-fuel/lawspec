@@ -34,11 +34,11 @@ entry, so it cannot pass those new-version preconditions.
 ## 2. Bump the version
 
 ```sh
-make bump VERSION=0.36.0
+make bump VERSION=0.36.1
 ```
 
-`lawspec-dev bump` sets the version in `package.yaml`, `lawspec.cabal`,
-`wasm/lawspec-wasm.cabal`, the Rust conformance crate
+`lawspec-dev bump` sets the version in `package.yaml` (Stack writes
+`lawspec.cabal` from it), `wasm/lawspec-wasm.cabal`, the Rust conformance crate
 (`runtime/rust/Cargo.toml`, `Cargo.lock`) and `canon.yaml`, updates install
 instructions that name the version (`lawspec@x.y.z`) in the README and docs,
 then regenerates `npm/package.json` and the CLI's `--version`.
@@ -66,11 +66,15 @@ make wasm
 make generate-check integrity
 ```
 
-`make wasm` regenerates sources, builds the native compiler, compiles the WASM
-core with `wasm32-wasi-ghc`, stages the shipped files into `npm/`, and records
-their fingerprints in `npm/build.json`.
+`make wasm` builds the native compiler, writes the generated files, compiles
+the WASM core with `wasm32-wasi-ghc`, stages the shipped files into `npm/`,
+and records their fingerprints in `npm/build.json`.
 
-The package also ships build outputs that git ignores, such as the WASM
+Git keeps no build output: everything in `npm/` except `npm/build.json` and
+`npm/package-lock.json`, `tools/*.mjs` and the other generated files are
+written by `make generate` (which `make wasm` and every task that reads them
+run first), and `git add -A` never stages them. The package ships them all,
+including the skill references in `npm/references/`. It also ships the WASM
 cores (`npm/core.wasm` and `npm/host-core.wasm`, from `make wasm`), the host
 component (`npm/host-component/`, from `make component SDK_DIST=<SDK
 tarballs>`) and the lesson assets (`npm/learn/vendor/`). A worktree holds
@@ -83,7 +87,7 @@ Build, verify and pack in that one worktree.
 
 ```sh
 git add -A
-git commit -m "Prepare LawSpec 0.36.0"
+git commit -m "Prepare LawSpec 0.36.1"
 make ci-fresh
 make smoke-release
 make docs-check
@@ -109,15 +113,15 @@ Every CI step must pass: compiler and npm tests, native/WASM parity, the
 package smoke test, the editor grammar, artifact validators, and program-target
 acceptance suites in both machine profiles. Logs are in `.artifacts/ci/`.
 
-`release-check` then requires a clean `main`, matching versions and generated
-files, no existing tag for the prepared version, and no published npm version
+`release-check` then requires a clean `main`, matching versions, current
+generated files, no existing tag for the prepared version, and no published npm version
 with that number. Passing these checks does not create a tag or publish.
 
 ## 5. Pack and inspect
 
 ```sh
 make package
-tar -tzf .artifacts/0.36.0/lawspec-0.36.0.tgz
+tar -tzf .artifacts/0.36.1/lawspec-0.36.1.tgz
 ```
 
 `make package` first runs `make integrity`, which refuses a staged core or
@@ -142,17 +146,17 @@ tools/package-core.sh
 ```
 
 It packs `npm/host-core.wasm` as `@goforgedev/core` into
-`.artifacts/core-npm/goforgedev-core-0.36.0.tgz`, after checking that
+`.artifacts/core-npm/goforgedev-core-0.36.1.tgz`, after checking that
 `hosts/go/internal/core/pin.go` records that core's SHA-256 for this version
 (`make wasm` writes the pin). The Go module carries no core: on first use it
 downloads this package and refuses any other bytes, so the commit the
-`hosts/go/v0.36.0` tag names needs nothing added.
+`hosts/go/v0.36.1` tag names needs nothing added.
 
 ## 6. Tag and push
 
 ```sh
-git tag -a v0.36.0 -m "LawSpec 0.36.0"
-git push --atomic origin main v0.36.0
+git tag -a v0.36.1 -m "LawSpec 0.36.1"
+git push --atomic origin main v0.36.1
 ```
 
 Push the branch and the annotated tag together, so the tag always names a
@@ -161,26 +165,73 @@ commit that is on `main`.
 ## 7. Publish
 
 ```sh
-npm publish .artifacts/0.36.0/lawspec-0.36.0.tgz --access public --tag latest --registry https://registry.npmjs.org
+npm publish .artifacts/0.36.1/lawspec-0.36.1.tgz --access public --tag latest --registry https://registry.npmjs.org
 ```
 
 Publish the core package for the Go host the same way, before anyone installs
 the Go module's release:
 
 ```sh
-npm publish .artifacts/core-npm/goforgedev-core-0.36.0.tgz --access public --registry https://registry.npmjs.org
+npm publish .artifacts/core-npm/goforgedev-core-0.36.1.tgz --access public --registry https://registry.npmjs.org
 ```
 
 Publish the archive you inspected, not the directory. npm asks for approval in
 the browser; complete it there. If npm reports that you are not logged in, run
 `npm login --registry https://registry.npmjs.org` first.
 
+The platform packages the archive names as optional dependencies go first,
+exactly as packed and recorded, from the same worktree:
+
+```sh
+for f in .artifacts/canon-npm/goforgedev-canon-*-0.36.1.tgz component/vendor/goforgedev-compiler-*-0.36.1-*.tgz; do
+  npm publish "$f" --access public --registry https://registry.npmjs.org
+done
+```
+
+Once `@goforgedev/core` is on npm, tag the Go module (the commit `v0.36.1`
+names) and push the tag:
+
+```sh
+git tag -a hosts/go/v0.36.1 -m "LawSpec Go host 0.36.1" v0.36.1
+git push origin hosts/go/v0.36.1
+```
+
+### Maven Central
+
+GoForge's assayxport publishes the Maven packages
+([Install from Maven](install-maven.md#publish-a-release-owner)). It checks
+that the checkout is exactly the tag and clean, so stage from a worktree of
+the tag, giving it the platform binaries and the Learn site and cores the npm
+archive shipped:
+
+```sh
+git worktree add --detach ../maven-0.36.1 v0.36.1
+cd ../maven-0.36.1
+tar -xzf ../<release worktree>/.artifacts/0.36.1/lawspec-0.36.1.tgz -C npm --strip-components 1 \
+  package/core.wasm package/core.wasm.gz package/core_jsffi.js package/learn
+for p in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+  hosts/jvm/stage-native.sh --platform $p --binary <its lawspec-native> --canon <its Canon bundle>
+done
+hosts/jvm/stage-native.sh --check-all
+mvn -f hosts/jvm -Prelease,all-platforms -Drevision=0.36.1 -DskipTests \
+  package deploy:deploy \
+  -DaltDeploymentRepository=staging::file:$PWD/hosts/jvm/target/central-staging
+(cd hosts/jvm/gradle-plugin && gradle -Pversion=0.36.1 publishAllPublicationsToCentralStagingRepository)
+git status --short     # must print nothing
+ax publish --maven-settings-path ~/para/projects/goforge/maven_settings.xml
+```
+
+The Gradle build adds the Gradle plugin and its plugin marker to the same
+staging directory ([Install the Gradle plugin](install-gradle.md#publish-a-release-owner)),
+so one bundle publishes everything. `ax publish` waits until Central reports
+the deployment published.
+
 ## 8. Verify the registry
 
 ```sh
-npm view lawspec@0.36.0 version dist.integrity
+npm view lawspec@0.36.1 version dist.integrity
 npm view lawspec dist-tags
-shasum -a 512 .artifacts/0.36.0/lawspec-0.36.0.tgz | awk '{print $1}' | xxd -r -p | base64
+shasum -a 512 .artifacts/0.36.1/lawspec-0.36.1.tgz | awk '{print $1}' | xxd -r -p | base64
 ```
 
 `dist.integrity` must be `sha512-` followed by the local archive's digest, and
@@ -191,11 +242,11 @@ shasum -a 512 .artifacts/0.36.0/lawspec-0.36.0.tgz | awk '{print $1}' | xxd -r -
 Registry mirrors can lag behind npm, so each release also offers the archive
 for download. Use the GitHub website, not the GitHub CLI:
 
-1. Open <https://github.com/brain-fuel/lawspec/releases/new?tag=v0.36.0>. The
+1. Open <https://github.com/brain-fuel/lawspec/releases/new?tag=v0.36.1>. The
    tag pushed in step 6 is selected.
-2. Set the title to `LawSpec 0.36.0` and paste the version's `CHANGELOG.md`
+2. Set the title to `LawSpec 0.36.1` and paste the version's `CHANGELOG.md`
    section as the description.
-3. Drag `.artifacts/0.36.0/lawspec-0.36.0.tgz` into the box for attaching
+3. Drag `.artifacts/0.36.1/lawspec-0.36.1.tgz` into the box for attaching
    binaries. Attach the archive you published in step 7, not a new pack.
 4. Publish the release, then download the attached file and check that
    `shasum -a 512` prints the digest of the local archive.

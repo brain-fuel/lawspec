@@ -16,7 +16,8 @@ For the library, equal ranks represent separate requests; for the weather
 summary, repeated measurements intentionally become one distinct value. Explain
 that difference before choosing preservation or deduplication as the property.
 
-Use [the generated course](references/curriculum.json) as the teaching source.
+Use the generated course, printed by `lawspec reference curriculum.json`, as
+the teaching source.
 Read the selected scene's story, source provenance, complete project and expected
 check mode, along with the lesson's hints and attribution. The code in that scene
 is authoritative; do not pair its prose with another scene's starter or solution.
@@ -130,10 +131,11 @@ or API collection have been delivered.
 
 ## Authoring and reuse
 
-For specification or adapter edits, read [the shared authoring guide](references/authoring.md).
-Check `lawspec --version` against `references/version.json`, search the bundled
-[compiler inventory](references/library.json) and [library reference](references/library.md),
-and inspect actual generated interfaces before implementing native code.
+For specification or adapter edits, read the shared authoring guide with
+`lawspec reference authoring.md`. Search the compiler inventory
+(`lawspec reference library.json`) and the library reference
+(`lawspec reference library.md`), which match the installed compiler, and
+inspect actual generated interfaces before implementing native code.
 Prefer prelude operations, reusable laws, generated models and checked definitions.
 Migrate corresponding application types within scope; retaining them is an explicit
 native-binding or codec choice. Custom domain semantics, independent reference

@@ -5,8 +5,7 @@
 // ref:DEC-jvm-native-host ref:DEC-maven-central-coordinates
 plugins {
   `java-gradle-plugin`
-  signing
-  id("com.gradle.plugin-publish") version "1.3.1"
+  `maven-publish`
 }
 
 // The launcher of this version. A local build takes dev.goforge from the
@@ -35,6 +34,12 @@ dependencies {
   "functionalTestRuntimeOnly"("org.junit.platform:junit-platform-launcher:1.12.2")
 }
 
+// Maven Central requires sources and javadoc jars beside the plugin jar.
+java {
+  withSourcesJar()
+  withJavadocJar()
+}
+
 tasks.withType<JavaCompile>().configureEach {
   options.release = 17
   options.encoding = "UTF-8"
@@ -47,8 +52,6 @@ tasks.processResources {
 }
 
 gradlePlugin {
-  website = "https://github.com/brain-fuel/lawspec"
-  vcsUrl = "https://github.com/brain-fuel/lawspec"
   plugins {
     create("lawspec") {
       id = "dev.goforge.lawspec"
@@ -56,7 +59,6 @@ gradlePlugin {
       displayName = "LawSpec"
       description =
         "Runs LawSpec's check, generate, test, prove and every other command from Gradle."
-      tags = listOf("lawspec", "specification", "laws", "testing", "code-generation")
     }
   }
   testSourceSets(functionalTest)
@@ -79,26 +81,53 @@ val functionalTestTask =
 
 tasks.check { dependsOn(functionalTestTask) }
 
-// A release (-Prelease) signs with the gpg command; the owner publishes with
-// publishPlugins. Nothing here publishes on its own.
-val releasing: Boolean = providers.gradleProperty("release").isPresent
-
-signing {
-  isRequired = releasing
-  useGpgCmd()
-}
-
-if (!releasing) {
-  tasks.withType<Sign>().configureEach { enabled = false }
-}
-
 // A local build publishes the plugin and its marker to the same repository,
 // for builds that apply it by id: publishAllPublicationsToLawspecLocalRepository.
+// A release publishes them, unsigned, into the Maven build's Central staging
+// directory: publishAllPublicationsToCentralStagingRepository, after the Maven
+// staging build. GoForge's assayxport signs and publishes both with the Maven
+// packages (ax publish, assayxport.toml); nothing here signs or uploads.
+// Gradle resolves the plugin by id from Maven Central through its marker,
+// dev.goforge.lawspec:dev.goforge.lawspec.gradle.plugin.
+// ref:DEC-maven-central-coordinates
 publishing {
   repositories {
     maven {
       name = "lawspecLocal"
       url = uri(repositoryPath)
+    }
+    maven {
+      name = "centralStaging"
+      url = uri(layout.projectDirectory.dir("../target/central-staging"))
+    }
+  }
+  // Central requires a name, description, URL, license, developer and SCM in
+  // every POM, the marker's included; the values are the Maven parent's.
+  publications.withType<MavenPublication>().configureEach {
+    pom {
+      name = "LawSpec Gradle plugin"
+      description =
+        "The Gradle plugin dev.goforge.lawspec: LawSpec's check, generate, test, prove and every other command as Gradle tasks."
+      url = "https://github.com/brain-fuel/lawspec"
+      licenses {
+        license {
+          name = "MIT License"
+          url = "https://opensource.org/license/mit"
+          distribution = "repo"
+        }
+      }
+      developers {
+        developer {
+          id = "brain-fuel"
+          name = "brain-fuel"
+          url = "https://github.com/brain-fuel"
+        }
+      }
+      scm {
+        connection = "scm:git:https://github.com/brain-fuel/lawspec.git"
+        developerConnection = "scm:git:ssh://git@github.com/brain-fuel/lawspec.git"
+        url = "https://github.com/brain-fuel/lawspec"
+      }
     }
   }
 }

@@ -22,6 +22,7 @@ lawspec describe --json [--config <path>]
 lawspec fetch [--locked] [--offline] [--config <path>]
 lawspec update [<package>] [--config <path>]
 lawspec learn [--port <port>]
+lawspec reference [<name>]
 lawspec project init|adopt|status|validate [--project <directory>]
 lawspec package [--project <package directory>] [--machine-bits <32|64>] [--json]
 lawspec examples [--example payments] [--target <language>] [--output <directory>] [--machine-bits <32|64>] [--minify] [--json]
@@ -808,6 +809,13 @@ Canon executable may be selected through `CANON` for existing Canon projects.
 `lawspec learn [--port <port>]` serves the packaged F#-first coding-course preview on
 `127.0.0.1:8384` by default, without a manifest ref:DEC-learn-course-preview. Port 0 selects an
 available port. See [the project workflow](../how-to/manage-projects.md).
+
+`lawspec reference [<name>]` prints one of the references the LawSpec skills
+read: `authoring.md` (the authoring guide), `library.json` (the compiler
+inventory), `library.md` (the library reference), `prelude.lawspec` (the
+reusable law source) or `curriculum.json` (the course). With no name it lists
+them. They ship in the npm package, so they always match the installed
+compiler; the skills keep only their instructions.
 
 ## Authoring discovery
 

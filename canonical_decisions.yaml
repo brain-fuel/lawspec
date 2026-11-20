@@ -11,7 +11,7 @@ DEC-prelude-first-authoring:
   status: decided
   question: How should authors reuse the prelude and generated application models?
   answer: |
-    Inspect the installed compiler's matching library reference and actual generated interfaces before adding helpers or native models. Prefer existing prelude operations, reusable laws, checked definitions and runtime support when their semantics match. Migrate corresponding application types within scope; retaining them is an explicit native-binding or codec choice. Domain-specific semantics, missing functionality, independent reference models and identified teaching exercises justify custom work. One authoring guide and executable examples feed standalone author/project/learn skill references generated from compiler inventories. The skill/plugin package is independently versioned and usable with existing check, generate, test and planGeneration commands. Advisory analysis is a separate deliverable with no implication of proof or native equivalence. Teaching review remains pending.
+    Inspect the installed compiler's matching library reference and actual generated interfaces before adding helpers or native models. Prefer existing prelude operations, reusable laws, checked definitions and runtime support when their semantics match. Migrate corresponding application types within scope; retaining them is an explicit native-binding or codec choice. Domain-specific semantics, missing functionality, independent reference models and identified teaching exercises justify custom work. One authoring guide and executable examples feed the author/project/learn skill references generated from compiler inventories. Since 0.36.1 they ship in the npm package and the skills print them with lawspec reference, so a skill holds only its SKILL.md and always reads the installed compiler's references (DEC-no-build-output-in-git). The skill/plugin package is independently versioned and usable with existing check, generate, test and planGeneration commands. Advisory analysis is a separate deliverable with no implication of proof or native equivalence. Teaching review remains pending.
   opened: 0.31.2
   decided: 0.31.2
 
@@ -71,11 +71,19 @@ DEC-canon-dialect-profiles:
   decided: 0.20.1
   refs: [canon]
 
+DEC-no-build-output-in-git:
+  status: decided
+  question: Which of the files a build writes does Git keep?
+  answer: |
+    None. The owner decided on 2026-11-17 that nothing a build produces is committed, whatever its size: the WASM cores and their glue (0.35.1), and from 0.36.1 every lawspec-dev generate output (npm/ but its build record and lockfile, tools/*.mjs, the component and editor scripts, the course, LawSpecDataStrategies.java), lawspec.cabal, which Stack writes from package.yaml, and the skill references. .gitignore lists them. make generate writes them after cloning, every make task that reads them and every CI step runs it first, and release-check still runs generate --check. The modules that carried runtime/, the examples and the pinned Unicode tables as generated Haskell (LawSpec.RuntimeSources and its siblings) now read them at compile time with Template Haskell splices (LawSpec.Embed), which GHC's WebAssembly backend runs too; their values equal the old generated modules'. GHC cannot watch a directory, so adding a file under an embedded directory needs its module touched; a fresh build always reads the current files. The plugin's SKILL.md files are its sources (.agents/skills links to them) and print their references with lawspec reference from the npm package: the owner chose this over a release-built plugin branch or keeping the copies. A test oracle that can no longer be regenerated is replaced too: the frozen Tree-sitter corpus became hand-written expectations (DEC-authoring-advisories). Pushed history is not rewritten.
+  opened: 0.36.1
+  decided: 0.36.1
+
 DEC-generated-files-not-checked:
   status: decided
   question: Which files does canon read, when much of the repository is generated from templates and runtimes?
   answer: |
-    The sources a person edits. canon.yaml ignores what lawspec-dev generate writes (npm/, tools/*.mjs, editors/vscode/test/grammar.test.mjs, editors/vscode/test/extension.test.mjs, src/LawSpec/RuntimeSources.hs) and the local output directories, so a Why is written once, in the template or runtime it is generated from, and every output carries the header naming that template, as DEC-generated-javascript has it.
+    The sources a person edits. canon.yaml ignores what lawspec-dev generate writes (npm/, tools/*.mjs, editors/vscode/test/grammar.test.mjs, editors/vscode/test/extension.test.mjs) and the local output directories, so a Why is written once, in the template or runtime it is generated from, and every output carries the header naming that template, as DEC-generated-javascript has it.
   opened: 0.20.1
   decided: 0.20.1
 
@@ -615,7 +623,7 @@ DEC-generated-javascript:
   status: decided
   question: Where do the repository's JavaScript files and the facts they repeat come from?
   answer: |
-    Every JavaScript file is generated from templates/ by lawspec-dev generate, with the version, targets, scaffolds and test commands filled in from the Haskell sources, and generate --check fails on stale or stray scripts. Repository checks moved from JavaScript to Haskell in 0.13.1. The compiler's facts are no longer copied by hand. Recorded in CHANGELOG 0.13.1 and 0.15.1.
+    Every JavaScript file is generated from templates/ by lawspec-dev generate, with the version, targets, scaffolds and test commands filled in from the Haskell sources, and generate --check fails on stale or stray scripts. Since 0.36.1 Git keeps none of the outputs (DEC-no-build-output-in-git). Repository checks moved from JavaScript to Haskell in 0.13.1. The compiler's facts are no longer copied by hand. Recorded in CHANGELOG 0.13.1 and 0.15.1.
   opened: 0.13.1
   decided: 0.15.1
 
@@ -1438,10 +1446,10 @@ DEC-maven-central-coordinates:
   status: decided
   question: Under which coordinates and how is LawSpec published for the JVM, and who publishes it?
   answer: |
-    Maven Central under dev.goforge: lawspec (launcher and API), lawspec-darwin-arm64, lawspec-darwin-x64, lawspec-linux-arm64 and lawspec-linux-x64 (separate artifacts rather than classifiers, so each platform's jar can be built on its own machine and has its own POM), lawspec-resources, lawspec-maven-plugin, and the parents lawspec-parent and lawspec-platform-parent; the Gradle plugin id dev.goforge.lawspec on the Gradle Plugin Portal. Versions follow LawSpec's (lawspec-dev version checks them): ${revision} with flatten-maven-plugin in hosts/jvm and version in the Gradle plugin's gradle.properties are X.Y.Z-SNAPSHOT between releases, for local installs, and a release passes -Drevision=X.Y.Z and -Pversion=X.Y.Z. The release profile attaches sources and javadoc jars (a README for the jars without Java code, as Central allows), signs with the gpg command and uploads through central-publishing-maven-plugin with autoPublish off, so the deployment waits in the Central Portal for the owner. The owner verifies the dev.goforge namespace (DNS TXT), holds the Portal token and GPG key outside the repository and publishes; nothing in the build publishes on its own.
+    Maven Central under dev.goforge: lawspec (launcher and API), lawspec-darwin-arm64, lawspec-darwin-x64, lawspec-linux-arm64 and lawspec-linux-x64 (separate artifacts rather than classifiers, so each platform's jar can be built on its own machine and has its own POM), lawspec-resources, lawspec-maven-plugin, and the parents lawspec-parent and lawspec-platform-parent; the Gradle plugin id dev.goforge.lawspec, as dev.goforge:lawspec-gradle-plugin and its plugin marker dev.goforge.lawspec:dev.goforge.lawspec.gradle.plugin, also on Maven Central since 0.36.1 (owner, 2026-11-19: builds resolve plugins from a Maven repository; the Gradle Plugin Portal is not used). Versions follow LawSpec's (lawspec-dev version checks them): ${revision} with flatten-maven-plugin in hosts/jvm and version in the Gradle plugin's gradle.properties are X.Y.Z-SNAPSHOT between releases, for local installs, and a release passes -Drevision=X.Y.Z and -Pversion=X.Y.Z. The release profile attaches sources and javadoc jars (a README for the jars without Java code, as Central allows) and deploys them unsigned to a file repository, and the Gradle build publishes the plugin, its marker and Gradle module metadata unsigned into the same one; since 0.36.1 GoForge's assayxport (ax publish, policy maven-repository, configured by assayxport.toml) checks, signs with the GoForge Central key, uploads, validates and publishes them, as for the other dev.goforge artifacts (owner, 2026-11-19). The owner verifies the dev.goforge namespace (DNS TXT), holds the Portal token and signing key outside the repository and runs the publication; nothing in the Maven build signs or uploads.
   opened: 0.34.0
   decided: 0.34.0
-  refs: [DEC-jvm-native-host, central-portal-requirements, central-portal-maven, central-namespace-verification, maven-ci-friendly, gradle-plugin-portal-publishing]
+  refs: [DEC-jvm-native-host, central-portal-requirements, central-portal-maven, central-namespace-verification, maven-ci-friendly, gradle-plugin-markers]
 
 DEC-node-precompiled-components:
   status: decided

@@ -1,9 +1,0 @@
-unit shop.tax.rates
-
--- Version 1 of the tax bands.
-type Band is one of | Low | High end type
-
-function rateOf (b :: Band) -> Int64 is
-  first matching case of b : when Low then 5 when High then 20 end case
-end function
-end unit

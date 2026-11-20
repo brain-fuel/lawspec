@@ -13,7 +13,7 @@
 --
 -- templates/<path> produces <path>. Outputs other than JSON carry a header
 -- naming their template; an executable template produces an executable file.
-module Generate (generateCommand, versionCommand, bumpCommand, currentVersion) where
+module Generate (generateCommand, generatedManifest, versionCommand, bumpCommand, currentVersion) where
 
 import Control.Monad (forM, forM_, unless, when)
 import Data.Char (isDigit)
@@ -26,10 +26,8 @@ import System.Process (readProcessWithExitCode)
 import Gen.Api (apiSources)
 import LawSpec.JavaTestingRuntime (renderDataStrategies)
 import LawSpec.JavaTestStyle (TestStyle(..))
-import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedExamples, embedJvmLanguage, embedSwift)
 import Gen.Json
 import Gen.Template
-import Gen.Unicode (caseFoldData, displayWidthData)
 import LawSpec.Code.Doc (Layout(..))
 import qualified LawSpec.Targets as Targets
 import LawSpec.Collections (collectionsSource)
@@ -62,6 +60,11 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Map.Strict as M
 
+-- | The outputs the last lawspec-dev generate wrote, one path a line: Git
+-- ignores them, so lawspec-dev ci reads them here.
+generatedManifest :: FilePath
+generatedManifest = ".artifacts/generated.txt"
+
 data Output = Output { outputPath :: FilePath, outputContent :: String, outputExecutable :: Bool }
 
 generateCommand :: [String] -> IO ()
@@ -74,6 +77,10 @@ generateCommand args = do
         current <- readIfExists (outputPath o)
         when (current /= Just (outputContent o)) (writeFile (outputPath o) (outputContent o))
         setExecutable (outputPath o) (outputExecutable o)
+      -- Git ignores the outputs; lawspec-dev ci reads this list to key the
+      -- steps that read them.
+      createDirectoryIfMissing True ".artifacts"
+      writeFile generatedManifest (unlines (sort (map outputPath outputs)))
       putStrLn ("Generated " ++ show (length outputs) ++ " files.")
     ["--check"] -> do
       stale <- fmap concat $ forM outputs $ \o -> do
@@ -94,9 +101,9 @@ planOutputs = do
   partials <- forM (filter ("templates/partials/" `isPrefixOf`) templates) $ \file -> do
     source <- readFile' file
     pure ("partial-" ++ takeWhile (/= '.') (drop (length "templates/partials/") file), Block (lines source))
-  -- Read the runtime files just as embedRuntimes does below. Using the
-  -- executable's compiled RuntimeSources here would retain the previous
-  -- runtime revision until a second build and generation pass.
+  -- Read the runtime files directly. Using the executable's compiled
+  -- RuntimeSources here would retain the previous runtime revision until
+  -- the executable is rebuilt.
   beamDoctorRuntime <- forM
     [("formatter", "lawspec_beam_exunit_formatter.ex"), ("native", "lawspec_beam_crypto_native.erl"),
      ("c", "lawspec_crypto_native.c"), ("build", "lawspec_crypto_build.escript")] $ \(key, file) -> do
@@ -119,15 +126,6 @@ planOutputs = do
   unless (null wide) (die ("Generated API lines exceed 80 columns in: " ++ unwords wide))
   javaStrategiesBody <- readFile' "runtime/LawSpecDataStrategies.inc"
   let javaStrategies = renderDataStrategies JUnit javaStrategiesBody
-  runtimes <- embedRuntimes
-  defaults <- embedDefaults
-  examples <- embedExamples
-  dotnet <- embedDotNet
-  swift <- embedSwift
-  groovy <- embedJvmLanguage "groovy" "GroovySources"
-  clojure <- embedJvmLanguage "clojure" "ClojureSources"
-  unicode <- caseFoldData
-  displayWidths <- displayWidthData
   unicodeLicense <- readFile' "vendor/unicode/LICENSE.txt"
   normalizationLicenses <- readFile' "vendor/unicode/NORMALIZATION-LICENSES.txt"
   browserSource <- readFile' "templates/site/lawspec-core.mjs"
@@ -143,15 +141,8 @@ planOutputs = do
   (courseStatus, curriculum, courseError) <- readProcessWithExitCode "node" ["learn/build-course.mjs", "--stdout"] ""
   unless (courseStatus == ExitSuccess) (die courseError)
   inventory <- learnInventory
-  authoring <- authoringOutputs version inventory curriculum
-  let whole = [ Output "runtime/LawSpecDataStrategies.java" javaStrategies False, Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
-              , Output "src/LawSpec/App/ExampleSources.hs" examples False
-              , Output "src/LawSpec/DotNetSources.hs" dotnet False
-              , Output "src/LawSpec/GroovySources.hs" groovy False
-              , Output "src/LawSpec/ClojureSources.hs" clojure False
-              , Output "src/LawSpec/SwiftSources.hs" swift False
-              , Output "src/LawSpec/CaseFoldData.hs" unicode False
-              , Output "src/LawSpec/DisplayWidthData.hs" displayWidths False
+  authoring <- authoringOutputs inventory curriculum
+  let whole = [ Output "runtime/LawSpecDataStrategies.java" javaStrategies False
               , Output "npm/UNICODE-LICENSE.txt" unicodeLicense False
               , Output "npm/NORMALIZATION-LICENSES.txt" normalizationLicenses False
               , Output "npm/learn/lawspec-core.mjs" (replace "./core.wasm" "./core.wasm.gz" browser) False ] ++
@@ -165,8 +156,8 @@ planOutputs = do
 -- | Portable skills share compiler inventories, existing library documentation,
 -- and executable includes. No separately maintained API catalog is introduced.
 -- ref:DEC-prelude-first-authoring
-authoringOutputs :: String -> String -> String -> IO [Output]
-authoringOutputs version inventory curriculum = do
+authoringOutputs :: String -> String -> IO [Output]
+authoringOutputs inventory curriculum = do
   guide <- portable "docs/how-to/authoring.md"
   library <- mapM portable
     ["docs/reference/prelude-algebra.md", "docs/reference/language/collections.md",
@@ -174,25 +165,16 @@ authoringOutputs version inventory curriculum = do
      "docs/how-to/test-text-properties-and-idempotence.md", "docs/reference/language/failures.md",
      "docs/reference/native-bindings.md", "docs/how-to/bind-native-types.md",
      "docs/how-to/custom-codecs-and-generators.md", "docs/how-to/embed-a-generated-model.md"]
-  plugin <- readFile' "learn/plugin.json"
-  license <- readFile' "LICENSE"
-  skills <- fmap concat $ forM ["lawspec-author", "lawspec-project", "lawspec-learn"] $ \name -> do
-    let source = if name == "lawspec-learn" then "learn/skills" else ".agents/skills"
-    body <- readFile' (source </> name </> "SKILL.md")
-    let roots = [".agents/skills" </> name, "plugins/lawspec/skills" </> name] ++
-          ["learn/skills" </> name | name == "lawspec-learn"]
-        refs = [("authoring.md", guide), ("library.json", inventory),
+  -- The skills keep only their SKILL.md; lawspec reference prints these
+  -- from the package, so they always match the installed compiler.
+  pure
+    [ Output ("npm/references" </> file) content False
+    | (file, content) <-
+        [ ("authoring.md", guide), ("library.json", inventory),
           ("library.md", intercalate "\n\n" library),
           ("prelude.lawspec", Common.content Prelude.preludeSource),
-          ("version.json", json (Object [("compilerVersion", String version)]) ++ "\n")] ++
-          [("curriculum.json", curriculum) | name == "lawspec-learn"]
-    pure ([Output (folder </> "SKILL.md") body False | folder <- roots,
-            folder /= source </> name] ++
-          [Output (folder </> "references" </> file) content False |
-            folder <- roots, (file,content) <- refs])
-  pure ([Output ("plugins/lawspec" </> host </> "plugin.json") plugin False |
-    host <- [".codex-plugin", ".claude-plugin"]] ++
-    [Output "plugins/lawspec/LICENSE" license False] ++ skills)
+          ("curriculum.json", curriculum) ]
+    ]
   where
     portable file = do
       source <- readFile' file
@@ -371,7 +353,7 @@ generatedTestHole = "@@generated-test-dir@@"
 -- npm/ only for the repository's own tools and tests, and are not shipped.
 -- ref:DEC-haskell-application-port
 shippedFiles :: [String]
-shippedFiles = ["api.mjs", "launcher.mjs", "host-launcher.mjs", "host-codecs.mjs", "host.mjs", "worker.mjs", "postinstall.mjs", "*.json", "index.d.ts", "bin", "host-core.wasm", "core.wasm", "core.wasm.gz", "core_jsffi.js", "host-component", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn"]
+shippedFiles = ["api.mjs", "launcher.mjs", "host-launcher.mjs", "host-codecs.mjs", "host.mjs", "worker.mjs", "postinstall.mjs", "*.json", "index.d.ts", "bin", "host-core.wasm", "core.wasm", "core.wasm.gz", "core_jsffi.js", "host-component", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn", "references"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.
@@ -398,13 +380,14 @@ currentVersion = do
 versionedFiles :: [(FilePath, String -> String -> String -> String)]
 versionedFiles =
   [ ("package.yaml", lineValue "version: ")
-  , ("lawspec.cabal", lineValue "version:        ")
   , ("wasm/lawspec-wasm.cabal", lineValue "version: ")
   , ("runtime/rust/Cargo.toml", cargo "[package]")
   , ("runtime/rust/Cargo.lock", cargo "name = \"lawspec-runtime-conformance\"")
   -- canon fails its check once this version reaches an open decision's or an
   -- exemption's revisit version.
   , ("canon.yaml", lineValue "version: ")
+  -- Maven Central publication through assayxport (ax publish).
+  , ("assayxport.toml", wrapped "version = \"" "\"")
   -- The JVM packages: snapshot versions until a release names its own
   -- (-Drevision, -Pversion). ref:DEC-maven-central-coordinates
   , ("hosts/jvm/pom.xml", wrapped "    <revision>" "-SNAPSHOT</revision>")
@@ -458,17 +441,17 @@ bumpCommand [new] = do
       let installs = replace ("lawspec@" ++ old) ("lawspec@" ++ new) (replace ("lawspec-" ++ old ++ ".tgz") ("lawspec-" ++ new ++ ".tgz") (replace (".artifacts/" ++ old) (".artifacts/" ++ new) (replace ("v" ++ old) ("v" ++ new) content)))
           -- The release how-to also names the version in its bump, commit and
           -- tag messages; other pages keep historical "LawSpec x.y.z" mentions.
-          -- The host install pages name only the current release (Maven
-          -- coordinates, the Gradle plugin, snapshots and the Go module tag).
+          -- The release how-to and the host install pages name only the
+          -- current release (package files, Maven coordinates, the Gradle
+          -- plugin, snapshots and the Go module tag), so every mention moves.
           updated
-            | file == "docs" </> "how-to" </> "release.md" = replace ("VERSION=" ++ old) ("VERSION=" ++ new) (replace ("LawSpec " ++ old) ("LawSpec " ++ new) (replace ("goforgedev-core-" ++ old) ("goforgedev-core-" ++ new) installs))
-            | file `elem` hostInstallPages = replace old new content
+            | file `elem` currentVersionPages = replace old new content
             | otherwise = installs
       when (updated /= content) (writeFile file updated)
   generateCommand []
   putStrLn ("Version " ++ old ++ " -> " ++ new ++ ". Add a CHANGELOG.md section, then run make wasm and, after packing the native packages, make lock.")
   where
-    hostInstallPages = ["docs" </> "how-to" </> page | page <- ["install-go.md", "install-maven.md", "install-gradle.md"]]
+    currentVersionPages = ["docs" </> "how-to" </> page | page <- ["release.md", "install-go.md", "install-maven.md", "install-gradle.md"]]
     semver v = case splitDots v of
       [a, b, c] -> all (\p -> not (null p) && all isDigit p) [a, b, c]
       _ -> False

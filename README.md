@@ -49,7 +49,7 @@ WSL runs all of them. See [compatibility](docs/reference/compatibility.md#window
 To open the learning track locally:
 
 ```sh
-npm install --global lawspec@0.36.0
+npm install --global lawspec@0.36.1
 lawspec learn
 ```
 
@@ -57,12 +57,16 @@ Open the printed loopback URL, or use [Learn on GoForge](https://goforge.dev/law
 Six lessons pair worked examples with practice in F#, TypeScript or JavaScript.
 The course is a teaching preview; later lessons and capstones remain deferred.
 
-The checkout includes the development WASM package. To try it in a **new, empty
-directory**, initialize before installing, so that LawSpec can create
-`package.json` and its test script:
+A checkout holds sources only: Git keeps no build output, so build the package
+before using it. That needs Stack and the GHC WebAssembly toolchain
+([Contribute](docs/how-to/contribute.md#building)); the npm release above does
+not. To try a checkout's build in a **new, empty directory**, initialize before
+installing, so that LawSpec can create `package.json` and its test script:
 
 ```sh
 git clone https://github.com/brain-fuel/lawspec.git lawspec
+make -C lawspec wasm
+(cd lawspec && tools/wasm-host-core.sh)
 npm ci --ignore-scripts --prefix lawspec/npm
 mkdir lawspec-example
 cd lawspec-example
@@ -102,12 +106,14 @@ dependencies and runs the `doctor` checks. See
 
 The Git-backed `brain-fuel` marketplace includes the LawSpec plugin with three
 skills: `lawspec-author` for specifications and adapters, `lawspec-project` for
-project discovery and changes, and `lawspec-learn` for tutoring. Each includes
-its references, so installation does not require a compiler repository checkout.
-Install the LawSpec CLI separately with Node 22+:
+project discovery and changes, and `lawspec-learn` for tutoring. The skills
+print their references (the authoring guide, compiler inventory, library
+reference and course) with `lawspec reference`, so they always match the
+installed compiler and need no repository checkout. Install the LawSpec CLI
+separately with Node 22+:
 
 ```sh
-npm install --global lawspec@0.36.0
+npm install --global lawspec@0.36.1
 ```
 
 For **Codex**, run these commands in your terminal:
@@ -134,8 +140,8 @@ Code; the project and tutor skills follow the same naming pattern.
 The terminal commands use sparse checkouts for the marketplace and plugin
 directories. For a local checkout, omit `--sparse` and its paths and replace
 `brain-fuel/lawspec` with the checkout's absolute path. To pin a release in Codex, append
-`--ref v0.36.0` to its marketplace-add command. In Claude Code, use
-`https://github.com/brain-fuel/lawspec.git#v0.36.0` as the marketplace source.
+`--ref v0.36.1` to its marketplace-add command. In Claude Code, use
+`https://github.com/brain-fuel/lawspec.git#v0.36.1` as the marketplace source.
 Private repository installations require your existing GitHub access.
 
 To refresh the Git source, run `codex plugin marketplace upgrade brain-fuel` or
@@ -145,9 +151,12 @@ To refresh the Git source, run `codex plugin marketplace upgrade brain-fuel` or
 the host to load updated skills.
 
 This is a repository marketplace, not a listing in either host's curated public
-directory. The plugin has its own version in `learn/plugin.json`; the course
-remains a teaching preview. Maintainers regenerate both host manifests from that
-file with `make generate`. See the official
+directory. The plugin has its own version, in its two host manifests
+(`plugins/lawspec/.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`,
+kept identical); the course remains a teaching preview. The skills hold only
+their instructions: they print the authoring guide, compiler inventory,
+library reference, law source and course with `lawspec reference`, so they need
+the `lawspec` CLI installed and always match its version. See the official
 [Codex marketplace documentation](https://developers.openai.com/plugins/build/plugins)
 and [Claude Code marketplace documentation](https://code.claude.com/docs/en/plugin-marketplaces).
 

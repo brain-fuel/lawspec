@@ -22,16 +22,16 @@ help: ## List the tasks
 build: ## Build the compiler, tools and tests
 	$(STACK) build --test --no-run-tests
 
-generate: ## Regenerate JavaScript and embedded runtimes from templates/
+generate: ## Write every generated file (npm/, tools/*.mjs, the skill references); run after cloning
 	$(DEV) generate
 
 generate-check: ## Fail if a generated file is stale
 	$(DEV) generate --check
 
-wasm: ## Build core.wasm and stage the npm package (needs wasm32-wasi-ghc)
+wasm: generate ## Build core.wasm and stage the npm package (needs wasm32-wasi-ghc)
 	tools/wasm.sh
 
-component: ## Build and stage npm/host-component: make component SDK_DIST=<SDK tarballs> (needs wasm32-wasi-ghc)
+component: generate ## Build and stage npm/host-component: make component SDK_DIST=<SDK tarballs> (needs wasm32-wasi-ghc)
 	node component/tools/install-sdk.mjs $(SDK_DIST)
 	mkdir -p $(DEV_CACHE)/locks
 	python3 tools/with-lock.py $(DEV_CACHE)/locks/wasm.lock npm run build --prefix component
@@ -40,7 +40,7 @@ component: ## Build and stage npm/host-component: make component SDK_DIST=<SDK t
 	$(STACK) build --test --no-run-tests
 	$(STACK) exec lawspec-dev -- integrity --record
 
-test: ## Compiler tests and npm tests
+test: generate ## Compiler tests and npm tests
 	$(STACK) test
 	node --test npm/test/*.test.mjs
 
@@ -50,24 +50,24 @@ integrity: ## npm/build.json matches the sources and the WASM build
 boundaries: ## Core and emitters never import syntax or inference
 	$(DEV) boundaries
 
-check: generate-check integrity boundaries test parity ## Fast local checks
+check: generate integrity boundaries test parity ## Fast local checks
 
-parity: ## Native and WASM compilers agree
+parity: generate ## Native and WASM compilers agree
 	node tools/parity.mjs
 
-artifact-targets: build ## Check configuration, grammar and build artifacts with their native validators
+artifact-targets: build generate ## Check configuration, grammar and build artifacts with their native validators
 	sh tools/artifact-targets.sh
 
-smoke: ## Pack, install and exercise the npm package
+smoke: generate ## Pack, install and exercise the npm package
 	node tools/package-smoke.mjs
 
-smoke-release: ## The smoke test with the export of every bundled example (releases)
+smoke-release: generate ## The smoke test with the export of every bundled example (releases)
 	node tools/package-smoke.mjs --examples
 
-lock: ## Regenerate npm/package-lock.json, including the native compiler packages
+lock: generate ## Regenerate npm/package-lock.json, including the native compiler packages
 	node tools/npm-lock.mjs
 
-package: ## Pack the npm package into .artifacts/<version>/
+package: generate ## Pack the npm package into .artifacts/<version>/
 	node tools/npm-lock.mjs --check
 	@# The package ships build outputs git does not track, so a worktree
 	@# holds whatever it last built. The staged core and host component must
@@ -81,11 +81,11 @@ package: ## Pack the npm package into .artifacts/<version>/
 	mkdir -p .artifacts/$(VERSION)
 	npm pack ./npm --pack-destination .artifacts/$(VERSION)
 
-acceptance: ## One acceptance suite: make acceptance SUITE=domain TARGET=java
+acceptance: generate ## One acceptance suite: make acceptance SUITE=domain TARGET=java
 	$(STACK) build lawspec:exe:lawspec-acceptance
 	$(STACK) exec lawspec-acceptance -- $(SUITE) $(TARGET)
 
-lessons: ## The tutorial lessons, run for real in Java, Python, JavaScript and TypeScript
+lessons: generate ## The tutorial lessons, run for real in Java, Python, JavaScript and TypeScript
 	$(STACK) build lawspec:exe:lawspec-acceptance
 	$(STACK) exec lawspec-acceptance -- lessons java python javascript typescript
 
@@ -101,10 +101,10 @@ ci-core: ## The complete check without target toolchains
 ci-affected: ## Only the steps that read what changed since main
 	$(DEV) ci --affected
 
-examples: ## Generate every bundled example into example_artifacts/
+examples: generate ## Generate every bundled example into example_artifacts/
 	node npm/bin/lawspec.mjs examples
 
-editor-test: ## VS Code grammar tests
+editor-test: generate ## VS Code grammar tests
 	npm test --prefix editors/vscode
 
 docs: ## Build the documentation site into .artifacts/site

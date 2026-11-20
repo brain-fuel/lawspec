@@ -95,10 +95,11 @@ reviewable file edits, with no feature CRUD or decision-writing MCP tools.
 
 ## Authoring and reuse
 
-For specification or adapter edits, read [the shared authoring guide](references/authoring.md).
-Check `lawspec --version` against `references/version.json`, search the bundled
-[compiler inventory](references/library.json) and [library reference](references/library.md),
-and inspect actual generated interfaces before implementing native code.
+For specification or adapter edits, read the shared authoring guide with
+`lawspec reference authoring.md`. Search the compiler inventory
+(`lawspec reference library.json`) and the library reference
+(`lawspec reference library.md`), which match the installed compiler, and
+inspect actual generated interfaces before implementing native code.
 Prefer prelude operations, reusable laws, generated models and checked definitions.
 Migrate corresponding application types within scope; retaining them is an explicit
 native-binding or codec choice. Custom domain semantics, independent reference

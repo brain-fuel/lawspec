@@ -35,6 +35,7 @@ import LawSpec.App.Format (FormatOptions (..), formatCommand)
 import LawSpec.App.Init (initCommand)
 import LawSpec.App.Json
 import LawSpec.App.Learn (learnCommand)
+import LawSpec.App.Reference (referenceCommand)
 import LawSpec.App.Lsp (lspCommand)
 import LawSpec.App.Mcp (mcpCommand)
 import LawSpec.App.Mutate (mutateCommand)
@@ -56,7 +57,7 @@ usageText :: String
 usageText =
   "LawSpec "
     ++ showVersion version
-    ++ "\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec init --target <language> [--project <directory>] [--name <name>] [--group <id>] [--minify] [--no-install]\n       lawspec init --target java [--release 21|25] [--generated-source-dir <directory>] [--generated-test-dir <directory>]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --timings, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: "
+    ++ "\nUsage: lawspec prelude [query] [--json]\n       lawspec inspect --target <target> [--json]\n       lawspec advise [--target <target>] [--json] [--strict]\n       lawspec project init|adopt|status|validate [--project <directory>]\n       lawspec learn [--port <port>]\n       lawspec reference [<name>]\n       lawspec init --target <language> [--project <directory>] [--name <name>] [--group <id>] [--minify] [--no-install]\n       lawspec init --target java [--release 21|25] [--generated-source-dir <directory>] [--generated-test-dir <directory>]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio | lawspec mcp\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] [--no-advice] | doctor | explain [<unit>::<law>] [--view eng|math|dev] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec mutate [paths...] [--target <language>] [--mutation-timeout <ms>] [--json]\n       lawspec describe --json\n       lawspec fetch | update [<package>]\n       lawspec package [--project <package directory>] [--output <archive.tgz>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache, --timings, --locked, --offline\nGeneration: --dry-run, --check, --minify\nTargets: "
     ++ intercalate ", " targets
 
 -- | main(): the exit code of a completed command.
@@ -94,6 +95,9 @@ cli invocation arguments = do
       when (has "strict") (failWith "--strict applies to advise")
       when (has "no-advice") (failWith "--no-advice applies to check and generate")
       mutateCommand (subcommand invocation) arguments cwd
+    Just "reference" -> do
+      when (not (null keys)) (failWith "Usage: lawspec reference [<name>]")
+      referenceCommand (invocationResources invocation) positionals
     Just "learn" -> do
       when (has "strict") (failWith "--strict applies to advise")
       when (has "no-advice") (failWith "--no-advice applies to check and generate")

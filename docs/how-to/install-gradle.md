@@ -10,10 +10,25 @@ from Gradle, through the same launcher as [the Maven packages](install-maven.md)
 with the same output. It is written in Java and is safe with the configuration
 cache. ref:DEC-jvm-native-host
 
+The plugin is on Maven Central, as `dev.goforge:lawspec-gradle-plugin` with
+its plugin marker. Let Gradle resolve plugins from Maven Central, in
+`settings.gradle.kts`:
+
+```kotlin
+pluginManagement {
+  repositories {
+    mavenCentral()
+    gradlePluginPortal() // for any other plugins the build applies
+  }
+}
+```
+
+Then apply it by id in `build.gradle.kts`:
+
 ```kotlin
 plugins {
   java
-  id("dev.goforge.lawspec") version "0.36.0"
+  id("dev.goforge.lawspec") version "0.36.1"
 }
 
 repositories {
@@ -97,13 +112,16 @@ using `.artifacts/jvm/repository`.
 
 ## Publish a release (owner)
 
+The plugin goes to Maven Central with the Maven packages, in the same
+`ax publish` bundle ([Install from Maven](install-maven.md#publish-a-release-owner)).
+After the Maven staging build, from the same checkout:
+
 ```sh
 cd hosts/jvm/gradle-plugin
-gradle -Pversion=0.36.0 -Prelease publishPlugins
+gradle -Pversion=0.36.1 publishAllPublicationsToCentralStagingRepository
 ```
 
-`-Prelease` signs with the `gpg` command; `publishPlugins` needs the Plugin
-Portal key and secret (`gradle.publish.key`, `gradle.publish.secret` in
-`~/.gradle/gradle.properties`, never in the repository). Publish the Maven
-packages of the same version first: the plugin depends on
-`dev.goforge:lawspec`. ref:DEC-maven-central-coordinates
+It writes the plugin jar, its sources and javadoc jars, its Gradle module
+metadata and the plugin marker `dev.goforge.lawspec:dev.goforge.lawspec.gradle.plugin`,
+unsigned, into `hosts/jvm/target/central-staging`. Nothing in the Gradle build
+signs or uploads. ref:DEC-maven-central-coordinates

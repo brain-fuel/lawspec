@@ -325,7 +325,9 @@ integrity record = do
   haskell <- walk (".hs" `isSuffixOf`) "src"
   wasmApp <- walk (".hs" `isSuffixOf`) "wasm/app"
   hostCoreSources <- walk (\p -> any (`isSuffixOf` p) [".hs", ".c"]) "wasm/host"
-  runtimes <- walk runtimeFile "runtime"
+  -- What the compiler embeds at compile time (LawSpec.Embed): the tracked
+  -- files only, so build output beside them never changes the record.
+  runtimes <- lines <$> readProcess "git" ["ls-files", "runtime", "examples/specs", "examples/rc1/native-payments.lawspec", "examples/native-payments", "vendor/unicode/17.0.0"] ""
   componentArtifacts <- walk (const True) "npm/host-component"
   let sources =
         sort
@@ -333,16 +335,13 @@ integrity record = do
               ++ wasmApp
               ++ hostCoreSources
               ++ runtimes
-              ++ [ "dev/Gen/Embed.hs",
-                   "package.yaml",
-                   "lawspec.cabal",
+              ++ [ "package.yaml",
                    "stack.yaml",
                    "stack.yaml.lock",
                    "tools/wasm-host-core.sh",
                    "wasm/cabal.project",
                    "wasm/cabal.project.freeze",
                    "wasm/lawspec-wasm.cabal",
-                   "vendor/unicode/17.0.0/CaseFolding.txt",
                    "vendor/unicode/LICENSE.txt"
                  ]
           )
@@ -425,9 +424,6 @@ integrity record = do
       case [rest | line <- lines text, Just rest <- [stripPrefix ("  \"" ++ key ++ "\": \"") line]] of
         rest : _ -> Just (takeWhile (/= '"') rest)
         [] -> Nothing
-    runtimeFile p =
-      any (`isSuffixOf` p) [".rs", ".py", ".pl", ".mjs", ".ts", ".java", ".kt", ".scala", ".go", ".hs", ".erl", ".ex", ".gleam", ".groovy", ".clj"]
-        || any (`isSuffixOf` p) ["Cargo.toml", "Cargo.lock"]
     quoted s = "\"" ++ s ++ "\""
     isInfixOf' needle haystack = any (needle `isPrefixOf`) (tails' haystack)
     tails' [] = [[]]

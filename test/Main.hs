@@ -10,6 +10,7 @@ import qualified ArtifactTargetSpec
 import qualified PrologTargetSpec
 import qualified WitnessSpec
 import qualified QuantifierDomainSpec
+import qualified EmbedSpec
 import qualified KeptValuesSpec
 import qualified SearchSpec
 import qualified NamedBlocksSpec
@@ -207,6 +208,7 @@ main = hspec $ do
   WitnessSpec.test_constructiveWitnessesPreserveScopedMeaning
   QuantifierDomainSpec.test_refinedIntegerDomainsAreComplete
   KeptValuesSpec.test_keptValuesSpecs
+  EmbedSpec.test_embeddedSourcesEqualTheirFiles
   SearchSpec.test_boundedWitnessSearchPreservesEvidence
   BeamSpec.test_beamCodeUsesCheckedCoreAndNativeFrameworks
   BeamSpec.test_beamRunsTheLanguageGaps

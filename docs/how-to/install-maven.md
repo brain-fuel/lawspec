@@ -22,6 +22,7 @@ package's and the Go host's. ref:DEC-jvm-native-host
 | `dev.goforge:lawspec-darwin-arm64`, `-darwin-x64`, `-linux-arm64`, `-linux-x64` | The binary for one platform. |
 | `dev.goforge:lawspec-resources` | The Learn site, for `lawspec learn` only. |
 | `dev.goforge:lawspec-maven-plugin` | The Maven plugin. |
+| `dev.goforge:lawspec-gradle-plugin` | The Gradle plugin `dev.goforge.lawspec` ([Install the Gradle plugin](install-gradle.md)). |
 
 Platforms: macOS and Linux on ARM64 and x86-64. The Linux binaries are
 statically linked, so they run on glibc and musl distributions alike. Java 17
@@ -34,7 +35,7 @@ own toolchains (`lawspec doctor` lists them).
 <plugin>
   <groupId>dev.goforge</groupId>
   <artifactId>lawspec-maven-plugin</artifactId>
-  <version>0.36.0</version>
+  <version>0.36.1</version>
   <executions>
     <execution>
       <goals>
@@ -101,9 +102,9 @@ Put the launcher and this platform's jar in one directory (`lawspec-resources`
 too, for `lawspec learn`):
 
 ```sh
-mvn dependency:copy -Dartifact=dev.goforge:lawspec:0.36.0 -DoutputDirectory=lawspec
-mvn dependency:copy -Dartifact=dev.goforge:lawspec-darwin-arm64:0.36.0 -DoutputDirectory=lawspec
-java -jar lawspec/lawspec-0.36.0.jar check
+mvn dependency:copy -Dartifact=dev.goforge:lawspec:0.36.1 -DoutputDirectory=lawspec
+mvn dependency:copy -Dartifact=dev.goforge:lawspec-darwin-arm64:0.36.1 -DoutputDirectory=lawspec
+java -jar lawspec/lawspec-0.36.1.jar check
 ```
 
 The launcher also finds the jars in the local Maven repository, or where
@@ -141,7 +142,7 @@ runs `lawspec --api <method>`.
 stack build lawspec:exe:lawspec-native
 node tools/learn-build.mjs          # the Learn assets for lawspec-resources
 hosts/jvm/stage-native.sh           # strips and stages this platform's binary
-mvn -f hosts/jvm install            # 0.36.0-SNAPSHOT into ~/.m2/repository
+mvn -f hosts/jvm install            # 0.36.1-SNAPSHOT into ~/.m2/repository
 ```
 
 `bash tools/hosts.sh jvm` does the same into `.artifacts/jvm/repository`
@@ -177,15 +178,27 @@ its Canon bundle.
 
 ## Publish a release (owner)
 
-The build never publishes on its own. With the `dev.goforge` namespace
-verified in the Central Portal, a Portal token in `~/.m2/settings.xml` as
-server `central`, and the GPG key in the local agent:
+The Maven build never signs or uploads. GoForge's
+[assayxport](https://goforge.dev/assayxport/) publishes, as it does for the
+other `dev.goforge` artifacts. From a clean checkout of the release tag,
+with the platform binaries staged and the Learn assets built:
 
 ```sh
 hosts/jvm/stage-native.sh --check-all
-mvn -f hosts/jvm -Prelease,all-platforms -Drevision=0.36.0 deploy
+rm -rf hosts/jvm/target/central-staging
+mvn -f hosts/jvm -Prelease,all-platforms -Drevision=0.36.1 -DskipTests \
+  package deploy:deploy \
+  -DaltDeploymentRepository=staging::file:$PWD/hosts/jvm/target/central-staging
+(cd hosts/jvm/gradle-plugin && gradle -Pversion=0.36.1 publishAllPublicationsToCentralStagingRepository)
+ax publish --maven-settings-path ~/para/projects/goforge/maven_settings.xml
 ```
 
-The release profile attaches sources and javadoc jars, signs every file and
-uploads one bundle with `autoPublish` off; publish it from the Portal after
-checking it. ref:DEC-maven-central-coordinates
+The release profile attaches sources and javadoc jars, and `deploy:deploy`
+writes them, unsigned, into a repository layout under `hosts/jvm/target/`;
+the Gradle build adds the Gradle plugin and its plugin marker there.
+`ax publish` reads `assayxport.toml` (the `maven-repository` policy and the
+artifacts), checks every POM for Central's required metadata, signs each
+file with the GoForge Central key, uploads one bundle, waits for Central to
+validate it and publishes it. Run `ax publish --prepare` first to check and
+sign without uploading. The Portal token stays outside the repository.
+ref:DEC-maven-central-coordinates

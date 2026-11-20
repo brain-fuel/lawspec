@@ -81,7 +81,8 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import Data.Char (isAlphaNum, isDigit)
 import Data.IORef
-import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix, tails, transpose)
+import Generate (generatedManifest)
+import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort, stripPrefix, tails, transpose)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -95,7 +96,7 @@ import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitFailure, exitSuccess, exitWith)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 import GHC.IO.Handle.Lock (LockMode(..), hLock, hTryLock)
-import System.IO (Handle, IOMode(..), hClose, hFlush, hGetContents, hIsTerminalDevice, openFile, stdout)
+import System.IO (Handle, IOMode(..), hClose, hFlush, hGetContents, hIsTerminalDevice, openFile, readFile', stdout)
 import System.Posix.Signals (Handler(..), installHandler, signalProcessGroup, sigKILL, sigTERM)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
@@ -129,7 +130,7 @@ data Run = Run
   , runChildren :: Children
   , runLimit :: Int  -- the longest a step may run, in seconds
   , runFresh :: Bool
-  , runRepository :: [FilePath]
+  , runRepository :: IORef (Maybe [FilePath])  -- the files steps read; listed again after generated
   , runCache :: FilePath  -- the machine's shared development cache
   , runBudget :: Budget
   , runFingerprints :: FilePath }  -- tool fingerprints the steps of this run share
@@ -137,8 +138,10 @@ data Run = Run
 -- | The SDK's test files, each a step of its own (ref:DEC-ci-test-targets).
 sdkTestFiles :: IO [FilePath]
 sdkTestFiles = do
-  present <- doesDirectoryExist "npm/test"
-  if present then sort . filter (".test.mjs" `isSuffixOf`) <$> listDirectory "npm/test" else pure []
+  -- From the templates: a fresh checkout has no npm/test until the
+  -- generated step writes it, and each template produces one test file.
+  present <- doesDirectoryExist "templates/npm/test"
+  if present then sort . filter (".test.mjs" `isSuffixOf`) <$> listDirectory "templates/npm/test" else pure []
 
 sdkTestStep :: FilePath -> String
 sdkTestStep file = "npm-test-" ++ take (length file - length (".test.mjs" :: String)) file
@@ -216,7 +219,8 @@ ci args = do
   process <- getProcessID
   fingerprints <- makeAbsolute (logs </> ("tool-fingerprints-" ++ show process))
   createDirectoryIfMissing True fingerprints
-  let run = Run console children limit (fresh options) repository cache budget fingerprints
+  listed <- newIORef (Just repository)
+  let run = Run console children limit (fresh options) listed cache budget fingerprints
   main' <- myThreadId
   -- SIGTERM stops the run as Ctrl-C does: every running step is stopped.
   _ <- installHandler sigTERM (Catch (throwTo main' UserInterrupt)) Nothing
@@ -424,8 +428,10 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
           ++ ["editor-install" | name == "editor-grammar" || isSdkTest name]
           ++ ["docs" | name == "rejection-examples"]
           ++ ["learn-install" | name == "generated"]
-          ++ ["generated" | name `elem` ["learn-assets", "code-style"]]
-          ++ [prerequisite | name == "component-native-acceptance", prerequisite <- ["integrity", "generated"]]
+          -- Git keeps no build output: generated writes npm/, tools/*.mjs
+          -- and the other generated files every later step reads.
+          ++ ["generated" | name `notElem` ["build", "learn-install", "generated"]]
+          ++ ["integrity" | name == "component-native-acceptance"]
           ++ ["learn-assets" | name `elem` ["learn-execution", "learn-browser", "package-smoke"] || isSdkTest name]
           ++ ["learn-execution" | name == "learn-browser"]
           -- Both build the host-effect core in one cabal directory.
@@ -439,10 +445,10 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
           ++ ["hosts-jvm" | name == "host-parity" || name `elem` drop 1 jvmSteps]
           ++ ["learn-assets" | name == "hosts-jvm"]
       Just t
-        | t `elem` Targets.artifactTargets -> ["artifact-bootstrap", "build"]
-        | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> []
+        | t `elem` Targets.artifactTargets -> ["artifact-bootstrap", "build", "generated"]
+        | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> ["generated"]
         | otherwise ->
-            [t ++ "-bootstrap"]
+            [t ++ "-bootstrap", "generated"]
               ++ ["build" | usesBuild command]
               ++ [f | (f, ft) <- zip beamFrameworks ["erlang", "elixir", "gleam"], ft == t]
               ++ [warmUp t | t `elem` warmTargets, name /= warmUp t]
@@ -619,9 +625,8 @@ coreSteps sdkTests =
     step "dependencies" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "dependencies", "--check"],
     step "boundaries" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "boundaries"],
     step "learn-install" ["npm", "ci", "--prefix", "learn"],
-    step "generated" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "generate", "--check"],
+    step "generated" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "generate"],
     step "capability-receipts" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "capability-receipts", "--check"],
-    step "embedded-literals" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "test/embed_literals.hs"],
     step "ci-cache-lifecycle" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-cache-test/Main.hs"],
     step "ci-coordination" ["stack", "--no-terminal", "exec", "--", "runghc", "-idev", "dev/ci-coordination-test/Main.hs"],
     step "version" ["stack", "--no-terminal", "exec", "lawspec-dev", "--", "version", "--check"],
@@ -967,13 +972,26 @@ suiteReads suite target = do
        in Just (Reads (\file -> any (`isPrefixOf` file) roots || (home `isPrefixOf` file && not (any (`isPrefixOf` file) others))))
     _ -> Nothing
 
--- | Every file git would commit: tracked or untracked, and not ignored.
+-- | Every file git would commit (tracked or untracked, and not ignored),
+-- and the generated files Git ignores, as the last lawspec-dev generate
+-- listed them in .artifacts/generated.txt: steps read those too.
 repositoryFiles :: IO [FilePath]
 repositoryFiles = do
   (code, out, _) <- readCreateProcessWithExitCode
     (proc "git" ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]) ""
+  manifest <- doesFileExist generatedManifest
+  generated <- if manifest then lines <$> readFile' generatedManifest else pure []
   if code /= ExitSuccess then pure [] else
-    filterM doesFileExist (sort (filter (not . null) (splitOn '\0' out)))
+    filterM doesFileExist (sort (nub (filter (not . null) (splitOn '\0' out) ++ generated)))
+
+-- | The repository files, listed when first needed after the generated step.
+runFiles :: Run -> IO [FilePath]
+runFiles run = readIORef (runRepository run) >>= maybe relist pure
+  where
+    relist = do
+      files <- repositoryFiles
+      writeIORef (runRepository run) (Just files)
+      pure files
 
 -- | Run a step unless a pass is recorded for its inputs. Under --fresh every
 -- step runs (acceptance suites with LAWSPEC_CACHE=refresh), and passes are
@@ -982,7 +1000,12 @@ runCached :: Run -> Step -> IO Bool
 runCached run current@(Step name env command) = do
   started <- getCurrentTime
   case stepInputs name of
-    Nothing -> runStep run (if runFresh run then refreshed else current)
+    Nothing -> do
+      passed <- runStep run (if runFresh run then refreshed else current)
+      -- The generated step writes files Git ignores; list them for the
+      -- steps after it.
+      when (name == "generated") (writeIORef (runRepository run) Nothing)
+      pure passed
     Just declared -> do
       key <- stepKey run current declared
       case key of
@@ -1011,8 +1034,9 @@ recordTiming run name started seconds cached passed =
 
 stepKey :: Run -> Step -> Inputs -> IO (Maybe String)
 stepKey run current@(Step name env command) declared@(Inputs _ probes) = do
-  reads' <- declaredReads (runRepository run) current declared
-  let selected = filter (readsFile reads') (runRepository run)
+  repository <- runFiles run
+  reads' <- declaredReads repository current declared
+  let selected = filter (readsFile reads') repository
   contents <- forM selected $ \path -> (,) path <$> fileDigest path
   effective <- stepEnvironment run env
   answers <- forM probes $ \probe -> case probe of

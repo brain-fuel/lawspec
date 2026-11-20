@@ -72,10 +72,6 @@ htmlcov/
 # Keep release inputs: npm/build.json, runtime sources, dependency lockfiles,
 # examples, tests, and RELEASE-*.md belong in Git. Build outputs do not.
 
-# Root documents npm prepack copies into the package (dev/Generate.hs)
-/npm/README.md
-/npm/CHANGELOG.md
-
 # canon: the checkout whose grammars canon.yaml names, and its cache
 /.canon
 .canon-cache/
@@ -83,19 +79,37 @@ htmlcov/
 runtime/dotnet/**/bin/
 runtime/dotnet/**/obj/
 
-# Reproducible Learn vendor assets (npm ci --prefix learn; npm run build --prefix learn)
-/npm/learn/vendor/
-# The compiler core and its JavaScript glue (tools/wasm.sh), checked
-# against npm/build.json
-/npm/core.wasm
-/npm/core_jsffi.js
-# lawspec learn's gzipped compiler (tools/learn-compiler.mjs)
-/npm/core.wasm.gz
-# The host-effect core the CLI runs (tools/wasm-host-core.sh); over GitHub's
-# 100 MiB file limit, so built, and checked against npm/build.json's hostCore.
-/npm/host-core.wasm
 /learn/formatter/bin/
 /learn/formatter/obj/
 
-# Built application component; reproduced by component/tools/build.mjs.
-/npm/host-component/
+# Build outputs. Nothing a build writes is kept in Git: run `make generate`
+# (lawspec-dev generate, dev/Generate.hs) after cloning and after editing
+# templates/, docs or compiler facts. npm/ is the package payload that
+# generate, tools/wasm.sh and tools/learn-build.mjs assemble; only its build
+# record and lockfile are sources. It includes the cores (tools/wasm.sh,
+# tools/wasm-host-core.sh), whose digests npm/build.json records, Learn's
+# vendor assets and compressed compiler, and the application component
+# (component/tools/build.mjs).
+/npm/*
+!/npm/build.json
+!/npm/package-lock.json
+/tools/*.mjs
+/component/test/
+/component/tools/
+/component/examples/
+/component/pilot-browser.mjs
+/component/pilot-node.mjs
+/component/pilot.d.ts
+/editors/vscode/extension.cjs
+/editors/vscode/syntaxes/
+/editors/vscode/test/
+/hosts/node/conformance.mjs
+/learn/curriculum.json
+/runtime/LawSpecDataStrategies.java
+/test/fixtures/eq-set-operations-library.lawspec
+/acceptance/minor-bounded-generators/kotlin/native/src/test/kotlin/lawspec/BoundedGeneratorTest.kt
+/acceptance/minor-bounded-generators/scala/native/test/BoundedGeneratorTest.scala
+
+# Written from package.yaml by hpack on every stack command; the wasm32
+# Cabal builds run a stack dry-run first (tools/wasm.sh, tools/wasm-host-core.sh).
+/lawspec.cabal

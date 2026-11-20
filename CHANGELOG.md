@@ -6,6 +6,46 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-11-19
+
+### Added
+
+- `lawspec reference [<name>]` prints the references the LawSpec skills read:
+  the authoring guide, compiler inventory, library reference, reusable law
+  source and course, from the installed package.
+
+### Changed
+
+- GoForge's assayxport publishes the Maven packages, as it does the other
+  `dev.goforge` artifacts. The release profile no longer signs or uploads:
+  it deploys the nine artifacts, with sources and javadoc, unsigned to
+  `hosts/jvm/target/central-staging`, and `ax publish` (configured by the new
+  `assayxport.toml`, whose version `lawspec-dev bump` keeps) checks their
+  POMs, signs them, and uploads and publishes one bundle. See
+  [Install from Maven](docs/how-to/install-maven.md#publish-a-release-owner).
+- The Gradle plugin `dev.goforge.lawspec` is published to Maven Central, as
+  `dev.goforge:lawspec-gradle-plugin` with its plugin marker, in the same
+  bundle as the Maven packages, instead of to the Gradle Plugin Portal. Add
+  `mavenCentral()` to `pluginManagement { repositories { } }` in
+  `settings.gradle.kts` to apply it by id. See
+  [Install the Gradle plugin](docs/how-to/install-gradle.md).
+- The repository keeps no build output in Git. Everything `lawspec-dev
+  generate` writes (the npm package's scripts and tests, `tools/*.mjs`, the
+  component and editor scripts, the course), `lawspec.cabal` and the skill
+  references are ignored; run `make generate` after cloning. Every `make` task
+  that reads them, and every CI step, runs it first.
+- The runtime sources, bundled examples and Unicode tables are embedded at
+  compile time by Template Haskell, instead of through generated Haskell
+  modules.
+- The LawSpec plugin's skills hold only their instructions and print their
+  references with `lawspec reference`, so they always match the installed
+  compiler. `.agents/skills` links to the plugin's skills.
+
+### Fixed
+
+- The CLI stops quietly when the program reading its output closes early
+  (`lawspec reference library.md | head`), instead of failing with `EPIPE`.
+
 ## [0.36.0] - 2026-11-18
 
 ### Added
@@ -3717,7 +3757,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.36.1...HEAD
+[0.36.1]: https://github.com/brain-fuel/lawspec/compare/v0.36.0...v0.36.1
 [0.36.0]: https://github.com/brain-fuel/lawspec/compare/v0.35.1...v0.36.0
 [0.35.1]: https://github.com/brain-fuel/lawspec/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/brain-fuel/lawspec/compare/v0.34.1...v0.35.0
