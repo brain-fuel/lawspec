@@ -5,7 +5,7 @@
 // relies on the plugin's defaults. ref:DEC-jvm-native-host
 plugins {
   kotlin("jvm") version "2.3.21"
-  id("dev.goforge.lawspec") version "0.36.1-SNAPSHOT"
+  id("dev.goforge.lawspec") version "0.36.2-SNAPSHOT"
 }
 
 group = "dev.goforge.samples"

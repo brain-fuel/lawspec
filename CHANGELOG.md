@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.36.2] - 2026-11-20
+
+### Changed
+
+- The Canon bundles (`@goforgedev/canon-<platform>`) carry canon 0.2.5, which
+  reads Haskell foreign imports with the `capi` calling convention and lambdas
+  over variables spelled like `\cases`, and skips every path git ignores. Rice's
+  Tax stays at 0.4.3, which accepts any canon 0.2.x.
+
 ### Fixed
 
 - For contributors, `lawspec-dev ci --only a,b` runs the steps matching `a` or
@@ -3780,7 +3789,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.36.1...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.36.2...HEAD
+[0.36.2]: https://github.com/brain-fuel/lawspec/compare/v0.36.1...v0.36.2
 [0.36.1]: https://github.com/brain-fuel/lawspec/compare/v0.36.0...v0.36.1
 [0.36.0]: https://github.com/brain-fuel/lawspec/compare/v0.35.1...v0.36.0
 [0.35.1]: https://github.com/brain-fuel/lawspec/compare/v0.35.0...v0.35.1

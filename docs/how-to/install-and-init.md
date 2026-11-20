@@ -19,9 +19,9 @@ This guide describes the canonical authoring profile in the unreleased minor on
 `main`. A checkout holds sources only: Git keeps no build output, so building
 its package needs Stack and the GHC WebAssembly toolchain
 ([Contribute](contribute.md#building)). To use the released package instead,
-which needs neither, install `lawspec@0.36.1` from
+which needs neither, install `lawspec@0.36.2` from
 [npm](https://www.npmjs.com/package/lawspec) and follow the
-[0.36.1 documentation](https://github.com/brain-fuel/lawspec/tree/v0.36.1).
+[0.36.1 documentation](https://github.com/brain-fuel/lawspec/tree/v0.36.2).
 
 ```sh
 git clone https://github.com/brain-fuel/lawspec.git lawspec

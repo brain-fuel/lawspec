@@ -49,7 +49,7 @@ WSL runs all of them. See [compatibility](docs/reference/compatibility.md#window
 To open the learning track locally:
 
 ```sh
-npm install --global lawspec@0.36.1
+npm install --global lawspec@0.36.2
 lawspec learn
 ```
 
@@ -113,7 +113,7 @@ installed compiler and need no repository checkout. Install the LawSpec CLI
 separately with Node 22+:
 
 ```sh
-npm install --global lawspec@0.36.1
+npm install --global lawspec@0.36.2
 ```
 
 For **Codex**, run these commands in your terminal:
@@ -140,8 +140,8 @@ Code; the project and tutor skills follow the same naming pattern.
 The terminal commands use sparse checkouts for the marketplace and plugin
 directories. For a local checkout, omit `--sparse` and its paths and replace
 `brain-fuel/lawspec` with the checkout's absolute path. To pin a release in Codex, append
-`--ref v0.36.1` to its marketplace-add command. In Claude Code, use
-`https://github.com/brain-fuel/lawspec.git#v0.36.1` as the marketplace source.
+`--ref v0.36.2` to its marketplace-add command. In Claude Code, use
+`https://github.com/brain-fuel/lawspec.git#v0.36.2` as the marketplace source.
 Private repository installations require your existing GitHub access.
 
 To refresh the Git source, run `codex plugin marketplace upgrade brain-fuel` or
