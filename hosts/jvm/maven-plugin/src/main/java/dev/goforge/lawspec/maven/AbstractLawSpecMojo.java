@@ -121,6 +121,10 @@ public abstract class AbstractLawSpecMojo extends AbstractMojo
     return false;
   }
 
+  /**
+   * Runs the goal's command with the shared options and the standard streams passed through,
+   * unless the goal is skipped.
+   */
   @Override
   public void execute() throws MojoExecutionException, MojoFailureException
   {

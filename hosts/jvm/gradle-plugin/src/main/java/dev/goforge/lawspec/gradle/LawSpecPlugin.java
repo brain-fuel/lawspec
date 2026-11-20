@@ -54,6 +54,12 @@ public abstract class LawSpecPlugin implements Plugin<Project>
   {
   }
 
+  /**
+   * Registers the lawspec extension, the task for each command and the wiring into the build's
+   * generation, compilation and check tasks.
+   *
+   * @param project the project to apply the plugin to
+   */
   @Override
   public void apply(Project project)
   {

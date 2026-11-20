@@ -19,9 +19,6 @@ decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/lawC
 decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/proves:
   digest: sha256:afca3e789e3f28ab
   verdict: pending
-decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/rebuild:
-  digest: sha256:0741f31e95a1642e
-  verdict: pending
 decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/refutations:
   digest: sha256:92eddda6fb19da83
   verdict: pending

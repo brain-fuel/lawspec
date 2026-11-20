@@ -53,6 +53,11 @@ func registry(t *testing.T, body []byte) (*httptest.Server, *int) {
 	return server, &requests
 }
 
+// The core is downloaded once from the HTTPS registry, unpacked from its
+// package, checked against the pinned SHA-256 and kept in the user cache; a
+// second load reads the cache without another request. Every run then gets
+// the same bytes without a network.
+// ref:REQ-go-host ref:DEC-go-core-download
 func TestLoadDownloadsVerifiesAndCaches(t *testing.T) {
 	wasm := []byte("\x00asm a core")
 	server, requests := registry(t, tarball(t, map[string][]byte{
@@ -78,6 +83,10 @@ func TestLoadDownloadsVerifiesAndCaches(t *testing.T) {
 	}
 }
 
+// A downloaded core whose SHA-256 is not the pinned one is refused and
+// nothing is kept, so a tampered or substituted package never runs and never
+// reaches the cache.
+// ref:REQ-go-host ref:DEC-go-core-download
 func TestLoadRefusesAMismatchAndKeepsNothing(t *testing.T) {
 	server, _ := registry(t, tarball(t, map[string][]byte{"package/host-core.wasm": []byte("tampered")}))
 	source := Source{Cache: t.TempDir(), Registry: server.URL, Client: server.Client()}
@@ -90,6 +99,9 @@ func TestLoadRefusesAMismatchAndKeepsNothing(t *testing.T) {
 	}
 }
 
+// A cached core is re-hashed on every start, and one that no longer matches
+// the pin is downloaded again and replaced, so a damaged cache cannot run.
+// ref:REQ-go-host ref:DEC-go-core-download
 func TestLoadReplacesADamagedCacheEntry(t *testing.T) {
 	wasm := []byte("\x00asm the core")
 	server, requests := registry(t, tarball(t, map[string][]byte{"package/host-core.wasm": wasm}))
@@ -103,6 +115,9 @@ func TestLoadReplacesADamagedCacheEntry(t *testing.T) {
 	}
 }
 
+// A package without package/host-core.wasm is an error, since the host reads
+// only that file from the tarball and runs nothing else from it.
+// ref:REQ-go-host ref:DEC-go-core-download
 func TestLoadNeedsTheCoreInThePackage(t *testing.T) {
 	server, _ := registry(t, tarball(t, map[string][]byte{"package/other.wasm": []byte("x")}))
 	source := Source{Cache: t.TempDir(), Registry: server.URL, Client: server.Client()}
@@ -112,6 +127,9 @@ func TestLoadNeedsTheCoreInThePackage(t *testing.T) {
 	}
 }
 
+// A registry URL that is not HTTPS is refused before any request, so the
+// core is never fetched over an unauthenticated channel.
+// ref:REQ-go-host ref:DEC-go-core-download
 func TestLoadRefusesAPlainHTTPRegistry(t *testing.T) {
 	source := Source{Cache: t.TempDir(), Registry: "http://registry.example"}
 	_, err := load(context.Background(), source, "9.9.9", "")
@@ -120,6 +138,9 @@ func TestLoadRefusesAPlainHTTPRegistry(t *testing.T) {
 	}
 }
 
+// A registry that does not have the release answers 404, and the error says
+// so and names LAWSPEC_HOST_CORE, the way to run a core built from source.
+// ref:REQ-go-host ref:DEC-go-core-download
 func TestLoadReportsAMissingPackage(t *testing.T) {
 	server, _ := registry(t, nil)
 	source := Source{Cache: t.TempDir(), Registry: server.URL, Client: server.Client()}
@@ -129,6 +150,9 @@ func TestLoadReportsAMissingPackage(t *testing.T) {
 	}
 }
 
+// The pin records a release version and a 64-digit SHA-256, so a build that
+// lost its pin fails here rather than running an unchecked core.
+// ref:REQ-go-host ref:DEC-go-core-download
 func TestPinIsAReleaseAndADigest(t *testing.T) {
 	if Version == "" || len(SHA256) != 64 {
 		t.Fatalf("pin.go records version %q and digest %q", Version, SHA256)

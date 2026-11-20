@@ -47,6 +47,10 @@ public class GenerateMojo extends AbstractLawSpecMojo
   @Parameter(property = "lawspec.generate.addSourceRoots", defaultValue = "true")
   private boolean addSourceRoots;
 
+  /**
+   * Generates, then adds the target's generated directories to the build as source roots and
+   * test resources, unless the goal is skipped or {@code addSourceRoots} is off.
+   */
   @Override
   public void execute() throws MojoExecutionException, MojoFailureException
   {

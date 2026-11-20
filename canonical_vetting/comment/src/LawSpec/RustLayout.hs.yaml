@@ -100,9 +100,6 @@ decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/op
 decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/overflowable:
   digest: sha256:776cec492db32166
   verdict: pending
-decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/overflowing:
-  digest: sha256:60e70a8a094b75b2
-  verdict: pending
 decision/haskell/src/LawSpec/RustLayout.hs/module/LawSpec.RustLayout/function/parameterDoc:
   digest: sha256:a1a5089141940b47
   verdict: pending

@@ -10,9 +10,6 @@ decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/fun
 decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/convertValue:
   digest: sha256:d4296f54253ba678
   verdict: pending
-decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/helperValue:
-  digest: sha256:f7a32216f6dfaad4
-  verdict: pending
 decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/scalarEqual:
   digest: sha256:f5a848081cc788c9
   verdict: pending

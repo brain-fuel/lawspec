@@ -1,5 +1,5 @@
 version: 0.36.1
-canon: 0.2.3
+canon: 0.2.4
 registry: canonical_refs.yaml
 decisions: canonical_decisions.yaml
 exemptions: canonical_exemptions.yaml
@@ -18,6 +18,19 @@ ignore:
   - docs/index.md
   - templates/site/playground.mjs
   - templates/tools/package-smoke.mjs
+  - tools/email-oracle.pl
+  - tools/email-valid-oracle.pl
+  - component/test/
+  - component/tools/
+  - component/examples/
+  - component/pilot-browser.mjs
+  - component/pilot-node.mjs
+  - component/pilot.d.ts
+  - editors/vscode/extension.cjs
+  - hosts/node/conformance.mjs
+  - runtime/LawSpecDataStrategies.java
+  - acceptance/minor-bounded-generators/kotlin/native/src/test/kotlin/lawspec/BoundedGeneratorTest.kt
+  - acceptance/minor-bounded-generators/scala/native/test/BoundedGeneratorTest.scala
   - bench/kafka/kotlin/build.gradle.kts
   - npm/
   - tools/*.mjs
@@ -138,3 +151,6 @@ languages:
       - {rule: enumItem, kind: variant, name: {rule: identifier}, required: false}
       - {rule: structField, kind: field, name: {rule: identifier}, required: false}
       - {rule: tupleField, kind: field, name: {ordinal: true}, required: false}
+
+taxes:
+  sign-off: opted-out

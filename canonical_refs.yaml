@@ -886,6 +886,14 @@ REQ-host-sdk-runtime-boundary:
   kind: requirement
   title: Direct typed Haskell components preserve formatter behavior and run only with embedding-owned capabilities, bounded execution and explicit failure outcomes.
   locator: docs/reference/host-sdk.md
+REQ-go-host:
+  kind: requirement
+  title: The Go host runs only the host-effect core its pin names, fetched over HTTPS and verified by SHA-256, and performs each effect as the Node host does, confined to the project.
+  locator: docs/how-to/install-go.md
+REQ-jvm-host:
+  kind: requirement
+  title: On the JVM, the launcher runs only the binary and Canon its manifest records, passing arguments, exit codes and terminal through and writing only to its cache, and the Maven and Gradle plugins expose every command and wire generation into the build.
+  locator: docs/how-to/install-maven.md
 
 lean-heartbeats:
   kind: article

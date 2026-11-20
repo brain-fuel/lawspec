@@ -22,12 +22,6 @@ decision/haskell/acceptance/Main.hs/module/Main/function/harnessInputs:
 decision/haskell/acceptance/Main.hs/module/Main/function/loadPackage:
   digest: sha256:219fee62abca117f
   verdict: pending
-decision/haskell/acceptance/Main.hs/module/Main/function/parseMutant:
-  digest: sha256:483f99cdef430a05
-  verdict: pending
-decision/haskell/acceptance/Main.hs/module/Main/function/plan:
-  digest: sha256:5d058f07140da099
-  verdict: pending
 decision/haskell/acceptance/Main.hs/module/Main/function/runSuite:
   digest: sha256:76c5d9d31d241584
   verdict: pending

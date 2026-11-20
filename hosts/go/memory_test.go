@@ -2,6 +2,10 @@ package lawspec
 
 import "testing"
 
+// The core's linear memory is a reservation that grows without moving or
+// losing its contents and refuses growth past its maximum, so growing never
+// leaves a dead copy of the old memory for Go's collector.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestMappedAllocatorGrowsInPlace(t *testing.T) {
 	const page = 64 << 10
 	memory := mappedAllocator.Allocate(page, 16*page)

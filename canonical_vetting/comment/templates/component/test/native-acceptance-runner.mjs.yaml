@@ -1,56 +1,40 @@
-decision/typescript/component/pilot.d.ts/function/createFormatter:
-  digest: sha256:1771e4fd4ea7c811
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/application:
+  digest: sha256:11422ff660440921
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/FormatResult:
-  digest: sha256:fc406404ee9d2ea8
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/files:
+  digest: sha256:73717f0f221fb66b
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/FormatResult/property/diagnostics:
-  digest: sha256:fb39d10ba274941a
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/natives:
+  digest: sha256:daf8a5a1f9b81d53
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/FormatResult/property/formattedSources:
-  digest: sha256:2a9bbe3a11ce2343
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/platform:
+  digest: sha256:2eb17602c94e2494
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/FormatResult/property/languageProfile:
-  digest: sha256:61038ffcd766abbd
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/read:
+  digest: sha256:d9e60d383fd14cd2
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/Formatter:
-  digest: sha256:4268d7ff4d23d26c
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/records:
+  digest: sha256:6d722b6d5edaaf5b
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/Formatter/method/close:
-  digest: sha256:b45bdf86d0861ac8
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/root:
+  digest: sha256:2c056054155f348b
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/Formatter/method/format:
-  digest: sha256:d940dea55faa268c
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/sdk:
+  digest: sha256:83b7434f629ff00d
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/Formatter/method/formatFiles:
-  digest: sha256:4a85552ffb2d9b18
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/sdkRecord:
+  digest: sha256:5b68adb92b4a3ec2
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good
-decision/typescript/component/pilot.d.ts/interface/Formatter/method/revoke:
-  digest: sha256:31601858be93f399
-  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
-  verdict: good
-decision/typescript/component/pilot.d.ts/interface/Formatter/property/identity:
-  digest: sha256:84925b836d817a85
-  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
-  verdict: good
-decision/typescript/component/pilot.d.ts/type/Diagnostic:
-  digest: sha256:eecc8964dbb8597a
-  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
-  verdict: good
-decision/typescript/component/pilot.d.ts/type/Diagnostic/property/at:
-  digest: sha256:1421220fbdf426bf
-  note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
-  verdict: good
-decision/typescript/component/pilot.d.ts/type/Diagnostic/property/related:
-  digest: sha256:823e4189d5a6f950
+decision/javascript/templates/component/test/native-acceptance-runner.mjs/variable/setup:
+  digest: sha256:ab9364ab6d95cc97
   note: "Owner explicitly approved all 47 pending Canon sign-offs in this conversation. Recorded by Codex on that instruction for the pending component comments reported at 59c9c7dc. This verdict does not assert platform acceptance or completion of the Haskell application port."
   verdict: good

@@ -112,6 +112,12 @@ public abstract class GeneratedDirectories
   @Inject
   protected abstract ExecOperations getExecOperations();
 
+  /**
+   * Runs {@code lawspec describe --json} and returns the generated directories of this project's
+   * targets, or none if it cannot run, so a build without them compiles src/main and src/test.
+   *
+   * @return the generated source and test directories, by {@link #SOURCES} and {@link #TESTS}
+   */
   @Override
   public Map<String, List<String>> obtain()
   {

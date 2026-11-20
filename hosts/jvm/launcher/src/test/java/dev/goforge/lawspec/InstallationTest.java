@@ -100,6 +100,11 @@ class InstallationTest
     return text;
   }
 
+  /**
+   * The launcher unpacks the platform's binary once, checks it against its manifest, runs it
+   * and reuses the unpacked copy, so what runs is the binary the release recorded.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void unpacksAndVerifiesTheBinary() throws Exception
   {
@@ -115,6 +120,11 @@ class InstallationTest
     assertEquals(installation.binary(), Installation.of(platformJar(), null).binary());
   }
 
+  /**
+   * A binary whose digest or size the manifest does not record is refused and never run,
+   * and so is a jar with no binary, so a tampered jar cannot make the launcher run its contents.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void refusesABinaryTheManifestDoesNotRecord() throws Exception
   {
@@ -139,6 +149,11 @@ class InstallationTest
     }
   }
 
+  /**
+   * The resources jar is unpacked whole, keeping entry times and leaving out META-INF, and
+   * LAWSPEC_RESOURCES names it unless set, so lawspec learn serves the same files as the npm CLI.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void unpacksTheResourcesWithTheirTimes() throws Exception
   {
@@ -159,6 +174,11 @@ class InstallationTest
     }
   }
 
+  /**
+   * The Canon bundle is unpacked and checked against the manifest, reused on a later run,
+   * and named by LAWSPEC_CANON unless set, so the Canon the binary runs is the one recorded.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void unpacksAndVerifiesTheCanonBundle() throws Exception
   {
@@ -178,6 +198,11 @@ class InstallationTest
     assertEquals(canon, Installation.of(platformJar(), null).canon().orElseThrow());
   }
 
+  /**
+   * A Canon the manifest does not record, or a jar without one, is refused
+   * so a tampered Canon is never run.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void refusesACanonTheManifestDoesNotRecord() throws Exception
   {
@@ -197,6 +222,11 @@ class InstallationTest
         absent.getMessage());
   }
 
+  /**
+   * The launcher passes the arguments to the binary and returns its own exit code,
+   * usage errors included, so it behaves as the npm CLI does.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void runsWithTheArgumentsAndExitCodePassedThrough() throws Exception
   {
@@ -206,6 +236,11 @@ class InstallationTest
     assertEquals(1, LawSpec.run(installation, List.of("no-such-command"), scratch));
   }
 
+  /**
+   * The compiler API answers JSON requests through the binary, with the schema version
+   * createCompiler() gives them, so Java callers see the npm API's results.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void answersCompilerApiRequests() throws Exception
   {
@@ -217,6 +252,11 @@ class InstallationTest
     assertTrue(check.contains("\"schemaVersion\":5"), check);
   }
 
+  /**
+   * Installing writes only to the cache directory, not to the working directory,
+   * as the requirement demands of the launcher.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void writesNothingOutsideTheCache() throws Exception
   {

@@ -79,6 +79,8 @@ foreign import ccall unsafe "stdlib.h realpath"
 foreign import capi unsafe "sys/ioctl.h ioctl"
   c_ioctl :: CInt -> CULong -> Ptr () -> IO CInt
 
+-- | The TIOCGWINSZ request code, read from the C header through capi since
+-- its value differs between platforms.
 foreign import capi "sys/ioctl.h value TIOCGWINSZ"
   tiocgwinsz :: CULong
 

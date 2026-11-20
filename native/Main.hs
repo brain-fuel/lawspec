@@ -26,6 +26,10 @@ import System.Environment (getArgs, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
 import System.IO (hPutStrLn, stderr)
 
+-- | Runs one invocation of the native CLI: the host conformance suite, one
+-- compiler API request, or a LawSpec command over the native host, so the
+-- JVM packages and host parity runs share the application every host runs.
+-- ref:DEC-jvm-native-host
 main :: IO ()
 main = do
   arguments <- getArgs

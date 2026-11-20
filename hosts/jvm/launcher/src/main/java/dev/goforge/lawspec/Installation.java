@@ -602,18 +602,38 @@ public final class Installation
   // Where the binary's bytes come from: an entry of a jar file, or a class path resource.
   private interface Source
   {
+    /**
+     * Opens the binary's bytes for reading; the caller closes the stream.
+     *
+     * @return a stream of the bytes
+     * @throws IOException if the bytes cannot be read
+     */
     InputStream open() throws IOException;
 
-    // The jar file the bytes come from, when they come from one.
+    /**
+     * The jar file the bytes come from, when they come from one.
+     *
+     * @return the jar, or empty for a class path resource
+     */
     default Optional<Path> jar()
     {
       return Optional.empty();
     }
 
+    /**
+     * A source that reads an entry of a jar file.
+     *
+     * @param jar the jar file
+     * @param entry the name of the entry in it
+     * @return the source
+     */
     static Source inJar(Path jar, String entry)
     {
       return new Source()
       {
+        /**
+         * Opens the entry, closing the jar when the stream is closed.
+         */
         @Override
         public InputStream open() throws IOException
         {
@@ -627,6 +647,9 @@ public final class Installation
           InputStream in = zip.getInputStream(found);
           return new FilterInputStream(in)
           {
+            /**
+             * Closes the entry's stream and then the jar it was opened from.
+             */
             @Override
             public void close() throws IOException
             {
@@ -642,12 +665,18 @@ public final class Installation
           };
         }
 
+        /**
+         * Names the jar this source reads.
+         */
         @Override
         public Optional<Path> jar()
         {
           return Optional.of(jar);
         }
 
+        /**
+         * Describes the source as the jar's path, for messages.
+         */
         @Override
         public String toString()
         {
@@ -656,6 +685,12 @@ public final class Installation
       };
     }
 
+    /**
+     * A source that reads a class path resource, when the class path has it.
+     *
+     * @param entry the name of the resource
+     * @return the source, or empty if the class path has no such resource
+     */
     static Optional<Source> onClassPath(String entry)
     {
       if (Installation.class.getClassLoader().getResource(entry) == null)
@@ -664,6 +699,9 @@ public final class Installation
       }
       return Optional.of(new Source()
       {
+        /**
+         * Opens the resource from the launcher's class loader.
+         */
         @Override
         public InputStream open() throws IOException
         {
@@ -675,6 +713,9 @@ public final class Installation
           return in;
         }
 
+        /**
+         * Describes the source as the class path, for messages.
+         */
         @Override
         public String toString()
         {

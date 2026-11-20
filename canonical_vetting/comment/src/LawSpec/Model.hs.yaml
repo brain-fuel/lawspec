@@ -76,6 +76,3 @@ decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/typeValueVar
 decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/typeVariableNames:
   digest: sha256:fba08a5579f85c94
   verdict: pending
-decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/unlocated:
-  digest: sha256:82c2170d15c49373
-  verdict: pending

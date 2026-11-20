@@ -83,6 +83,11 @@ class LawSpecPluginFunctionalTest
         .withPluginClasspath().withArguments(List.of(arguments)).forwardOutput();
   }
 
+  /**
+   * The plugin registers a lawspec task for every command, so a Gradle build exposes
+   * everything the CLI does.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void registersATaskForEveryCommand()
   {
@@ -97,6 +102,11 @@ class LawSpecPluginFunctionalTest
     }
   }
 
+  /**
+   * By default generation runs before main compilation and check and test run with
+   * the build's check, so a build needs no wiring by hand.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void wiresGenerationBeforeMainCompilationAndChecksIntoCheck()
   {
@@ -108,6 +118,11 @@ class LawSpecPluginFunctionalTest
     assertTrue(output.contains(":lawspecTest SKIPPED"), output);
   }
 
+  /**
+   * Each of the extension's four wiring switches turns its wiring off,
+   * so a build can opt out of any one.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void switchesEachWiringOff() throws IOException
   {
@@ -126,6 +141,11 @@ class LawSpecPluginFunctionalTest
     assertFalse(output.contains(":lawspecTest"), output);
   }
 
+  /**
+   * The directories lawspec generate writes into are compiled with the main sources and
+   * found again under the configuration cache, so no source roots are added by hand.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void compilesTheGeneratedDirectoriesUnderTheConfigurationCache() throws IOException
   {
@@ -139,6 +159,11 @@ class LawSpecPluginFunctionalTest
     assertEquals(TaskOutcome.UP_TO_DATE, second.task(":compileJava").getOutcome());
   }
 
+  /**
+   * With addSourceRoots off the generated directories are not added to the source sets,
+   * so the build registers them itself.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void leavesTheSourceSetsAloneWhenSwitchedOff() throws IOException
   {
@@ -176,6 +201,11 @@ class LawSpecPluginFunctionalTest
         """.formatted(settings));
   }
 
+  /**
+   * The tasks run the native binary and write its outputs, and a second run reuses the
+   * configuration cache, so the plugin is compatible with it.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void runsLawspecAndReusesTheConfigurationCache()
   {
@@ -188,6 +218,11 @@ class LawSpecPluginFunctionalTest
     assertEquals(TaskOutcome.SUCCESS, second.task(":lawspecCheck").getOutcome());
   }
 
+  /**
+   * The extension's config file and the task's arguments reach the command,
+   * as the Maven plugin's do.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void passesTheConfigAndArguments() throws IOException
   {
@@ -203,6 +238,11 @@ class LawSpecPluginFunctionalTest
     assertTrue(result.getOutput().contains("addition is commutative"), result.getOutput());
   }
 
+  /**
+   * A failing lawspec command fails the build with its exit code,
+   * so a broken law cannot pass the build.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void failsTheBuildWhenLawspecFails() throws IOException
   {

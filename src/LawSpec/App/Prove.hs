@@ -26,7 +26,7 @@
 -- law's fingerprint and the prover's identity. Its identity names the core
 -- build in place of the Node host's build.json and proof.mjs digests, so a
 -- receipt written by the legacy host is never reused by the core.
--- ref:DEC-haskell-application-port ref:smtlib ref:z3 ref:why3
+-- ref:DEC-haskell-application-port ref:smt-lib ref:z3 ref:why3
 module LawSpec.App.Prove
   ( proveCommand,
     ProofConfig (..),

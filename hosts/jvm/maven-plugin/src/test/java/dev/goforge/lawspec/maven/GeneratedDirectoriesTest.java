@@ -22,6 +22,11 @@ class GeneratedDirectoriesTest
         """.formatted(root, targets);
   }
 
+  /**
+   * The generated source and test directories are read from the targets lawspec describe
+   * reports, so the build compiles what generate writes.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void readsAJavaTargetsGeneratedDirectories()
   {
@@ -35,6 +40,11 @@ class GeneratedDirectoriesTest
         directories.tests());
   }
 
+  /**
+   * A target without generated directories adds none, since it generates into src/main and
+   * src/test, which Maven already compiles.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void addsNothingForATargetThatGeneratesIntoTheSourceDirectories()
   {
@@ -44,6 +54,11 @@ class GeneratedDirectoriesTest
     assertEquals(List.of(), directories.tests());
   }
 
+  /**
+   * Only the targets rooted at this project's directory and of the chosen language
+   * contribute directories, so a module does not compile another's output.
+   * ref:REQ-jvm-host ref:DEC-jvm-native-host
+   */
   @Test
   void takesOnlyTheTargetsOfThisProjectAndTheChosenLanguage() throws IOException
   {

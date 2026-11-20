@@ -85,9 +85,6 @@ decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/funct
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/normalizeCalls:
   digest: sha256:c7b13fa89668e391
   verdict: pending
-decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/numericDescent:
-  digest: sha256:29b1d0a40fd6e8a5
-  verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/operationLet:
   digest: sha256:8d42bab7ce53a146
   verdict: pending

@@ -62,6 +62,10 @@ func text(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }
 
+// An unknown operation is unsupported, and a request that is not JSON, is
+// not ABI 2 or carries no valid policy is invalid. The host answers with a
+// typed result rather than failing across the boundary.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestEnvelopeErrors(t *testing.T) {
 	e := New(Options{})
 	defer e.Close()
@@ -83,6 +87,11 @@ func TestEnvelopeErrors(t *testing.T) {
 	}
 }
 
+// A fetch returns the response as the Node host does: a redirect is not
+// followed, content-encoding is not decoded, header names are lower-cased in
+// arrival order, and the request asks for an identity encoding with no
+// default user agent. The core then sees the same bytes on every host.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestFetchHTTPS(t *testing.T) {
 	var seen http.Header
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +135,8 @@ func TestFetchHTTPS(t *testing.T) {
 	}
 }
 
+// A URL that cannot be parsed is invalid, not a failed network call.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestFetchInvalidURL(t *testing.T) {
 	e := New(Options{})
 	defer e.Close()
@@ -135,6 +146,9 @@ func TestFetchInvalidURL(t *testing.T) {
 	}
 }
 
+// A fetch of a plain HTTP URL is denied, so the host talks to the network
+// only over HTTPS.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestFetchRefusesPlainHTTP(t *testing.T) {
 	e := New(Options{})
 	defer e.Close()
@@ -144,6 +158,12 @@ func TestFetchRefusesPlainHTTP(t *testing.T) {
 	}
 }
 
+// A loopback server hands the core each request with its path, headers and
+// body as received (chunked bodies included, several requests on one
+// connection), sends the core's response, refuses a second response to the
+// same request and times out an accept with no client. This is the
+// behaviour of the Node host's server.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestServeAcceptRespond(t *testing.T) {
 	e := New(Options{})
 	defer e.Close()
@@ -225,6 +245,7 @@ func TestServeAcceptRespond(t *testing.T) {
 
 // A target that is not visible ASCII is refused with 400, as Node's parser
 // refuses it, and a port in use is already-exists.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestServeRefusals(t *testing.T) {
 	e := New(Options{})
 	defer e.Close()
@@ -254,6 +275,12 @@ func TestServeRefusals(t *testing.T) {
 	}
 }
 
+// Under a narrow policy, the host refuses on its own what the policy does
+// not grant: paths outside the read roots, paths reached through a symbolic
+// link, writes to a read root, spawning, serving and fetching. It reports
+// relative and missing paths as invalid and not-found. The confinement to
+// the project does not rest on the core's check alone.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestConfinement(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
@@ -291,6 +318,9 @@ func TestConfinement(t *testing.T) {
 	}
 }
 
+// Standard input is read in chunks no larger than the requested maximum
+// (0 meaning any size), and the end of input is reported once it is reached.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestInput(t *testing.T) {
 	e := New(Options{Stdin: strings.NewReader("abc")})
 	defer e.Close()
@@ -308,6 +338,10 @@ func TestInput(t *testing.T) {
 	}
 }
 
+// Output goes to the standard output or error stream the request names, and
+// to no other, so a command's output reaches the same stream as on the Node
+// host.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestOutput(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	e := New(Options{Stdout: &stdout, Stderr: &stderr})
@@ -319,6 +353,11 @@ func TestOutput(t *testing.T) {
 	}
 }
 
+// Realpath resolves links and returns the stored case of each name, as
+// POSIX realpath(3) does; a missing path, a dangling link and a path through
+// a file fail with the kinds the ABI names, and a relative path is invalid.
+// The Node host answers the same.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestRealpath(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "Dir"), 0o777)
@@ -360,6 +399,10 @@ func TestRealpath(t *testing.T) {
 	}
 }
 
+// Terminal reports whether each of the three streams is a terminal and
+// the width of an output terminal, rejects an unknown stream, and answers
+// even under a closed policy, as the ABI says it is always allowed.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestTerminal(t *testing.T) {
 	reader, writer, err := os.Pipe()
 	if err != nil {
@@ -389,6 +432,7 @@ func TestTerminal(t *testing.T) {
 // refusals that name real protected paths go to enforce alone, which
 // performs nothing; only requests inside the test's own directory are
 // performed, and the sentinel there must survive them.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestGuard(t *testing.T) {
 	work := filepath.Join(t.TempDir(), "work")
 	cwd := filepath.Join(work, "project", "cwd")
@@ -487,6 +531,12 @@ func TestGuard(t *testing.T) {
 	}
 }
 
+// Rename follows rename(2): it replaces a file or an empty directory,
+// fails with the ABI's kinds for a missing source, a file over a directory
+// and a relative path, and permission bits are applied as a creation mode
+// and reported by stat, with out-of-range bits invalid. Extraction and
+// installs therefore give the permissions the Node host gave.
+// ref:REQ-go-host ref:DEC-host-effect-abi
 func TestRenameAndPermissions(t *testing.T) {
 	root := t.TempDir()
 	e := New(Options{})

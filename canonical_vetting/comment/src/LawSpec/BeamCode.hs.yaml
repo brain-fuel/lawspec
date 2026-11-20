@@ -61,9 +61,6 @@ decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/lambda
 decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/linkComment:
   digest: sha256:40e7d56cbf4d51f7
   verdict: pending
-decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/literal:
-  digest: sha256:e8ab42aa16a0a93a
-  verdict: pending
 decision/haskell/src/LawSpec/BeamCode.hs/module/LawSpec.BeamCode/function/mentions:
   digest: sha256:b7492e3a5408470c
   verdict: pending

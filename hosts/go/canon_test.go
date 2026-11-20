@@ -7,6 +7,10 @@ import (
 	"testing"
 )
 
+// A Canon bundle the caller names is used as given, its executable and
+// presets directory, with no download. Hosts must run the Canon the caller
+// supplied, not fetch another.
+// ref:REQ-go-host ref:DEC-native-canon
 func TestCanonToolPrefersTheBundle(t *testing.T) {
 	bundle := t.TempDir()
 	got, err := canonTool(bundle, "linux", "amd64", func() (string, error) { return "/cache", nil })
@@ -22,6 +26,11 @@ func TestCanonToolPrefersTheBundle(t *testing.T) {
 	}
 }
 
+// Without a bundle, each supported platform names its npm package platform
+// and the user cache directory for the core to download into. The host only
+// names them, so the core's digest-checked download stays the one source of
+// Canon.
+// ref:REQ-go-host ref:DEC-native-canon
 func TestCanonToolDownloadsWithoutABundle(t *testing.T) {
 	cases := map[string]string{
 		"darwin/arm64": "darwin-arm64",
@@ -42,6 +51,10 @@ func TestCanonToolDownloadsWithoutABundle(t *testing.T) {
 	}
 }
 
+// A platform with no Canon package, or a machine with no user cache
+// directory, gets no Canon tool at all, so Canon reports itself incomplete
+// rather than the host running something unverified.
+// ref:REQ-go-host ref:DEC-native-canon
 func TestCanonToolHasNoneElsewhere(t *testing.T) {
 	cache := func() (string, error) { return "/c", nil }
 	if got, _ := canonTool("", "windows", "amd64", cache); got != nil {

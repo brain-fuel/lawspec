@@ -4,9 +4,6 @@ decision/haskell/dev/Main.hs/module/Main:
 decision/haskell/dev/Main.hs/module/Main/function/boundaries:
   digest: sha256:67399b8a70079548
   verdict: pending
-decision/haskell/dev/Main.hs/module/Main/function/integrity:
-  digest: sha256:f11051332120d2cd
-  verdict: pending
 decision/haskell/dev/Main.hs/module/Main/function/render:
   digest: sha256:4edef1a5ea68398b
   verdict: pending

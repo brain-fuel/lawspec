@@ -31,9 +31,6 @@ decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/f
 decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/pathTo:
   digest: sha256:48880047d617b948
   verdict: pending
-decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/sccs:
-  digest: sha256:14ca8aa3d165218d
-  verdict: pending
 decision/haskell/src/LawSpec/Core/ModelCheck.hs/module/LawSpec.Core.ModelCheck/function/search:
   digest: sha256:0da37fc4ec735427
   verdict: pending

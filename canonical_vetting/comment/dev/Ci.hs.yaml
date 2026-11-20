@@ -22,9 +22,6 @@ decision/haskell/dev/Ci.hs/module/Ci/function/aloneSteps:
 decision/haskell/dev/Ci.hs/module/Ci/function/beamFrameworks:
   digest: sha256:e1265140932c26b7
   verdict: pending
-decision/haskell/dev/Ci.hs/module/Ci/function/defaultJobs:
-  digest: sha256:98d2646307de838e
-  verdict: pending
 decision/haskell/dev/Ci.hs/module/Ci/function/interrupted:
   digest: sha256:5e6c7de647052ccc
   verdict: pending
