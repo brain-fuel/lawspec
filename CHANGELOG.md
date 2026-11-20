@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- For contributors, `lawspec-dev ci --only a,b` runs the steps matching `a` or
+  `b`, as the contributing guide says, instead of looking for one step named
+  `a,b`.
+
 ## [0.36.1] - 2026-11-19
 
 ### Added

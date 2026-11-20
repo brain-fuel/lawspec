@@ -1471,7 +1471,6 @@ parse = go (Options [] False False False False [] [] Nothing [] Nothing False Fa
       | otherwise = Left ("unknown target: " ++ t)
     go o ("--core" : rest) = go o { coreOnly = True } rest
     go o ("--no-core" : rest) = go o { noCore = True } rest
-    go o ("--only" : pattern' : rest) = go o { only = only o ++ [pattern'] } rest
     go o ("--affected" : base : rest) | not ("--" `isPrefixOf` base) = go o { affectedSince = Just (Just base) } rest
     go o ("--affected" : rest) = go o { affectedSince = Just Nothing } rest
     go o ("--exact" : rest) = go o { exact = True } rest
@@ -1484,7 +1483,7 @@ parse = go (Options [] False False False False [] [] Nothing [] Nothing False Fa
     go o ("--jobs" : n : rest)
       | not (null n), all isDigit n, read n > (0 :: Int) = go o { jobs = Just (read n) } rest
       | otherwise = Left ("--jobs takes a positive number, not " ++ n)
-    go _ (flag : _) = Left ("unknown option: " ++ flag ++ "\nusage: lawspec-dev ci [--target T]... [--core | --no-core] [--only GLOB]... [--affected [BASE]] [--exact] [--list] [--fail-fast] [--fresh] [--jobs N] [--rust-toolchains a,b] [--rust-targets t,u]")
+    go _ (flag : _) = Left ("unknown option: " ++ flag ++ "\nusage: lawspec-dev ci [--target T]... [--core | --no-core] [--only GLOB[,GLOB]]... [--affected [BASE]] [--exact] [--list] [--fail-fast] [--fresh] [--jobs N] [--rust-toolchains a,b] [--rust-targets t,u]")
     splitComma s = case break (== ',') s of
       (a, _ : rest) -> a : splitComma rest
       (a, []) -> [a | not (null a)]
