@@ -15,7 +15,9 @@
 // runs the one its platform jar carries, and the npm CLI, which finds no
 // @goforgedev/canon-<platform> package in the checkout, the ricestax package
 // (its route on a platform with no native Canon). Every Canon then has to
-// answer as ricestax@0.4.3's does.
+// answer as ricestax@0.4.3's does, up to canon's patch version: Rice's Tax
+// accepts any patch of its canon's minor (DEC-canon-patch-compatibility), so
+// the bundle's canon may be a later 0.2.x than the one ricestax embeds.
 // --only (or LAWSPEC_PARITY_ONLY) selects cases by name: a comma-separated
 // list of patterns, each a glob over the whole name (* any run of
 // characters, ? one) or, without either, a prefix of it. --jobs (or
@@ -183,6 +185,13 @@ const withoutTimes = text =>
   text.replace(/"elapsedMs": ?[0-9.e+-]+/g, '"elapsedMs": 0');
 // The seed lawspec test picks when none is given.
 const withoutSeeds = text => text.replace(/"seed": ?[0-9]+/g, '"seed": 0');
+// The canon patch version each host's Canon reports, which may differ
+// within one minor (see --canon above).
+const withoutCanonPatch = text =>
+  text.replace(
+    /(\\?"version\\?": ?\\?")(\d+\.\d+)\.\d+(\\?")/g,
+    '$1$2.x$3',
+  );
 // What a native test run prints and records that differs between any two
 // runs: go test's and Rapid's timings, go test -json's event times, a
 // panic's addresses and goroutine numbers, and when each attempt ran.
@@ -1871,7 +1880,7 @@ const cases = [
       {argv: ['project', 'status'], env: {CANON: ''}},
       ['project', 'validate', '--json'],
     ],
-    {files: {'canon.yaml': '{}\n'}},
+    {files: {'canon.yaml': '{}\n'}, normalise: withoutCanonPatch},
   ],
   // Without canon.yaml, CANON is not needed; every layer selected, and no
   // application target for the execution layers.
