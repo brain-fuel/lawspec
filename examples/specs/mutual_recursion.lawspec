@@ -19,9 +19,7 @@ end type
 
 -- One line for the item, then the lines of everything under it.
 function itemLine (item :: Item) -> Integer is
-  first matching case of item:
-    when record{children = children} then 1 + itemLines children
-  end case
+  1 + itemLines item.children
 end function
 
 function itemLines (items :: List Item) -> Integer is

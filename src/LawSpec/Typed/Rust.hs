@@ -11,7 +11,7 @@ import Control.Monad.State.Strict
 import Data.Char (isAlphaNum)
 import Data.List (intercalate, sort, nub)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set as S
 import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
@@ -795,11 +795,19 @@ match env selfCall scope value cases _ = do
       bindNames c = forM (caseBinders c) $ \b -> if used c b then Just <$> fresh (binderName b) else pure Nothing
       body c names = expression env selfCall ([(binderId b, n) | (b, Just n) <- zip (caseBinders c) names] ++ scope) (caseBody c)
       -- Fields are borrowed from the matched value, and cloned as bound.
+      -- A case that only returns one of its fields (a projection, such as
+      -- item.children) clones that field once.
       bound c names = do
         fields <- mapM (\n -> maybe (pure Nothing) (\_ -> Just <$> fresh "field") n) names
-        b <- body c names
-        let clones = [L.Let n (L.method (L.atom f) "clone" []) | (Just n, Just f) <- zip names fields]
-        pure (map (maybe "_" id) fields, L.letIn clones b)
+        let returned = case expressionNode (caseBody c) of
+              Local i -> listToMaybe [f | (b, Just f) <- zip (caseBinders c) fields, binderId b == i]
+              _ -> Nothing
+        case returned of
+          Just f -> pure (map (maybe "_" id) fields, L.method (L.atom f) "clone" [])
+          Nothing -> do
+            b <- body c names
+            let clones = [L.Let n (L.method (L.atom f) "clone" []) | (Just n, Just f) <- zip names fields]
+            pure (map (maybe "_" id) fields, L.letIn clones b)
   -- The matched value: a local is borrowed where it is; anything else is
   -- bound first.
   (subject, wrap) <- case expressionNode value of

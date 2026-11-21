@@ -342,11 +342,40 @@ opening e = case e of
     chainOpening = case (chainPrefix e, snd (unchain e)) of
       -- (the chain up to its last call stays on one line only within 60
       -- columns; otherwise it breaks after its root)
-      (Just p, links@(_ : _)) | LinkCall name _ _ <- last links, width (p ++ "." ++ name ++ "(") <= 60 -> p ++ "." ++ name ++ "("
+      -- (with the opening of a single argument that overflows the last call,
+      -- as rustfmt's first line of the overflowed chain has it)
+      (Just p, links@(_ : _)) | LinkCall name args _ <- last links, width (p ++ "." ++ name ++ "(") <= 60 ->
+        p ++ "." ++ name ++ "(" ++ (case args of
+          [a] | singleOverflow args -> linkArgumentOpening a
+          _ -> "")
       -- (a call root that breaks opens the chain's first line)
       _ -> case fst (unchain e) of
         [Left r] | callRoot r, maybe True ((> 60) . width) (oneLine r) -> opening r
         root -> concat [maybe "" id (either flat flatLink r) | r <- root]
+
+-- | A call's only argument, when it overflows the call (a nested call, or a
+-- match whose head stays on the call's line): the call's first line goes on
+-- with that argument's.
+singleOverflow :: [Expr] -> Bool
+singleOverflow args = case args of
+  [a] -> nestedCall a || singleMatch args
+  _ -> False
+
+-- | The opening of a chain's last call's only argument: a call there whose
+-- only argument is a match opens with the match's head, which rustfmt keeps
+-- on the chain's first line (a call nested deeper has a budget of its own).
+linkArgumentOpening :: Expr -> String
+linkArgumentOpening a = case a of
+  Prefix op x -> op ++ linkArgumentOpening x
+  Try x -> linkArgumentOpening x
+  Call f args@[m] | singleMatch args, Just name <- flat f -> name ++ "(" ++ opening m
+  _ -> opening a
+
+-- | A call's only argument, when it is a match that overflows the call.
+singleMatch :: [Expr] -> Bool
+singleMatch args = case args of
+  [a@(Match {})] -> overflowable 1 a
+  _ -> False
 
 -- | A block, or a closure: always overflowable.
 blocky :: Expr -> Bool

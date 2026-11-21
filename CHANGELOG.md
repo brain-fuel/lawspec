@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Typed Rust lays out a method chain that ends in a call to a `match` as
+  rustfmt does, such as `1 + itemLines item.children`, so the generated code
+  passes `rustfmt --check`. The mutual-recursion example uses that form
+  again, and its Rust suite checks it. A case that only returns a field
+  clones it once instead of twice.
+
 ## [0.36.2] - 2026-11-20
 
 ### Changed
