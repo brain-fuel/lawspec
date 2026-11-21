@@ -161,7 +161,7 @@ the registry lacks one, and with `--omit=optional` or `--ignore-scripts`:
 - `@goforgedev/canon-<platform>` (darwin-arm64, darwin-x64, linux-arm64,
   linux-x64) is the native Canon that `lawspec project init` and `adopt` set
   Canon up with and that `lawspec project status` and `validate` run: canon
-  0.2.3 with Rice's Tax 0.4.3's grammar presets. npm installs only your
+  0.2.5 with Rice's Tax 0.4.3's grammar presets. npm installs only your
   platform's.
 - `ricestax@0.4.3` is the same Canon as WebAssembly under Node, used only on
   a platform with no native Canon package (Windows). Without either, those

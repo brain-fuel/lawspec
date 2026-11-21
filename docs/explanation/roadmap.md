@@ -286,7 +286,7 @@ becomes the default once the platform and application acceptance in
 checkpoint, manifest admission and version selection, shipped in 0.33. In
 0.36 the npm package's `lawspec` becomes the Node host of that core, the
 legacy Node CLI and its modules leave the package, and host parity compares
-every host with the native CLI. Each host ships a native Canon (canon 0.2.3
+every host with the native CLI. Each host ships a native Canon (canon 0.2.5
 with Rice's Tax 0.4.3); the Go host downloads and verifies its platform's.
 
 ### Later: instances and capabilities written by a program

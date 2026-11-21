@@ -25,7 +25,7 @@
 #                    (.artifacts/canon-build/<platform> by default)
 #   stack            on PATH; canon's own stack.yaml at the pinned commit
 #                    names the snapshot (LTS 24.58, GHC 9.10).
-# The pins: canon's release 0.2.3 (tag v0.2.3) and the Rice's Tax release
+# The pins: canon's release 0.2.5 (tag v0.2.5) and the Rice's Tax release
 # built against it in lockstep, 0.4.3 (tag v0.4.3), whose npm package the
 # legacy CLI runs. The executable is canon's own `canon`, the command the CANON
 # variable names; the presets are byte for byte the ones the npm package
@@ -36,8 +36,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 root="$PWD"
 
-canon_commit=441b21233d044959ff431bd0107841258bb65cd7
-canon_version=0.2.3
+canon_commit=90f6b551e97774bd7b2fc4c521c46e87911fd74a
+canon_version=0.2.5
 ricestax_commit=483dbb2ebfa41231ea3df31a12762c9b4d2f1ff2
 ricestax_version=0.4.3
 platforms=(darwin-arm64 darwin-x64 linux-arm64 linux-x64)

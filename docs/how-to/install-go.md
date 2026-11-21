@@ -108,7 +108,7 @@ listens on 127.0.0.1 only and stops on Ctrl-C.
 
 `lawspec project init` and `adopt` set Canon up with the grammar presets of
 Rice's Tax 0.4.3, and `lawspec project status` and `validate` run Canon
-0.2.3. Both come from a Canon bundle: the `canon` executable and a
+0.2.5. Both come from a Canon bundle: the `canon` executable and a
 `presets/` directory, which `tools/build-canon.sh` builds in a compiler
 checkout (into `.artifacts/canon/<platform>`). Point the host at it:
 

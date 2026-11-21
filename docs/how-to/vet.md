@@ -14,9 +14,10 @@ it, so git records who signed.
 
 ## Set up once
 
-Rice's Tax and canon must be one canon version: Rice's Tax 0.4.3 is built
-against canon 0.2.3, which is the version `canon.yaml` names under `canon`.
-Check out canon at that version and Rice's Tax beside it, where its
+Rice's Tax and canon must be one canon minor version: Rice's Tax 0.4.3 is
+built against canon 0.2.3 and accepts any canon 0.2.x, and `canon.yaml` names
+0.2.5 under `canon`. Check out canon at that version (tag `v0.2.5`) and Rice's
+Tax beside it, where its
 `stack.yaml` expects `../canon`, build both, and point the two variables at
 them:
 
@@ -25,7 +26,7 @@ git clone https://github.com/brain-fuel/canon && (cd canon && stack build)
 git clone https://github.com/brain-fuel/ricestax && (cd ricestax && stack build)
 export CANON_HOME=$PWD/canon
 export RICESTAX_HOME=$PWD/ricestax
-stack run lawspec-dev -- canon version   # canon 0.2.3
+stack run lawspec-dev -- canon version   # canon 0.2.5
 ```
 
 `lawspec-dev tax` links `.canon` to `CANON_HOME`, as `lawspec-dev canon`
