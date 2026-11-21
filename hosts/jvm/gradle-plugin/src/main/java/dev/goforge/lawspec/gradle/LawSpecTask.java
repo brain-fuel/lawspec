@@ -19,6 +19,7 @@ import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.TaskAction;
+import org.gradle.api.tasks.UntrackedTask;
 import org.gradle.api.tasks.options.Option;
 import org.gradle.process.ExecOperations;
 
@@ -28,14 +29,9 @@ import org.gradle.process.ExecOperations;
  * keeps its own record of what it checked, generated and tested, so Gradle tracks no state for the
  * task and it always runs.
  */
+@UntrackedTask(because = "lawspec keeps its own cache of what it checked, generated and tested")
 public abstract class LawSpecTask extends DefaultTask
 {
-  /** Creates the task. */
-  public LawSpecTask()
-  {
-    doNotTrackState("lawspec keeps its own cache of what it checked, generated and tested");
-  }
-
   /**
    * The command and its own arguments, for example {@code check} or {@code project status}.
    *

@@ -34,6 +34,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `-PlawspecRepository=$PWD/../target/central-staging`, so Gradle finds the
   staged `dev.goforge:lawspec` at the release version
   ([Install the Gradle plugin](docs/how-to/install-gradle.md#publish-a-release-owner)).
+- The Gradle plugin's task declares itself untracked with `@UntrackedTask`, so
+  the plugin's own build passes Gradle 9.9's plugin validation.
 - canon ignores the Perl email oracles, and verdicts on removed code are
   dropped (all were pending).
 - The contributor setup installs Learn's formatters before `make generate`.
