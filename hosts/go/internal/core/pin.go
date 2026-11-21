@@ -3,7 +3,7 @@
 package core
 
 // Version is the LawSpec release whose @goforgedev/core package holds the core.
-const Version = "0.36.1"
+const Version = "0.36.2"
 
 // SHA256 is the core's (host-core.wasm's) SHA-256, in lowercase hexadecimal.
-const SHA256 = "7733212cd63afe3b56fa5dc196a96439d0e362aaacf4072a676c1e9175ce94ca"
+const SHA256 = "f6213b1d326485d01ae35eb8d72a67e6c4c0d355c7e8eae836f26e48c4e361db"
