@@ -28,7 +28,7 @@ Then apply it by id in `build.gradle.kts`:
 ```kotlin
 plugins {
   java
-  id("dev.goforge.lawspec") version "0.36.2"
+  id("dev.goforge.lawspec") version "0.36.3"
 }
 
 repositories {
@@ -118,7 +118,7 @@ After the Maven staging build, from the same checkout:
 
 ```sh
 cd hosts/jvm/gradle-plugin
-gradle -Pversion=0.36.2 -PlawspecRepository=$PWD/../target/central-staging \
+gradle -Pversion=0.36.3 -PlawspecRepository=$PWD/../target/central-staging \
   publishAllPublicationsToCentralStagingRepository
 ```
 

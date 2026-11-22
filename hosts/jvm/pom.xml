@@ -51,7 +51,7 @@
   </modules>
 
   <properties>
-    <revision>0.36.2-SNAPSHOT</revision>
+    <revision>0.36.3-SNAPSHOT</revision>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <!-- Reproducible archives: one entry time for every file. -->
     <project.build.outputTimestamp>2026-11-15T00:00:00Z</project.build.outputTimestamp>

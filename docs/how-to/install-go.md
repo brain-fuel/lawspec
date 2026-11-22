@@ -29,7 +29,7 @@ go install goforge.dev/lawspec/cmd/lawspec@latest
 ```
 
 Releases are tagged `hosts/go/vX.Y.Z` in the LawSpec repository; to pin
-one, name its version, for example `@v0.36.2`.
+one, name its version, for example `@v0.36.3`.
 
 ## Install from a checkout
 

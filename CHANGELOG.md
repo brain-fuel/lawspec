@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.36.3] - 2026-11-22
+
 ### Fixed
 
 - Typed Rust lays out a method chain that ends in a call to a `match` as
@@ -3799,7 +3801,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.36.2...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.36.3...HEAD
+[0.36.3]: https://github.com/brain-fuel/lawspec/compare/v0.36.2...v0.36.3
 [0.36.2]: https://github.com/brain-fuel/lawspec/compare/v0.36.1...v0.36.2
 [0.36.1]: https://github.com/brain-fuel/lawspec/compare/v0.36.0...v0.36.1
 [0.36.0]: https://github.com/brain-fuel/lawspec/compare/v0.35.1...v0.36.0
