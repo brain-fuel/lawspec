@@ -1,30 +1,30 @@
 {
   "darwin-arm64": {
     "name": "@goforgedev/canon-darwin-arm64",
-    "version": "0.36.2",
-    "file": "goforgedev-canon-darwin-arm64-0.36.2.tgz",
-    "integrity": "sha512-04qQfg/uZO1IR3xvMuoihnTemKuCJnKvEHSGSB++7VrlZk/1MeHxmSTYlFQDGyjg+MtqaKHGdj7X/PifkfJ/pw==",
-    "shasum": "1bb2f4f340ad44f7727a6cc03c11c3c49a1842e5"
+    "version": "0.36.3",
+    "file": "goforgedev-canon-darwin-arm64-0.36.3.tgz",
+    "integrity": "sha512-Rxkscb7j5YoUuWb72femh7tCV/ziiVKF5ItUXyt/2rpIC5GYAzzKos9kjk78S7Q4GWP81gVK3HbuHcMUBAAX+w==",
+    "shasum": "0d271e860cf2d9a686beea38fd4d39b653d3323c"
   },
   "darwin-x64": {
     "name": "@goforgedev/canon-darwin-x64",
-    "version": "0.36.2",
-    "file": "goforgedev-canon-darwin-x64-0.36.2.tgz",
-    "integrity": "sha512-JQuXcMuZjD6Ugn6egaIfJsA43BHQvcBXpJ5hiARycjYjJUWMoek6tquq7gxvLozW0BO0eZUNGrJZxGpqo5sXhA==",
-    "shasum": "b384ffe707d189d2a761b90072fa830eb37fa78a"
+    "version": "0.36.3",
+    "file": "goforgedev-canon-darwin-x64-0.36.3.tgz",
+    "integrity": "sha512-A+cQw5CqJflUEQZw5Sygqqj+klQM1NMO1ZQc6CIRIhamRWcrqowlQD38LGXzoqXBx/5rhigrF+sJ53zmJQeMaQ==",
+    "shasum": "c6b2b15f8d9de1dd2b8cb0ca43f2dba0827077ce"
   },
   "linux-arm64": {
     "name": "@goforgedev/canon-linux-arm64",
-    "version": "0.36.2",
-    "file": "goforgedev-canon-linux-arm64-0.36.2.tgz",
-    "integrity": "sha512-RmI2yDXvFBzHq4bG6cJnfgRQ4347ZVpYUiy9VJ1nCgZIIMXIjJts9RgEpWfcUTWR+qffbOYBC6WXGl5h6nuGEQ==",
-    "shasum": "359af956e2d97458d6c7cd5254a19356c7bd338f"
+    "version": "0.36.3",
+    "file": "goforgedev-canon-linux-arm64-0.36.3.tgz",
+    "integrity": "sha512-UustURqkHJJHKFVUyapMhP6X1QZ2y91us87+y9Ly3X/ohxAOteQjj511CGUw+THmd8pYbAUc54dAWPpGwMrEww==",
+    "shasum": "11bc36744381c8192c7e64226d84cee4417e3881"
   },
   "linux-x64": {
     "name": "@goforgedev/canon-linux-x64",
-    "version": "0.36.2",
-    "file": "goforgedev-canon-linux-x64-0.36.2.tgz",
-    "integrity": "sha512-RKvJzu3G2hLypGgFQk6bOJ1maBqMxnuEU+x17msNCdcfydC21DwcPK+ZfVr7F35JnobCM09IL/NCINXhLWiRUQ==",
-    "shasum": "3ebbb49fb72d029a84af73a8b82cdd8c27748eee"
+    "version": "0.36.3",
+    "file": "goforgedev-canon-linux-x64-0.36.3.tgz",
+    "integrity": "sha512-fsxm23kJvv0vKEugLoumj5W1Tk9ia8Q2COjUfeyZaSfRVb5vuVsXrqs6hyR9NExLV4ut9LH931OoXlcnPEalpQ==",
+    "shasum": "1412e6c6a2ddcda616b97fa86ee5e33e03542616"
   }
 }
