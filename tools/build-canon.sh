@@ -118,9 +118,17 @@ pins()
   echo "  \"ricestaxCommit\": \"$ricestax_commit\","
   echo "  \"platform\": \"$platform\","
 }
+# The oldest macOS a darwin bundle runs on (LC_BUILD_VERSION minos); a
+# bundle built for another deployment target is rebuilt.
+built_for_target()
+{
+  [ -z "${MACOSX_DEPLOYMENT_TARGET:-}" ] && return 0
+  [ "$(otool -l "$out/canon" | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')" = "$MACOSX_DEPLOYMENT_TARGET" ]
+}
 if [ -f "$out/canon.json" ] && [ -f "$out/canon" ] &&
   [ "$(sed -n '2,6p' "$out/canon.json")" = "$(pins)" ] &&
-  [ "$(shasum -a 256 "$out/canon" | cut -d' ' -f1)" = "$(cat "$out/canon.sha256")" ]; then
+  [ "$(shasum -a 256 "$out/canon" | cut -d' ' -f1)" = "$(cat "$out/canon.sha256")" ] &&
+  built_for_target; then
   if $print; then echo "$out"; else echo "$platform: canon $canon_version $(cat "$out/canon.sha256") $out (already built)"; fi
   exit 0
 fi
