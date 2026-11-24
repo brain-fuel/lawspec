@@ -10,6 +10,7 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {corePath as corePathOf} from '../core-path.mjs';
 import {runCore} from '../host.mjs';
 
 const packageRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -17,11 +18,15 @@ const corePath =
   process.env.LAWSPEC_HOST_CORE ?? path.join(packageRoot, 'host-core.wasm');
 // The package resources lawspec learn serves: LAWSPEC_RESOURCES, or this
 // package.
-const resources = path.resolve(process.env.LAWSPEC_RESOURCES || packageRoot);
+const resources = corePathOf(
+  process.platform,
+  path.resolve(process.env.LAWSPEC_RESOURCES || packageRoot),
+);
 // The Canon lawspec project runs: the bundle LAWSPEC_CANON names, else the
 // optional @goforgedev/canon-<platform> package, else, on a platform with no
 // native Canon (Windows), the optional ricestax package through this Node.
-// The host only finds them; the core decides.
+// The host only finds them; the core decides. Every path reaches the core in
+// its form (core-path.mjs).
 const packages = createRequire(import.meta.url);
 const packageDirectory = name =>
 {
@@ -34,9 +39,10 @@ const packageDirectory = name =>
     return null;
   }
 };
+const core = file => corePathOf(process.platform, file);
 const bundle = directory => ({
-  command: [path.join(directory, 'canon')],
-  presets: path.join(directory, 'presets'),
+  command: [core(path.join(directory, 'canon'))],
+  presets: core(path.join(directory, 'presets')),
 });
 const canonBundle =
   process.env.LAWSPEC_CANON ||
@@ -47,11 +53,11 @@ const canon = canonBundle
   : ricestax
     ? {
         command: [
-          process.execPath,
-          path.join(ricestax, 'bin/ricestax.mjs'),
+          core(process.execPath),
+          core(path.join(ricestax, 'bin/ricestax.mjs')),
           'canon',
         ],
-        presets: path.join(ricestax, 'presets'),
+        presets: core(path.join(ricestax, 'presets')),
       }
     : null;
 // The core names its compiler cache folder by the module it runs, and keys
@@ -60,7 +66,7 @@ const build = createHash('sha256').update(readFileSync(corePath)).digest('hex');
 const outcome = await runCore(corePath, {
   abi: 2,
   argv: process.argv.slice(2),
-  cwd: process.cwd(),
+  cwd: core(process.cwd()),
   build,
   host: {kind: 'node', version: process.version},
   resources,

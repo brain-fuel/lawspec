@@ -353,7 +353,7 @@ generatedTestHole = "@@generated-test-dir@@"
 -- npm/ only for the repository's own tools and tests, and are not shipped.
 -- ref:DEC-haskell-application-port
 shippedFiles :: [String]
-shippedFiles = ["api.mjs", "launcher.mjs", "host-launcher.mjs", "host-codecs.mjs", "host.mjs", "worker.mjs", "postinstall.mjs", "*.json", "index.d.ts", "bin", "host-core.wasm", "core.wasm", "core.wasm.gz", "core_jsffi.js", "host-component", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn", "references"]
+shippedFiles = ["api.mjs", "launcher.mjs", "host-launcher.mjs", "host-codecs.mjs", "core-path.mjs", "host.mjs", "spawn.mjs", "worker.mjs", "postinstall.mjs", "*.json", "index.d.ts", "bin", "host-core.wasm", "core.wasm", "core.wasm.gz", "core_jsffi.js", "host-component", "go.mod"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "NORMALIZATION-LICENSES.txt", "starter.lawspec", "starter-rc1.lawspec", "examples", "learn", "references"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.

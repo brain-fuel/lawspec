@@ -6,6 +6,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The npm CLI on Windows passed native paths (`C:\...`) to the core, which
+  rejects them as not absolute. It now maps them to the core's form
+  (`/C:/Users/me`, and `//server/share/dir` for a UNC path) in the
+  invocation, the Canon paths and every file or process request and
+  response, the convention every host follows.
+- The npm host started programs without PATHEXT resolution or the `cmd.exe`
+  route for `.cmd` and `.bat` files, so a tool such as `mvn.cmd` could not
+  start on Windows. It now uses the same starter as LawSpec's other tool
+  launches, and the package ships `spawn.mjs`.
+
+Both fixes are checked against Windows path and quoting rules on macOS, not
+yet on Windows hardware.
+
 ## [0.36.3] - 2026-11-22
 
 ### Fixed

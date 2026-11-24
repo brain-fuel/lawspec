@@ -89,6 +89,20 @@ an operation answers it `unsupported`. Byte payloads (file
 contents, process output, HTTP bodies) are RFC 4648 base64 strings with
 padding. Paths are absolute POSIX paths. ref:rfc4648-base64
 
+On Windows a host presents every path to the core as a POSIX path, and
+converts every path it receives from the core back before any file system or
+process call. The drive is the first segment, with forward slashes:
+`C:\Users\me` is `/C:/Users/me`, and a UNC path `\\server\share\dir` is
+`//server/share/dir`; a `\\?\` prefix is dropped. The conversion applies to
+every path in an invocation (`cwd`, `resources`, the paths of `tools.canon`)
+and in every request and response (`read`, `write`, `list`, `stat`,
+`realpath`, `remove`, `rename`, `mkdirs`, the `cwd` and program of `spawn`).
+On any other platform paths pass unchanged. Every host implements the same
+mapping: `hosts/go/internal/effects/winpath.go` and
+`templates/npm/core-path.mjs`. The Node host starts a program through
+`templates/npm/spawn.mjs`, as LawSpec starts every other tool: on Windows it
+resolves PATHEXT and runs `.cmd` and `.bat` files through `cmd.exe`.
+
 An invocation of `lawspec_main`:
 
 ```json

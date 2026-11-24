@@ -27,6 +27,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {isatty} from 'node:tty';
 import {MessageChannel, Worker} from 'node:worker_threads';
+import {corePath, nativePath} from './core-path.mjs';
+import {invocation} from './spawn.mjs';
 
 const ABI = 2;
 
@@ -68,13 +70,28 @@ for (const stream of [process.stdout, process.stderr])
 const bytes = text => Buffer.from(text, 'base64');
 const text = data => Buffer.from(data).toString('base64');
 
-function absolute(file)
+// The core's paths are absolute POSIX paths (on Windows with the drive as
+// the first segment, core-path.mjs). Every path is compared in that form
+// and converted only where it meets the file system or a process.
+const posix = path.posix;
+
+// posix.normalize collapses the leading // of a UNC path.
+function normal(file)
 {
-  if (typeof file !== 'string' || !path.isAbsolute(file))
+  const cleaned = posix.normalize(file);
+  return file.startsWith('//') && !file.startsWith('///')
+    ? `/${cleaned}`
+    : cleaned;
+}
+
+// A request's path: absolute in the core's form, as the file system takes it.
+function absolute(platform, file)
+{
+  if (typeof file !== 'string' || !posix.isAbsolute(file))
   {
     throw new HostError('invalid', `path is not absolute: ${file}`);
   }
-  return path.normalize(file);
+  return nativePath(platform, normal(file));
 }
 
 // A request's optional permission bits: an integer from 0 to 0o7777, or
@@ -113,8 +130,8 @@ function segments(file)
 // Whether a normalised absolute path is the root itself or below it.
 function within(root, file)
 {
-  const top = segments(path.normalize(root));
-  const parts = segments(path.normalize(file));
+  const top = segments(normal(root));
+  const parts = segments(normal(file));
   return top.every((part, index) => parts[index] === part);
 }
 
@@ -173,31 +190,29 @@ const systemProtected = [
   '/private/var/folders',
 ];
 
-function ownProtected()
+function ownProtected(platform)
 {
-  return [
-    process.env.HOME,
-    process.env.TMPDIR,
-    os.homedir(),
-    os.tmpdir(),
-  ].filter(file => typeof file === 'string' && path.isAbsolute(file));
+  return [process.env.HOME, process.env.TMPDIR, os.homedir(), os.tmpdir()]
+    .filter(file => typeof file === 'string')
+    .map(file => corePath(platform, file))
+    .filter(file => posix.isAbsolute(file));
 }
 
 // A path under both of its macOS names: /tmp, /var and /etc are links to
 // the same names under /private.
 function aliases(file)
 {
-  const parts = segments(path.normalize(file));
+  const parts = segments(normal(file));
   const linked = ['tmp', 'var', 'etc'];
   if (parts[0] === 'private' && linked.includes(parts[1]))
   {
-    return [path.normalize(file), '/' + parts.slice(1).join('/')];
+    return [normal(file), '/' + parts.slice(1).join('/')];
   }
   if (linked.includes(parts[0]))
   {
-    return [path.normalize(file), '/private/' + parts.join('/')];
+    return [normal(file), '/private/' + parts.join('/')];
   }
-  return [path.normalize(file)];
+  return [normal(file)];
 }
 
 // Whether a path is an anchor or an ancestor of one, or macOS's per-user
@@ -208,7 +223,7 @@ function protects(anchors, file)
   {
     return true;
   }
-  let parts = segments(path.normalize(file));
+  let parts = segments(normal(file));
   if (parts[0] === 'private')
   {
     parts = parts.slice(1);
@@ -227,7 +242,7 @@ function protects(anchors, file)
 // [operation, shown, compared]. A message, or null.
 function guarding(hard, soft, projects, roots, targets)
 {
-  const same = (left, right) => path.normalize(left) === path.normalize(right);
+  const same = (left, right) => normal(left) === normal(right);
   for (const [shown, root] of roots)
   {
     if (
@@ -256,10 +271,10 @@ function guarding(hard, soft, projects, roots, targets)
   return null;
 }
 
-function anchors(policy)
+function anchors(platform, policy)
 {
   return {
-    hard: [...systemProtected, ...policy.protected, ...ownProtected()],
+    hard: [...systemProtected, ...policy.protected, ...ownProtected(platform)],
     soft: [...(policy.cwd === null ? [] : [policy.cwd]), ...policy.projects],
   };
 }
@@ -314,8 +329,9 @@ function touched(request)
   }
 }
 
-// realpath, keeping missing trailing components.
-async function realPath(file)
+// realpath, keeping missing trailing components. The path is native, and so
+// is the result.
+async function realPath(io, file)
 {
   const missing = [];
   let current = file;
@@ -323,7 +339,7 @@ async function realPath(file)
   {
     try
     {
-      return path.join(await realpath(current), ...missing.reverse());
+      return path.join(await io.realpath(current), ...missing.reverse());
     }
     catch (error)
     {
@@ -338,26 +354,32 @@ async function realPath(file)
   }
 }
 
-async function resolved(resolution, file)
+// A core-form path resolved through its symbolic links, in the core's form.
+async function resolved(io, resolution, file)
 {
-  const normal = path.normalize(file);
-  if (resolution === 'whole' || normal === '/')
+  const lexical = normal(file);
+  const real = async name =>
+    corePath(io.platform, await realPath(io, nativePath(io.platform, name)));
+  if (resolution === 'whole' || lexical === '/')
   {
-    return realPath(normal);
+    return real(lexical);
   }
-  return path.join(await realPath(path.dirname(normal)), path.basename(normal));
+  return posix.join(
+    await real(posix.dirname(lexical)),
+    posix.basename(lexical),
+  );
 }
 
 // The host's own check, in the core's order: a malformed request is left
 // to the operation, which answers invalid; then the lexical rules, the
 // guard first; then the same paths with their symbolic links resolved, and
 // the guard over them.
-async function enforce(policy, request)
+async function enforce(io, policy, request)
 {
   const paths = touched(request);
   const malformed =
     paths.some(
-      ([, , file]) => typeof file !== 'string' || !path.isAbsolute(file),
+      ([, , file]) => typeof file !== 'string' || !posix.isAbsolute(file),
     ) ||
     (request.op === 'spawn' &&
       (!Array.isArray(request.argv) || typeof request.argv[0] !== 'string'));
@@ -369,7 +391,7 @@ async function enforce(policy, request)
   {
     throw new HostError('denied', message);
   };
-  const {hard, soft} = anchors(policy);
+  const {hard, soft} = anchors(io.platform, policy);
   const targets = guardedTargets(request);
   if (paths.length > 0)
   {
@@ -377,12 +399,8 @@ async function enforce(policy, request)
       hard,
       soft,
       policy.projects,
-      policy.write.map(root => [root, path.normalize(root)]),
-      targets.map(([operation, file]) => [
-        operation,
-        file,
-        path.normalize(file),
-      ]),
+      policy.write.map(root => [root, normal(root)]),
+      targets.map(([operation, file]) => [operation, file, normal(file)]),
     );
     if (problem !== null)
     {
@@ -419,10 +437,10 @@ async function enforce(policy, request)
   }
   for (const [access, resolution, file] of paths)
   {
-    const real = await resolved(resolution, file);
+    const real = await resolved(io, resolution, file);
     const allowed = await Promise.all(
       roots(access).map(async root =>
-        within(await resolved('whole', root), real),
+        within(await resolved(io, 'whole', root), real),
       ),
     );
     if (!allowed.includes(true))
@@ -434,7 +452,7 @@ async function enforce(policy, request)
   // anchors keep their lexical form as well.
   if (paths.length > 0)
   {
-    const whole = file => resolved('whole', file);
+    const whole = file => resolved(io, 'whole', file);
     const resolvedHard = await Promise.all(hard.map(whole));
     const resolvedSoft = await Promise.all(soft.map(whole));
     const resolvedProjects = await Promise.all(policy.projects.map(whole));
@@ -445,7 +463,7 @@ async function enforce(policy, request)
       targets.map(async ([operation, file, resolution]) => [
         operation,
         file,
-        await resolved(resolution, file),
+        await resolved(io, resolution, file),
       ]),
     );
     const problem = guarding(
@@ -539,8 +557,19 @@ function fetchOnce(request)
 }
 
 // The state of one core run: its processes, listeners and pending requests.
-function createEffects()
+// The file system calls are those of node:fs/promises; a test may replace
+// them, and set the platform whose paths the host converts.
+export function createEffects({platform = process.platform, files = {}} = {})
 {
+  const io = {
+    platform,
+    readFile,
+    readdir,
+    realpath,
+    stat,
+    lstat,
+    ...files,
+  };
   const processes = new Map();
   const listeners = new Map();
   const requests = new Map();
@@ -615,11 +644,19 @@ function createEffects()
     {
       throw new HostError('invalid', 'spawn needs a program');
     }
-    const child = spawn(program, args, {
-      cwd: absolute(request.cwd),
-      env: request.env ?? process.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    // On Windows, PATHEXT resolution and batch files through cmd.exe, as
+    // for every tool LawSpec starts (spawn.mjs).
+    const plan = invocation(
+      nativePath(platform, program),
+      args,
+      {
+        cwd: absolute(platform, request.cwd),
+        env: request.env ?? process.env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+      {platform},
+    );
+    const child = spawn(plan.file, plan.args, plan.options);
     await new Promise((resolve, reject) =>
     {
       child.once('spawn', resolve);
@@ -718,12 +755,12 @@ function createEffects()
 
   const operations = {
     read: async request => ({
-      data: text(await readFile(absolute(request.path))),
+      data: text(await io.readFile(absolute(platform, request.path))),
     }),
     write: async request =>
     {
       await write(
-        absolute(request.path),
+        absolute(platform, request.path),
         bytes(request.data),
         request.mode,
         permissions(request),
@@ -732,13 +769,15 @@ function createEffects()
     },
     list: async request => ({
       entries: (
-        await readdir(absolute(request.path), {withFileTypes: true})
+        await io.readdir(absolute(platform, request.path), {
+          withFileTypes: true,
+        })
       ).map(entry => ({name: entry.name, kind: entryKind(entry)})),
     }),
     stat: async request =>
     {
-      const file = absolute(request.path);
-      const info = await (request.follow ? stat(file) : lstat(file));
+      const file = absolute(platform, request.path);
+      const info = await (request.follow ? io.stat(file) : io.lstat(file));
       return {
         kind: entryKind(info),
         size: info.size,
@@ -748,10 +787,15 @@ function createEffects()
     },
     // fs/promises realpath is the C library's realpath(3) (libuv's
     // uv_fs_realpath), which gives the stored case of each name on macOS.
-    realpath: async request => ({path: await realpath(absolute(request.path))}),
+    realpath: async request => ({
+      path: corePath(
+        platform,
+        await io.realpath(absolute(platform, request.path)),
+      ),
+    }),
     remove: async request =>
     {
-      const file = absolute(request.path);
+      const file = absolute(platform, request.path);
       const info = await lstat(file);
       if (info.isDirectory())
       {
@@ -767,16 +811,19 @@ function createEffects()
     // systems (EXDEV, failed) rather than copying.
     rename: async request =>
     {
-      await rename(absolute(request.from), absolute(request.to));
+      await rename(
+        absolute(platform, request.from),
+        absolute(platform, request.to),
+      );
       return {};
     },
     // Each directory a recursive mkdir creates gets the permission bits
     // (0777 without), less the umask; an existing one keeps its own.
     mkdirs: async request =>
     {
-      const file = absolute(request.path);
+      const file = absolute(platform, request.path);
       const bits = permissions(request);
-      const info = await stat(file).catch(() => null);
+      const info = await io.stat(file).catch(() => null);
       if (info !== null && !info.isDirectory())
       {
         throw new HostError('already-exists', `not a directory: ${file}`);
@@ -878,7 +925,7 @@ function createEffects()
       {
         throw new HostError('unsupported', `unknown operation ${request.op}`);
       }
-      await enforce(policy, request);
+      await enforce(io, policy, request);
       return {abi: ABI, ok: await operation(request)};
     }
     catch (error)

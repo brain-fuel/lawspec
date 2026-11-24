@@ -637,7 +637,7 @@ coreSteps sdkTests =
   | (name, arguments) <- compilerTestShards ] ++
   [ step (sdkTestStep file) ["node", "--test", "npm/test/" ++ file] | file <- sdkTests ] ++
   [
-    step "code-style" ["node", "tools/code-style.mjs", "--check", "learn/browser", "learn/formatting", "learn/test", "learn/exercises", "runtime", "templates/npm/learn.mjs", "templates/npm/bin/lawspec.mjs", "templates/npm/host.mjs", "templates/npm/worker.mjs", "templates/tools/code-style.mjs", "templates/tools/learn-build.mjs", "templates/tools/learn-compiler.mjs"],
+    step "code-style" ["node", "tools/code-style.mjs", "--check", "learn/browser", "learn/formatting", "learn/test", "learn/exercises", "runtime", "templates/npm/learn.mjs", "templates/npm/bin/lawspec.mjs", "templates/npm/core-path.mjs", "templates/npm/host.mjs", "templates/npm/worker.mjs", "templates/tools/code-style.mjs", "templates/tools/learn-build.mjs", "templates/tools/learn-compiler.mjs"],
     step "learn-browser" ["npm", "run", "test:browser", "--prefix", "learn"],
     step "learn-execution" ["npm", "test", "--prefix", "learn"]
   ] ++

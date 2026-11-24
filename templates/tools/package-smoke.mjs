@@ -237,7 +237,7 @@ try {
   const {readdir} = await import('node:fs/promises');
   const installed = path.join(app, 'node_modules/lawspec');
   const modules = (await readdir(installed)).filter(name => name.endsWith('.mjs')).sort();
-  const hostModules = ['api.mjs', 'host-codecs.mjs', 'host-launcher.mjs', 'host.mjs', 'launcher.mjs', 'postinstall.mjs', 'worker.mjs'];
+  const hostModules = ['api.mjs', 'core-path.mjs', 'host-codecs.mjs', 'host-launcher.mjs', 'host.mjs', 'launcher.mjs', 'postinstall.mjs', 'spawn.mjs', 'worker.mjs'];
   if (JSON.stringify(modules) !== JSON.stringify(hostModules))
     throw new Error(`Packaged modules ${modules.join(', ')}; expected ${hostModules.join(', ')}`);
   await readFile(path.join(installed, 'host-core.wasm'));
