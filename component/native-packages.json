@@ -1,30 +1,30 @@
 {
   "darwin-arm64": {
     "name": "@goforgedev/compiler-darwin-arm64",
-    "version": "0.36.3",
-    "file": "goforgedev-compiler-darwin-arm64-0.36.3-f213840d9727.tgz",
-    "integrity": "sha512-23bcEteU2UY9CcxeX8UyJM/7LJV8Jw7rlschyy2gog04JICG54kGH2L6dXznRc0sI4+7q4iCn0B+2PQQUBhYtQ==",
-    "shasum": "f213840d97271e856b97cf51d5feada691eda49e"
+    "version": "0.36.4",
+    "file": "goforgedev-compiler-darwin-arm64-0.36.4-ef10118b6723.tgz",
+    "integrity": "sha512-DzLnp1ZU4HMhWx80HXAwtiiRuqTLwvF+QPAaWykhsqXGuV6cp96zy/in5ZuS9dZ00PFG4EQDyLzArBGa4Rssgw==",
+    "shasum": "ef10118b67234175c3c6a91755094544767e9e2a"
   },
   "darwin-x64": {
     "name": "@goforgedev/compiler-darwin-x64",
-    "version": "0.36.3",
-    "file": "goforgedev-compiler-darwin-x64-0.36.3-9635d63e6bac.tgz",
-    "integrity": "sha512-agme1j153a/3EGq0zMU7z6xGY9AXi6x/qXZHiPOBGjOyNdatYRTHmilRHrulzno8oRJbVO1ofxI47Zaz62RUQw==",
-    "shasum": "9635d63e6bac399d8fc7fdb9b495288ffc09e92f"
+    "version": "0.36.4",
+    "file": "goforgedev-compiler-darwin-x64-0.36.4-a954ab1768c0.tgz",
+    "integrity": "sha512-VqOzYg1/M/bOSVDNEkvBJEqAKBgMC939jyvmUNg4+UyUp37AMLepoa/8lVOLUAKzG0a2s7O/XW6mZTVBXZk0/g==",
+    "shasum": "a954ab1768c0ea11baff9f955820d6949a0be560"
   },
   "linux-arm64": {
     "name": "@goforgedev/compiler-linux-arm64",
-    "version": "0.36.3",
-    "file": "goforgedev-compiler-linux-arm64-0.36.3-c36ef62fa8df.tgz",
-    "integrity": "sha512-0i5gIxUJEzExeeu0YDd3ggHqT1Hl9DFCEORINlGdWKzdcadO8xyMO4AI3Chnszi2qSUP/ndhoX0kopdrMJ7OfA==",
-    "shasum": "c36ef62fa8df021869b9e1b1512dbbc5d4496c59"
+    "version": "0.36.4",
+    "file": "goforgedev-compiler-linux-arm64-0.36.4-1a990f8e96f5.tgz",
+    "integrity": "sha512-LIZzG4yyTc4H5mtHk3l3X4atXS3Gff/xcm/IyRM+USHGq8/t0Uf5HWRDZLHWuJuFIlZn4WV89EYOvuZ7uoiygw==",
+    "shasum": "1a990f8e96f5e30d1fb3501725f354bb5cfc3ecf"
   },
   "linux-x64": {
     "name": "@goforgedev/compiler-linux-x64",
-    "version": "0.36.3",
-    "file": "goforgedev-compiler-linux-x64-0.36.3-543a6eb123fb.tgz",
-    "integrity": "sha512-pdN4QQoaWd06nVeRxHenAa/7WkUvYIsIsSQCn9BisnAbuDrSiqH2R36yLoIf7OZXpSb070QmnWItImnI4Y2OgA==",
-    "shasum": "543a6eb123fbbbc6d7e23108ae4c096ba18b0cbe"
+    "version": "0.36.4",
+    "file": "goforgedev-compiler-linux-x64-0.36.4-b07c821342cc.tgz",
+    "integrity": "sha512-rAsai8dl/5JhWDVZCO0PX54pJpFGTVp90rgiVdfLwS7WrWr04Nv1PStKMn9oXQjpzimYGzp7OV5PoqlIMp5lWw==",
+    "shasum": "b07c821342cc77fdbdcad0544f8e9863c6b62469"
   }
 }
