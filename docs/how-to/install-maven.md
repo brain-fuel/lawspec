@@ -35,7 +35,7 @@ own toolchains (`lawspec doctor` lists them).
 <plugin>
   <groupId>dev.goforge</groupId>
   <artifactId>lawspec-maven-plugin</artifactId>
-  <version>0.36.3</version>
+  <version>0.36.4</version>
   <executions>
     <execution>
       <goals>
@@ -102,9 +102,9 @@ Put the launcher and this platform's jar in one directory (`lawspec-resources`
 too, for `lawspec learn`):
 
 ```sh
-mvn dependency:copy -Dartifact=dev.goforge:lawspec:0.36.3 -DoutputDirectory=lawspec
-mvn dependency:copy -Dartifact=dev.goforge:lawspec-darwin-arm64:0.36.3 -DoutputDirectory=lawspec
-java -jar lawspec/lawspec-0.36.3.jar check
+mvn dependency:copy -Dartifact=dev.goforge:lawspec:0.36.4 -DoutputDirectory=lawspec
+mvn dependency:copy -Dartifact=dev.goforge:lawspec-darwin-arm64:0.36.4 -DoutputDirectory=lawspec
+java -jar lawspec/lawspec-0.36.4.jar check
 ```
 
 The launcher also finds the jars in the local Maven repository, or where
@@ -142,7 +142,7 @@ runs `lawspec --api <method>`.
 stack build lawspec:exe:lawspec-native
 node tools/learn-build.mjs          # the Learn assets for lawspec-resources
 hosts/jvm/stage-native.sh           # strips and stages this platform's binary
-mvn -f hosts/jvm install            # 0.36.3-SNAPSHOT into ~/.m2/repository
+mvn -f hosts/jvm install            # 0.36.4-SNAPSHOT into ~/.m2/repository
 ```
 
 `bash tools/hosts.sh jvm` does the same into `.artifacts/jvm/repository`
@@ -186,10 +186,10 @@ with the platform binaries staged and the Learn assets built:
 ```sh
 hosts/jvm/stage-native.sh --check-all
 rm -rf hosts/jvm/target/central-staging
-mvn -f hosts/jvm -Prelease,all-platforms -Drevision=0.36.3 -DskipTests \
+mvn -f hosts/jvm -Prelease,all-platforms -Drevision=0.36.4 -DskipTests \
   package deploy:deploy \
   -DaltDeploymentRepository=staging::file:$PWD/hosts/jvm/target/central-staging
-(cd hosts/jvm/gradle-plugin && gradle -Pversion=0.36.3 publishAllPublicationsToCentralStagingRepository)
+(cd hosts/jvm/gradle-plugin && gradle -Pversion=0.36.4 publishAllPublicationsToCentralStagingRepository)
 ax publish --maven-settings-path ~/para/projects/goforge/maven_settings.xml
 ```
 

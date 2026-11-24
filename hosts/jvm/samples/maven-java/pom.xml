@@ -19,7 +19,7 @@
   <properties>
     <maven.compiler.release>25</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <lawspec.version>0.36.3-SNAPSHOT</lawspec.version>
+    <lawspec.version>0.36.4-SNAPSHOT</lawspec.version>
   </properties>
 
   <dependencies>

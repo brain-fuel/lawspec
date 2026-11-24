@@ -2,7 +2,7 @@
 # clean checkout of tag vX.Y.Z after the unsigned staging build
 # (docs/how-to/release.md). lawspec-dev bump keeps the version.
 schema_version = 1
-version = "0.36.3"
+version = "0.36.4"
 policy = "maven-repository"
 group_id = "dev.goforge"
 staging = "hosts/jvm/target/central-staging"

@@ -1,4 +1,4 @@
-version: 0.36.3
+version: 0.36.4
 canon: 0.2.5
 registry: canonical_refs.yaml
 decisions: canonical_decisions.yaml
