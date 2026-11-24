@@ -47,6 +47,13 @@ repository="$(cd "$(dirname "$0")/.." && pwd)"
 ghc_version=9.10.3
 stack_version=3.11.1
 stack_sha256_osx_x86_64=603db63eef6246b02dd042e446686f61e3410ee9ef73cb3838314e24468fb290
+# The oldest macOS the darwin builds run on. clang reads
+# MACOSX_DEPLOYMENT_TARGET for every C file and link, so each darwin build
+# exports it and compiles every dependency in a Stack root of its own for
+# this target: Stack's snapshot cache is not keyed by it, so libraries
+# compiled for another target would otherwise be reused. darwin_linkage
+# checks the result.
+macos_target="${LAWSPEC_MACOS_TARGET:-13.0}"
 
 platform=""
 project="$repository"
@@ -162,14 +169,15 @@ build_darwin_x64()
     tar -xzf "$tools/download/$archive" -C "$tools/download"
     install -m 755 "$tools/download/stack-$stack_version-osx-x86_64/stack" "$stack"
   fi
-  mkdir -p "$tools/stack-root"
+  local root="$tools/stack-root-macos-$macos_target"
+  mkdir -p "$root"
   # Never a system GHC: /opt/homebrew's or ghcup's is arm64.
-  printf 'system-ghc: false\ninstall-ghc: true\n' >"$tools/stack-root/config.yaml"
+  printf 'system-ghc: false\ninstall-ghc: true\n' >"$root/config.yaml"
   local source="$tools/src"
   rm -rf "$source"
   mkdir -p "$source"
   git -C "$project" archive --format=tar "$commit" | tar -x -C "$source"
-  local -a x64=(arch -x86_64 /usr/bin/env -i HOME="$HOME" STACK_ROOT="$tools/stack-root" PATH="$tools/bin:/usr/bin:/bin:/usr/sbin:/sbin" LANG=en_US.UTF-8 TMPDIR="${TMPDIR:-/tmp}")
+  local -a x64=(arch -x86_64 /usr/bin/env -i HOME="$HOME" STACK_ROOT="$root" MACOSX_DEPLOYMENT_TARGET="$macos_target" PATH="$tools/bin:/usr/bin:/bin:/usr/sbin:/sbin" LANG=en_US.UTF-8 TMPDIR="${TMPDIR:-/tmp}")
   if $canon; then
     # build-canon.sh finds the x86-64 stack first on PATH.
     (cd "$source" && "${x64[@]}" ${CANON_SOURCE:+CANON_SOURCE="$CANON_SOURCE"} ${RICESTAX_SOURCE:+RICESTAX_SOURCE="$RICESTAX_SOURCE"} \
@@ -194,7 +202,14 @@ build_darwin_x64()
 build_darwin_arm64()
 {
   [ "$(uname -s)-$(uname -m)" = "Darwin-arm64" ] || { echo "build-native: darwin-arm64 is built on an Apple Silicon Mac" >&2; exit 1; }
-  local source="$repository/.tools/darwin-arm64/src"
+  local tools="$repository/.tools/darwin-arm64"
+  local source="$tools/src"
+  # A Stack root of its own, for this deployment target (see macos_target);
+  # it installs its own GHC rather than reuse one built into another root.
+  export STACK_ROOT="$tools/stack-root-macos-$macos_target"
+  export MACOSX_DEPLOYMENT_TARGET="$macos_target"
+  mkdir -p "$STACK_ROOT"
+  printf 'system-ghc: false\ninstall-ghc: true\n' >"$STACK_ROOT/config.yaml"
   rm -rf "$source"
   mkdir -p "$source"
   git -C "$project" archive --format=tar "$commit" | tar -x -C "$source"
@@ -230,6 +245,13 @@ darwin_linkage()
     echo "\$ otool -L $name"
     otool -L "$executable"
   } >"$out/$linkage_name"
+  local minos
+  minos="$(otool -l "$executable" | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')"
+  echo "minimum macOS: $minos" >>"$out/$linkage_name"
+  if [ "$minos" != "$macos_target" ]; then
+    echo "build-native: $name requires macOS $minos, not $macos_target" >&2
+    exit 1
+  fi
   if otool -L "$executable" | tail -n +2 | grep -Ev '^[[:space:]]+(/usr/lib/|/System/Library/)' | grep -q .; then
     echo "build-native: $name links a library outside the system:" >&2
     cat "$out/$linkage_name" >&2

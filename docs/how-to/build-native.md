@@ -83,11 +83,23 @@ distributions whose glibc is at least as new as the build's.
 emulation. It takes hours rather than minutes; hold `caffeinate` while it
 runs.
 
+### macOS: the oldest supported version
+
+Both macOS builds target macOS 13.0, or `LAWSPEC_MACOS_TARGET` if set. The
+script exports `MACOSX_DEPLOYMENT_TARGET`, which clang reads for every C file
+and link, and builds in a Stack root of its own for that target
+(`.tools/<platform>/stack-root-macos-<target>`, ignored by git): Stack's
+snapshot cache is not keyed by the deployment target, so a shared `~/.stack`
+would link libraries already compiled for the build machine's macOS. The
+first build in a new root installs GHC and compiles every dependency.
+`linkage.txt` records the executable's minimum macOS (`LC_BUILD_VERSION`
+`minos`), and the build fails unless it is the target.
+
 ### darwin-x64: under Rosetta
 
 The script downloads stack's x86-64 macOS release (checked by SHA-256) into
 `.tools/darwin-x64/` (ignored by git) and runs it under `arch -x86_64` with
-`STACK_ROOT=.tools/darwin-x64/stack-root`, a `PATH` of system directories
+`STACK_ROOT=.tools/darwin-x64/stack-root-macos-<target>`, a `PATH` of system directories
 only, and `system-ghc: false`. stack installs the x86-64 GHC 9.10.3 there.
 Nothing touches `~/.stack`, `~/.ghcup` or the arm64 toolchain. GHC's macOS
 builds keep GMP inside the runtime, and libffi and libiconv are the system's,

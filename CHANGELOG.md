@@ -21,6 +21,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Both fixes are checked against Windows path and quoting rules on macOS, not
 yet on Windows hardware.
 
+### Changed
+
+- The macOS native compilers and Canon bundles run on macOS 13 and later.
+  They declared macOS 26 as their minimum, because their dependencies were
+  compiled for the build machine's macOS. The build now targets macOS 13
+  with every dependency compiled for it, and checks the result.
+
 ## [0.36.3] - 2026-11-22
 
 ### Fixed
