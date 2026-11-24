@@ -18,13 +18,13 @@ where
 
 -- | The LawSpec version the tarballs below were packed for.
 canonPackagesVersion :: String
-canonPackagesVersion = "0.36.3"
+canonPackagesVersion = "0.36.4"
 
 -- | Each platform's tarball digest, in lowercase hexadecimal.
 canonPackageDigests :: [(String, String)]
 canonPackageDigests =
-  [ ("darwin-arm64", "39d3258eaf717290f124bda97d9c21fc25abd4cfe0f1268258d650bdca036fb1"),
-    ("darwin-x64", "f2251355a9471f4e18a8745640a88cc6bf99ed89e932e71a099972a0069037b6"),
-    ("linux-arm64", "131fbc3b39cdbd908dfb0818773f782e6e4256db1e8cf8b3fc220c513182cb06"),
-    ("linux-x64", "6f888a9cc49651897e6bcd1efbfc5c9b4e1fe15ea577c5da752fd550988dd676")
+  [ ("darwin-arm64", "de00535c6554a6b386e6366e52364f5022c86ff0256f292e7deb5b08099c8630"),
+    ("darwin-x64", "8f52e7e9a0c6b99466c356fa611a497458c2f47cf5b858935e2990475473224c"),
+    ("linux-arm64", "b7496ff154c8596436cff1904b1d8f9048be0735bf28677cce01754a760db1b8"),
+    ("linux-x64", "639d940b7519308208bc76af5310633235edac8b2a706cfcb294c485297fe933")
   ]
